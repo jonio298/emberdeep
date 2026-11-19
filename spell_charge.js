@@ -130,7 +130,7 @@ function info(){
      total=cost(p,active.slot);
  return {slot:active.slot,name:d.name,color:d.color,shape:d.shape,range:d.range,
    radius:d.radius,elapsed:active.time,power:clamp((active.time-ARM)/(FULL-ARM),0,1),
-   progress:clamp(active.time/ARM,0,1),ready:active.time>=ARM,
+   progress:clamp(active.time/FULL,0,1),ready:active.time>=ARM,
    cost:total,affordable:p.mana>=total,
    x:where.x,y:where.y,dx:where.dx,dy:where.dy,originX:p.x,originY:p.y};
 }
@@ -409,7 +409,9 @@ function drawPreview(c,cam){
  c.fillStyle='#f2f3ee';c.textAlign='center';c.font='bold 10px Georgia';
  c.fillText(inf.name,0,-1);
  c.font='10px Georgia';c.fillStyle=inf.affordable?(fully?'#c7ffe3':'#e3cc9c'):'#ffb4b8';
- c.fillText(fully?inf.affordable?'RELEASE  •  '+inf.cost+' MANA':'NOT ENOUGH MANA':
+ c.fillText(fully?inf.affordable?
+   (progress<.99?'RELEASE / HOLD  '+Math.round(progress*100)+'%':'FULL POWER  •  '+inf.cost+' MANA'):
+   'NOT ENOUGH MANA':
    'HOLD TO CHARGE  '+Math.round(progress*100)+'%',0,12);
  c.restore();
  c.restore();
