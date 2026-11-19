@@ -995,6 +995,19 @@
         ctx.fillStyle = q.color;
         if (q.kind === 'fireball') { ctx.globalAlpha = 0.35; ctx.beginPath(); ctx.arc(sx, sy, q.r + 3, 0, PI2); ctx.fill(); ctx.globalAlpha = 1; ctx.fillStyle = '#ffd24a'; ctx.beginPath(); ctx.arc(sx, sy, q.r - 1, 0, PI2); ctx.fill(); ctx.fillStyle = q.color; ctx.beginPath(); ctx.arc(sx - q.vx * 0.04, sy - q.vy * 0.04, q.r - 2, 0, PI2); ctx.fill(); }
         else if (q.kind === 'wail') { ctx.globalAlpha = 0.6; ctx.beginPath(); ctx.arc(sx, sy, q.r + 1, 0, PI2); ctx.fill(); ctx.globalAlpha = 0.25; ctx.beginPath(); ctx.arc(sx - q.vx * 0.06, sy - q.vy * 0.06, q.r + 3, 0, PI2); ctx.fill(); ctx.globalAlpha = 1; }
+        else if (q.kind === 'bone') {
+          // Genuine spinning ivory projectiles rather than small generic colored circles.
+          ctx.save(); ctx.translate(sx,sy); ctx.rotate(Math.atan2(q.vy,q.vx) + this._time*11);
+          ctx.shadowColor='#be8edf';ctx.shadowBlur=5;
+          ctx.strokeStyle='#eadbc2';ctx.lineWidth=3.8;ctx.lineCap='round';
+          ctx.beginPath();ctx.moveTo(-10,0);ctx.lineTo(10,0);ctx.stroke();
+          ctx.shadowBlur=0;ctx.fillStyle='#fff3dd';
+          for(var tip=-1;tip<=1;tip+=2){ctx.beginPath();ctx.arc(tip*9,-2,2.6,0,PI2);
+            ctx.arc(tip*9,2,2.6,0,PI2);ctx.fill();}
+          ctx.strokeStyle='#bfa88b';ctx.lineWidth=1.3;
+          ctx.beginPath();ctx.moveTo(-7,0);ctx.lineTo(7,0);ctx.stroke();
+          ctx.restore();
+        }
         else if (q.kind === 'arrow') { ctx.save(); ctx.translate(sx, sy); ctx.rotate(Math.atan2(q.vy, q.vx)); ctx.fillRect(-7, -1, 14, 2); ctx.fillStyle = '#fff'; ctx.fillRect(5, -2, 3, 4); ctx.restore(); }
         else { ctx.beginPath(); ctx.arc(sx, sy, q.r, 0, PI2); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fillRect(sx - 1, sy - 1, 2, 2); }
       }
