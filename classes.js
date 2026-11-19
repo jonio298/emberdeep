@@ -305,6 +305,11 @@
       e._hitFlash = crit ? 0.16 : 0.09;
       fxBlood(e.x, e.y, crit ? 10 : 4, p ? e.x - p.x : 0, p ? e.y - p.y : 0);
     }
+    if (crit && opts.basicAttack && !opts.minion && CC.CriticalScene) {
+      CC.CriticalScene.trigger({ kind: opts.attackKind === 'projectile' ? 'projectile' : 'slash',
+        x: e.x, y: e.y, r: e.r || 9, angle: opts.angle || 0,
+        color: opts.color || '#e5c5b3', damage: dmg });
+    }
     if (crit) {
       fxFlash('#ffe9a0', 0.08);
       addFx({ kind: 'ring', x: e.x, y: e.y, r: 18, t: 0.22, max: 0.22, col: '#ffd24a' });
@@ -402,14 +407,15 @@
     return true;
   }
 
-  function cone(p, dir, range, half, mult, type, knockDist, stunT) {
+  function cone(p, dir, range, half, mult, type, knockDist, stunT, basicAttack) {
     var hits = 0, l = foes();
     for (var i = 0; i < l.length; i++) {
       var e = l[i]; if (!alive(e)) continue;
       var dx = e.x - p.x, dy = e.y - p.y, d = Math.sqrt(dx * dx + dy * dy);
       if (d > range + (e.r || 8)) continue;
       if (d > 8 && angDiff(Math.atan2(dy, dx), dir.a) > half) continue;
-      hitEnemy(e, p.stats.dmg * mult, type);
+      hitEnemy(e, p.stats.dmg * mult, type,
+        { basicAttack: !!basicAttack, attackKind: 'slash', angle: dir.a });
       if (knockDist) knock(e, p.x, p.y, knockDist);
       if (stunT) status(e, 'stun', stunT);
       hits++;
@@ -452,7 +458,7 @@
       dir = aimDir(p, 56);
       var mult = fin ? 1.30 * (1 + 0.25 * (p.flags.heavy || 0)) : 0.85 + step * 0.10;
       var range = fin ? 38 : 31, half = fin ? 1.18 : 0.9;
-      var hits = cone(p, dir, range, half, mult, 'slash', fin ? 8 : 3, 0);
+      var hits = cone(p, dir, range, half, mult, 'slash', fin ? 8 : 3, 0, true);
       p.swingAng = dir.a; p.swingSign = step === 2 ? -1 : 1;
       addFx({ kind: 'arc', x: p.x, y: p.y, a: dir.a, half: half, r: range, t: 0.16, max: 0.16,
         col: hits && fin ? '#a06ed2' : '#ffffff' });
@@ -483,7 +489,7 @@
       var hit = (p.combo || 0) + 1, finish = hit === 5;
       p.swingAng = dir.a; p.swingSign = hit % 2 ? 1 : -1;
       var strikes = cone(p, dir, finish ? 33 : 27, finish ? 0.95 : 0.7,
-        finish ? 1.22 : 0.78 + hit * 0.07, 'slash', finish ? 5 : 2, 0);
+        finish ? 1.22 : 0.78 + hit * 0.07, 'slash', finish ? 5 : 2, 0, true);
       addFx({ kind: 'arc', x: p.x, y: p.y, a: dir.a + (hit % 2 ? -0.16 : 0.16),
         half: finish && strikes ? 1.15 : 0.55, r: finish && strikes ? 39 : 27,
         t: 0.14, max: 0.14, col: finish && strikes ? '#a576ca' : '#bea4d3' });
@@ -650,7 +656,10 @@
         addFx({ kind: 'ring', x: s.x, y: s.y, r: s.aoe, t: 0.35, max: 0.35, col: '#ff8a3c' });
         fxBurst(s.x, s.y, '#ff8a3c', 18, 120); fxShake(4);
       } else if (target) {
-        hitEnemy(target, s.dmg, s.type);
+        hitEnemy(target, s.dmg, s.type, {
+          basicAttack: s.kind === 'bolt' || s.kind === 'shard',
+          attackKind: 'projectile', angle: s.a, color: s.col
+        });
         fxBurst(s.x, s.y, s.col, 5, 60);
       }
       projs.splice(i, 1);
