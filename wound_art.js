@@ -38,7 +38,7 @@ function tearPoints(p,r,slot){
 // Each landed basic hit removes a fresh asymmetric sliver of the actual sprite.
 // Cuts are deterministic after creation and accumulate as real missing pixels.
 function impact(e,angle,type){
-  if(!e||e.ghost||e.collapsed||!e.r||e.dead)return;
+  if(!e||e.ghost||e.collapsed||!e.r)return; // even a killing blow throws irregular fragments
   e.hitWounds=e.hitWounds||[];
   e.hitIndex=(e.hitIndex||0)+1;
   var index=e.hitIndex,r=e.r,side=index%2?1:-1;
