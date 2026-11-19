@@ -168,6 +168,7 @@
   };
 
   CC.startRun = function (floor, area) {
+    call('CriticalScene', 'reset');
     var s = CC.state;
     s.area = area === 'plains' && has('Plains', 'generate') ? 'plains' : area === 'forest' && has('Forest', 'generate') ? 'forest' : 'cave'; // 'forest' = the Giant Forest, then the Rolling Plains, in front of floor 1
     s.floor = Math.max(1, floor | 0 || 1);
@@ -179,6 +180,7 @@
   };
 
   CC.nextFloor = function () {
+    call('CriticalScene', 'reset');
     if (CC.state.area === 'forest' && has('TreeTunnel', 'generate')) {
       CC.state.area = 'tree-tunnel';
       CC.fx.text(cam.x + cam.w / 2, cam.y + cam.h / 2, 'INSIDE THE ANCIENT TREE', '#b9df8d', 16);
@@ -659,13 +661,20 @@
   }
 
   function drawWorld() {
-    var s = CC.state;
+    var s = CC.state, v = call('CriticalScene', 'view');
     var ox = shakeMag ? (Math.random() - 0.5) * shakeMag * 2 : 0;
     var oy = shakeMag ? (Math.random() - 0.5) * shakeMag * 2 : 0;
-    var rx = cam.x, ry = cam.y;
-    cam.x = Math.round(cam.x + ox); cam.y = Math.round(cam.y + oy); // one offset for every world layer
+    var rx = cam.x, ry = cam.y, rw = cam.w, rh = cam.h;
+    var cinematicZoom = v ? v.scale : 1, activeZoom = zoom * cinematicZoom;
+    if (v) {
+      cam.w = W / activeZoom; cam.h = H / activeZoom;
+      cam.x = rx * (1 - v.blend) + (v.x - cam.w / 2) * v.blend + ox;
+      cam.y = ry * (1 - v.blend) + (v.y - cam.h / 2) * v.blend + oy;
+    } else {
+      cam.x = Math.round(rx + ox); cam.y = Math.round(ry + oy);
+    }
     ctx.save();
-    ctx.scale(zoom, zoom);
+    ctx.scale(activeZoom, activeZoom);
     ctx.fillStyle = '#0b0812'; ctx.fillRect(0, 0, cam.w, cam.h);
     if (CC.Camp && CC.Camp.isInside && CC.Camp.isInside()) {
       call('Camp', 'drawScene', ctx, cam);
@@ -691,6 +700,8 @@
     }
     if (s.mode === 'town') call('Camp', 'drawWorldMarker', ctx, cam);
     drawFallbackPlayer();
+    if (s.mode === 'dungeon') call('CriticalScene', 'drawWorld', ctx, cam);
+    if (s.mode === 'dungeon') call('MonsterMelee', 'drawFx', ctx, cam);
     for (var a = 0; a < particles.length; a++) {
       var q = particles[a], qa = Math.max(0, q.life / q.max);
       ctx.globalAlpha = q.blood ? Math.min(1, qa * 2) : qa;
@@ -713,7 +724,7 @@
     }
     ctx.globalAlpha = 1;
     ctx.restore();
-    cam.x = rx; cam.y = ry;
+    cam.x = rx; cam.y = ry; cam.w = rw; cam.h = rh;
   }
 
   function bar(x, y, w, h, frac, c1, c2, text) {
@@ -885,6 +896,7 @@
     if (m === 'title') { drawTitle(); return; }
     drawWorld();
     if (m === 'town' || m === 'dungeon' || m === 'dead') drawScreenFx();
+    if (m === 'dungeon') call('CriticalScene', 'drawScreen', ctx, W, H);
     if (tunnel && m === 'dungeon') drawTunnel();
     if (m === 'town' || m === 'dungeon') {
       drawHud(); drawControls();
@@ -910,6 +922,7 @@
       else if (CC.state.area === 'forest') call('Forest', 'drawOverlay', ctx, W, H);
       else if (CC.state.area === 'plains') call('Plains', 'drawOverlay', ctx, W, H);
       if (CC.state.area === 'tree-tunnel') call('TreeTunnel', 'drawHud', ctx, W, H);
+      call('MonsterMelee', 'drawStatus', ctx, W, H);
       call('UI', 'drawHud', ctx, W, H, addHit);   // single Pack button; K / I / M remain keyboard shortcuts
       call('UI', 'draw', ctx, W, H, addHit);
       call('Camp', 'drawUI', ctx, W, H, addHit);
@@ -924,8 +937,10 @@
     var dt = Math.min(0.1, (now - last) / 1000 || 0);
     last = now;
     try {
+      call('CriticalScene', 'update', dt);
       if (hitStopLeft > 0) { hitStopLeft -= dt; time += dt; }
       else {
+        dt *= call('CriticalScene', 'rate') || 1;
         acc += dt;
         while (acc >= STEP) { update(STEP); acc -= STEP; }
       }
