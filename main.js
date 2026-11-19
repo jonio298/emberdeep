@@ -1132,13 +1132,23 @@
         addButton(W - 154, 78, 142, 28, skillPts + ' skill point' + (skillPts === 1 ? '' : 's'),
           '#603b83', function () { call('UI', 'open', 'skills'); });
       }
-      // Consistent single row beneath the character HUD:
-      // [ SAVE ] [tent icon] [ PAUSE ] — no floating Set Camp rectangle.
-      addButton(W-198,116,58,32,'Save','#466b53',function(){
+      // Compact Save / Tent / Pause strip, anchored to the same responsive
+      // bounds as the top-right character HUD (never overlaps the minimap).
+      var mm = CC.Minimap;
+      var reservedLeft = mm ? mm.margin + mm.size + 8 : 12;
+      var hudWidth = Math.min(214,Math.max(150,W-8-reservedLeft));
+      var hudLeft = W-8-hudWidth;
+      var quickWidth = Math.min(188,hudWidth),quickGap = 5;
+      var quickX = Math.max(hudLeft,W-14-quickWidth),quickY = 116;
+      var saveWidth = Math.round((quickWidth-quickGap*2)*.34);
+      var tentWidth = Math.round((quickWidth-quickGap*2)*.21);
+      var pauseWidth = quickWidth-saveWidth-tentWidth-quickGap*2;
+      addButton(quickX,quickY,saveWidth,30,'Save','#466b53',function(){
         if(call('SaveGame','save')&&CC.state.player)
           CC.fx.text(CC.state.player.x,CC.state.player.y-18,'GAME SAVED','#b5efb6',12);
       });
-      if(CC.Camp)drawTentButton(W-134,116,38,32,function(){
+      if(CC.Camp)drawTentButton(quickX+saveWidth+quickGap,quickY,
+        tentWidth,30,function(){
         if(CC.Camp.isInside&&CC.Camp.isInside()){
           call('Camp','interact');
         }else if(CC.Camp.isWorldCampNear&&CC.Camp.isWorldCampNear()){
@@ -1150,7 +1160,8 @@
             'CAMP ALREADY SET','#ddc7a0',12);
         }
       },CC.Camp.hasCamp&&CC.Camp.hasCamp());
-      addButton(W-90,116,76,32,paused?'Resume':'Pause','#4a3a6a',togglePause);
+      addButton(quickX+saveWidth+tentWidth+quickGap*2,quickY,
+        pauseWidth,30,paused?'Resume':'Pause','#4a3a6a',togglePause);
       if (paused && !uiOpen()) {
         ctx.fillStyle = 'rgba(8,4,16,0.65)'; ctx.fillRect(0, H * 0.4, W, 80);
         label('PAUSED', W / 2, H * 0.4 + 40, 28, '#ffe08a');
