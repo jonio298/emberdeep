@@ -107,7 +107,8 @@
   function hurtPlayer(p, amt, e, kind) {
     if (!p || p.hp <= 0 || (p.invuln > 0)) return 0;
     if (p.cursed > 0) amt *= 1.25; // Hex: cursed players take 25% more damage
-    var dmg = Math.max(1, Math.round(amt * 100 / (100 + (p.armor || 0))));
+    var defense=(p.armor || (p.stats && p.stats.armor) || 0) * (p.bearRoarT>0?.7:1);
+    var dmg = Math.max(1, Math.round(amt * 100 / (100 + defense)));
     p.hp -= dmg; p.invuln = 0.45; p.hurtFlash = 0.2;
     if (e && e.vamp) e.hp = Math.min(e.maxHp, e.hp + dmg * 0.5);
     if (kind === 'poison' || kind === 'web') { p._poison = { t: 3, dps: Math.max(1, amt * 0.25), acc: 0 }; if (kind === 'web') p.slowT = 1.5; } // slowT: data for the player code
@@ -681,6 +682,7 @@
       if (p) {
         if (p.invuln > 0) p.invuln -= dt;
         if (p.cursed > 0) p.cursed -= dt;
+        if (p.bearRoarT > 0) p.bearRoarT = Math.max(0,p.bearRoarT-dt);
         if (p.slowT > 0) p.slowT -= dt;
         if (p._poison) { var po = p._poison; po.t -= dt; po.acc += po.dps * dt; if (po.acc >= 1 && p.hp > 1) { var tk = Math.floor(po.acc); po.acc -= tk; p.hp -= tk; } if (po.t <= 0) p._poison = null; }
       }
