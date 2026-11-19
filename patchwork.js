@@ -5,7 +5,8 @@
   'use strict';
   var CC = window.CC = window.CC || {}, E = CC.Enemies;
   if (!E) return;
-  var random = Math.random, cooldown = 12, timer = 0, seq = 900000;
+  var random = Math.random, cooldown = 8, timer = 0, seq = 900000, ritual = null;
+  var SPAWN_CHANCE = 0.70, GATHER_RADIUS = 95, ASSEMBLY_TIME = 4.5;
   var partTypes = { limb:1, head:1, horn:1, hoof:1, chunk:1, bone:1, skull:1 };
   var originalRemains = E._remains, originalDetach = E._detach, originalLand = E._land;
   function sourcePart(m, from) { if (m && !m.source && from) m.source = from; }
@@ -31,7 +32,7 @@
   };
   var oldSpawn = E.spawnForFloor;
   E.spawnForFloor = function () {
-    cooldown = 12; timer = 0;
+    cooldown = 8; timer = 0; ritual = null;
     return oldSpawn.apply(this, arguments);
   };
   function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
@@ -80,26 +81,133 @@
     if (CC.fx && CC.fx.text)
       CC.fx.text(x, y - 35, 'THE PATCHWORK HORROR!', '#d18aff', 16);
   }
+  function beginRitual(group, x, y) {
+    // Claim real debris now: the render below animates those exact parts.
+    var pieces = group.slice(0, 9).map(function (q, i) {
+      return { kind:q.kind, col:q.col || '#87404a', source:q.source,
+        x:q.x, y:q.y, sx:q.x, sy:q.y, phase:i * 0.3, size:q.s || 1, rot:i * 1.3 };
+    });
+    for (var i = 0; i < group.length; i++) {
+      var ix = E.remains.indexOf(group[i]);
+      if (ix !== -1) E.remains.splice(ix, 1);
+    }
+    ritual = { x:x, y:y, time:0, parts:pieces, sources:group, sounded:false };
+    emit(x, y, '#773d9c', 9);
+    if (CC.fx && CC.fx.text)
+      CC.fx.text(x, y - 30, 'SOMETHING STIRS...', '#ad7dce', 12);
+  }
+  function advanceRitual(dt) {
+    if (!ritual) return;
+    var r = ritual;
+    r.time += dt;
+    var t = r.time;
+    // 0-2.1s: sequential awakening. 2.1-3.6s: pieces hop and snap into place.
+    // 3.6-4.5s: occult seal, ground tremor, and spawn.
+    for (var i=0;i<r.parts.length;i++) {
+      var q=r.parts[i], onset=0.25+i*0.26;
+      if (t < onset) continue;
+      var amount=Math.max(0, Math.min(1, (t-2.0-i*0.075)/1.45));
+      var ease=amount*amount*(3-2*amount);
+      // Each limb converges to its own socket rather than becoming a single indistinct blob.
+      var offsetX=(i%3-1)*7, offsetY=(Math.floor(i/3)-1)*7;
+      q.x=q.sx+(r.x+offsetX-q.sx)*ease;
+      q.y=q.sy+(r.y+offsetY-q.sy)*ease;
+      q.rot+=dt*(2+i*0.3);
+    }
+    if (t>2.4 && t<4.3 && CC.fx && CC.fx.shake && Math.floor((t-dt)*5)!==Math.floor(t*5))
+      CC.fx.shake(t>3.55?5:2);
+    if (t>=ASSEMBLY_TIME) {
+      if (CC.fx && CC.fx.shake) CC.fx.shake(11);
+      build(r.sources, r.x, r.y);
+      ritual=null;
+    }
+  }
   function attempt(dt) {
-    cooldown = Math.max(0, cooldown - dt);
-    if (cooldown > 0 || !CC.state || CC.state.mode !== 'dungeon') return;
+    cooldown=Math.max(0,cooldown-dt);
+    if (ritual || cooldown>0 || !CC.state || CC.state.mode!=='dungeon' ||
+        CC.state.area==='camp' || CC.state.area==='camp-tent') return;
     if (E.list.some(function(e){return e.stitched && !e.dead;})) return;
-    var parts = E.remains, i, j;
-    for (i = 0; i < parts.length; i++) {
-      var p = parts[i], types = {}, group = [];
+    var parts=E.remains, i,j;
+    for (i=0;i<parts.length;i++) {
+      var p=parts[i], types={},group=[];
       if (!partTypes[p.kind] || !p.source) continue;
-      for (j = 0; j < parts.length; j++) {
-        var q = parts[j];
-        if (q.source && partTypes[q.kind] && dist(p, q) <= 70) {
-          group.push(q); types[q.source] = true;
+      for(j=0;j<parts.length;j++) {
+        var q=parts[j];
+        if(q.source && partTypes[q.kind] && dist(p,q)<=GATHER_RADIUS) {
+          group.push(q);types[q.source]=true;
         }
       }
-      if (group.length < 4 || Object.keys(types).length < 3) continue;
-      cooldown = 24;
-      if (random() < 0.22 && free(p.x, p.y) && (!CC.state.player || dist(p, CC.state.player) > 65))
-        build(group, p.x, p.y);
+      // Two species makes the encounter attainable in naturally mixed fights.
+      if(group.length<4 || Object.keys(types).length<2) continue;
+      // Don't burn a roll while the ground is unsafe or the hero stands on the ritual.
+      if(!free(p.x,p.y) || (CC.state.player && dist(p,CC.state.player)<45)) continue;
+      cooldown=15;
+      if(random()<SPAWN_CHANCE) beginRitual(group,p.x,p.y);
       break;
     }
+  }
+  function drawRitual(ctx,cam) {
+    if(!ritual) return;
+    var r=ritual,t=r.time,cx=r.x-cam.x,cy=r.y-cam.y;
+    if(cx< -150 || cy< -150 || cx>cam.w+150 || cy>cam.h+150) return;
+    if(CC.Dungeon && CC.Dungeon.isVisible && !CC.Dungeon.isVisible(r.x,r.y)) return;
+    ctx.save();
+    var pulse=0.55+0.35*Math.sin(t*16);
+    var glow=Math.max(0,Math.min(1,(t-1.5)/2));
+    // The central rune develops as each graft approaches.
+    ctx.strokeStyle='rgba(187,105,255,'+(0.15+glow*0.58).toFixed(2)+')';
+    ctx.lineWidth=1.5+glow*1.5;ctx.beginPath();
+    ctx.arc(cx,cy,12+glow*30,0,Math.PI*2);ctx.stroke();
+    if(t>2.4){
+      for(var k=0;k<7;k++){
+        var ang=k*Math.PI*2/7+t*0.7, rad=21+glow*13;
+        ctx.beginPath();ctx.moveTo(cx+Math.cos(ang)*rad,cy+Math.sin(ang)*rad);
+        ctx.lineTo(cx+Math.cos(ang+0.7)*rad,cy+Math.sin(ang+0.7)*rad);ctx.stroke();
+      }
+    }
+    // Arcane threads and staggered hopping severed limbs.
+    for(var i=0;i<r.parts.length;i++){
+      var q=r.parts[i],onset=0.25+i*0.26;
+      if(t<onset) continue;
+      var x=q.x-cam.x,y=q.y-cam.y;
+      var hop=t>2?Math.abs(Math.sin((t-onset)*12+i))*Math.min(15,6+(t-2)*5):Math.abs(Math.sin(t*22+i))*2;
+      var shake=t<2.0?Math.sin(t*37+i*2.1)*2.2:Math.sin(t*25+i)*0.7;
+      x+=shake;y-=hop;
+      ctx.globalAlpha=0.3+0.45*pulse;
+      ctx.strokeStyle='#ab6ce7';ctx.lineWidth=0.8+glow*0.9;ctx.beginPath();
+      ctx.moveTo(x,y);ctx.quadraticCurveTo((x+cx)/2,Math.min(y,cy)-9-glow*12,cx,cy);ctx.stroke();
+      ctx.globalAlpha=1;
+      ctx.shadowColor='#b969f5';ctx.shadowBlur=5+9*pulse;
+      ctx.fillStyle=q.col;
+      ctx.save();ctx.translate(x,y);ctx.rotate(q.rot);
+      if(q.kind==='head'||q.kind==='skull'){
+        ctx.beginPath();ctx.arc(0,0,Math.max(3,4*q.size),0,Math.PI*2);ctx.fill();
+        ctx.fillStyle='#241021';ctx.fillRect(-2,-1,1.5,2);ctx.fillRect(1,-1,1.5,2);
+      }else if(q.kind==='horn'||q.kind==='hoof'){
+        ctx.beginPath();ctx.moveTo(-5,-3);ctx.lineTo(5,0);ctx.lineTo(-5,3);ctx.closePath();ctx.fill();
+      }else if(q.kind==='bone'||q.kind==='limb'){
+        ctx.fillRect(-5*q.size,-2,10*q.size,4);
+        ctx.fillStyle='#6e0c20';ctx.fillRect(-5*q.size,-2,2,4);
+      }else{
+        ctx.beginPath();ctx.moveTo(-5,-3);ctx.lineTo(4,-4);ctx.lineTo(6,2);ctx.lineTo(-3,5);ctx.fill();
+      }
+      ctx.restore();
+      ctx.shadowBlur=0;
+      ctx.fillStyle='#c895f5';ctx.globalAlpha=0.45+0.55*pulse;
+      ctx.beginPath();ctx.arc(x,y,1.3+0.6*pulse,0,Math.PI*2);ctx.fill();
+      ctx.globalAlpha=1;
+    }
+    if(t>3.55){
+      var finish=(t-3.55)/0.95;
+      ctx.globalAlpha=Math.min(0.75,finish*0.75);
+      var rad=12+finish*64;
+      var grd=ctx.createRadialGradient(cx,cy,1,cx,cy,rad);
+      grd.addColorStop(0,'rgba(245,215,255,0.95)');
+      grd.addColorStop(0.3,'rgba(175,75,233,0.65)');
+      grd.addColorStop(1,'rgba(115,33,165,0)');
+      ctx.fillStyle=grd;ctx.beginPath();ctx.arc(cx,cy,rad,0,Math.PI*2);ctx.fill();
+    }
+    ctx.restore();
   }
   function summon(e) {
     var count = E.list.filter(function(o){return !o.dead && o.type === 'skeleton';}).length;
@@ -125,6 +233,7 @@
     var result = oldUpdate.apply(this, arguments);
     timer += dt;
     attempt(dt);
+    advanceRitual(dt);
     for (var i = 0; i < E.list.length; i++) {
       var e = E.list[i];
       if (!e.stitched || e.dead) continue;
@@ -145,6 +254,7 @@
   var oldDraw = E.draw;
   E.draw = function (ctx, cam) {
     var result = oldDraw.apply(this, arguments);
+    drawRitual(ctx, cam);
     for (var i = 0; i < E.list.length; i++) {
       var e = E.list[i];
       if (!e.stitched || e.dead) continue;
@@ -178,5 +288,6 @@
     }
     return result;
   };
-  CC.Patchwork = { attempt: attempt, summon: summon };
+  CC.Patchwork = { attempt: attempt, summon: summon,
+    status: function(){return {ritual:!!ritual,elapsed:ritual?ritual.time:0,cooldown:cooldown,chance:SPAWN_CHANCE};} };
 })();
