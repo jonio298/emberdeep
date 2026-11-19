@@ -424,9 +424,8 @@
       if (stunT) status(e, 'stun', stunT);
       hits++;
     }
-    if ((type === 'slash' || type === 'melee') && CC.TreeTunnel &&
-        CC.state && CC.state.area === 'tree-tunnel')
-      CC.TreeTunnel.hitBreakables(p, dir, range, half);
+    if ((type==='slash'||type==='melee')&&CC.Breakables)
+      CC.Breakables.hitCone(p,dir,range,half);
     return hits;
   }
 
@@ -640,6 +639,12 @@
           break;
         }
         s.x = nx; s.y = ny;
+        // Basic bolts and shards can shatter the same destructibles as slashes.
+        if (!end && CC.Breakables && CC.Breakables.hitProjectile(s)) {
+          end=true;
+          addFx({kind:'puff',x:s.x,y:s.y,r:9,t:.24,max:.24,col:s.col});
+          break;
+        }
       }
       var l = foes();
       for (var j = 0; j < l.length && !end; j++) {
