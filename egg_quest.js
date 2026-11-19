@@ -110,16 +110,21 @@ Q.drawCompanion=function(c,cam){
 };
 Q.drawHud=function(c,w,h){
  if(stage==='unstarted')return;
- c.save();c.textAlign='left';
- c.fillStyle='rgba(15,13,16,.87)';c.fillRect(10,113,Math.min(206,w*.57),32);
- c.strokeStyle='#837050';c.lineWidth=1;c.strokeRect(10,113,Math.min(206,w*.57),32);
- c.fillStyle='#edc88a';c.font='bold 10px Georgia';
- c.fillText('THE UNHATCHED',18,126);
- c.fillStyle='#d4dbc0';c.font='10px Georgia';
- var v=stage==='complete'?hatched?(CC.Eagle&&CC.Eagle.name&&CC.Eagle.name()?CC.Eagle.name()+' flies with you':'Your eagle flies with you'):'The egg hatches at level '+HATCH_LEVEL:
- stage==='gathered'?'Eggs: 3 · return to Sister Alder':
- stage==='nest'?'Accept your egg from Alder':'Ascend five floors';
- c.fillText(v,18,139);
+ // A compact breadcrumb below the minimap. The detailed objective, steps
+ // and story live in QUEST; never print a wide double-line panel over Save.
+ var x=9,y=155,width=Math.min(150,w*.39);
+ c.save();
+ c.fillStyle='rgba(16,12,19,.76)';
+ c.fillRect(x,y,width,25);
+ c.strokeStyle='rgba(151,122,81,.77)';c.lineWidth=1;
+ c.strokeRect(x+.5,y+.5,width-1,24);
+ c.fillStyle='#e6cc9c';c.font='bold 10px Georgia';
+ c.textAlign='left';c.fillText('THE UNHATCHED',x+8,y+11);
+ var desc=stage==='climbing'?'CLIMB THE TREE':
+   stage==='gathered'?'EGGS GATHERED':
+   stage==='nest'?'SEE SISTER ALDER':
+   hatched?'EAGLET HATCHED':stepCount+'/'+HATCH_STEPS+' STEPS';
+ c.font='9px Georgia';c.fillStyle='#bfc9ad';c.fillText(desc,x+8,y+21);
  c.restore();
 };
 Q.drawJournal=function(c,x,y,w,h){
