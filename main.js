@@ -262,10 +262,10 @@
     if (!p || p.hp<=0 || p.hp>=p.maxHp || !s.potions || !playing() ||
         paused || uiOpen() || p.perkOpen || (CC.Camp && CC.Camp.isOpen && CC.Camp.isOpen())) return false;
     s.potions--;
-    var amount=Math.max(20,Math.ceil(p.maxHp*.40));
+    var amount=Math.max(20,Math.ceil(p.maxHp*.40)),before=p.hp;
     p.hp=Math.min(p.maxHp,p.hp+amount);
     if(CC.fx) {
-      CC.fx.text(p.x,p.y-25,'+'+Math.min(amount,Math.ceil(p.maxHp-p.hp+amount))+' HP','#ff8493',12);
+      CC.fx.text(p.x,p.y-25,'+'+Math.ceil(p.hp-before)+' HP','#ff8493',12);
       CC.fx.burst(p.x,p.y,'#e74359',15,90);
     }
     return true;
