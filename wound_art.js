@@ -201,14 +201,11 @@ if(E){
         if(part){part.source='bear';part.partSlot=slot;part.nopile=true;}
       }
     }
-    if(e.type==='scarecrow'&&(slot==='armLeft'||slot==='armRight')){
-      var birds=this.list.filter(function(x){return !x.dead&&x.type==='crow';}).length;
-      if(birds<10&&this.TYPES.crow)for(var b=0;b<2;b++){
-        var crow=this.spawn('crow',e.x+(b?13:-13),e.y-9,e.floor||1,{awake:true});
-        if(crow){crow.asleep=false;crow.cd=.3+b*.2;}
-      }
-      e.crowBurst=.8;
-      if(CC.fx&&CC.fx.burst)CC.fx.burst(e.x,e.y-8,'#bc9b64',16,90);
+    if(e.type==='scarecrow'&&(slot==='armLeft'||slot==='armRight')&&!e.summoned){
+      // Eyes blink and tiny beaks peek from the split sleeve BEFORE any birds emerge.
+      e.summoned=true;
+      e.crowHatch={age:0,side:slot==='armLeft'?-1:1,phase:'peek',birds:[]};
+      if(CC.fx&&CC.fx.text)CC.fx.text(e.x,e.y-e.r*2,'SOMETHING MOVES INSIDE...','#d7bb87',9);
     }
     return result;
   };
