@@ -274,6 +274,43 @@
     }
   }
 
+  // One critical impact can catch additional nearby monsters. Targets already
+  // struck by the same sword swipe are excluded from splash so they aren't
+  // damaged twice. Splash never crits or recursively chains.
+  function critRadius(classId) {
+    return classId === 'swordsman' ? 42 : classId === 'thief' ? 43 :
+      classId === 'wizard' ? 50 : 49;
+  }
+  function criticalGroup(p, e, dmg, type, opts) {
+    var radius = critRadius(p.classId), own = opts.attackGroup,
+        list = foes().slice(), protectedTargets = own && own.targets || [],
+        already = own && own.splashed || [], participants = [e], j, other;
+    for (j = 0; j < protectedTargets.length; j++) {
+      other = protectedTargets[j];
+      if (other !== e && other && Math.hypot(other.x-e.x,other.y-e.y) <= radius+(other.r||8))
+        participants.push(other);
+    }
+    for(j=0;j<list.length;j++) {
+      other=list[j];
+      if (!alive(other) || other===e ||
+          protectedTargets.indexOf(other)!==-1 || already.indexOf(other)!==-1) continue;
+      if(Math.hypot(other.x-e.x,other.y-e.y) > radius+(other.r||8)) continue;
+      // A wall shouldn't let the shock pass into a disconnected room.
+      var D=CC.Dungeon,blocked=false;
+      if(D&&D.isSolid)for(var step=1;step<5;step++){
+        var frac=step/5;
+        if(D.isSolid(e.x+(other.x-e.x)*frac,e.y+(other.y-e.y)*frac)){blocked=true;break;}
+      }
+      if(blocked)continue;
+      if (own) own.splashed.push(other);
+      participants.push(other);
+      hitEnemy(other, Math.max(1,Math.round(dmg*.38)),type,
+        {noCrit:true,basicAttack:true,attackKind:opts.attackKind,
+         angle:opts.angle, splash:true});
+    }
+    return participants;
+  }
+
   function hitEnemy(e, dmg, type, opts) {
     var p = hero();
     if (!alive(e)) return 0;
@@ -309,10 +346,16 @@
       e._hitFlash = crit ? 0.16 : 0.09;
       fxBlood(e.x, e.y, crit ? 10 : 4, p ? e.x - p.x : 0, p ? e.y - p.y : 0);
     }
-    if (crit && opts.basicAttack && !opts.minion && CC.CriticalScene) {
-      CC.CriticalScene.trigger({ kind: opts.attackKind === 'projectile' ? 'projectile' : 'slash',
-        heroClass: p.classId, x: e.x, y: e.y, r: e.r || 9, angle: opts.angle || 0,
-        color: opts.color || '#e5c5b3', damage: dmg, sourceX: p.x, sourceY: p.y });
+    if (crit && opts.basicAttack && !opts.minion && !opts.splash) {
+      var attackGroup = opts.attackGroup;
+      var participants = criticalGroup(p,e,dmg,type,opts);
+      if ((!attackGroup || !attackGroup.cinematicStarted) && CC.CriticalScene) {
+        CC.CriticalScene.trigger({ kind: opts.attackKind === 'projectile' ? 'projectile' : 'slash',
+          heroClass: p.classId, x: e.x, y: e.y, r: e.r || 9, angle: opts.angle || 0,
+          color: opts.color || '#e5c5b3', damage: dmg, sourceX: p.x, sourceY: p.y,
+          targets:participants, radius:critRadius(p.classId) });
+        if (attackGroup) attackGroup.cinematicStarted = true;
+      }
     }
     if (crit) {
       fxFlash('#ffe9a0', 0.08);
@@ -412,16 +455,23 @@
   }
 
   function cone(p, dir, range, half, mult, type, knockDist, stunT, basicAttack) {
-    var hits = 0, l = foes();
-    for (var i = 0; i < l.length; i++) {
-      var e = l[i]; if (!alive(e)) continue;
-      var dx = e.x - p.x, dy = e.y - p.y, d = Math.sqrt(dx * dx + dy * dy);
-      if (d > range + (e.r || 8)) continue;
-      if (d > 8 && angDiff(Math.atan2(dy, dx), dir.a) > half) continue;
-      hitEnemy(e, p.stats.dmg * mult, type,
-        { basicAttack: !!basicAttack, attackKind: 'slash', angle: dir.a });
-      if (knockDist) knock(e, p.x, p.y, knockDist);
-      if (stunT) status(e, 'stun', stunT);
+    var hits = 0, l = foes(), direct = [], i, e;
+    for (i = 0; i < l.length; i++) {
+      e=l[i]; if (!alive(e)) continue;
+      var dx=e.x-p.x,dy=e.y-p.y,d=Math.hypot(dx,dy);
+      if (d>range+(e.r||8))continue;
+      if (d>8 && angDiff(Math.atan2(dy,dx),dir.a)>half)continue;
+      direct.push(e);
+    }
+    // A single swipe owns a single cinematic and every directly struck
+    // monster, so the expanded critical radius cannot double-count them.
+    var attackGroup={targets:direct,splashed:[],cinematicStarted:false};
+    for (i=0;i<direct.length;i++) {
+      e=direct[i];if(!alive(e))continue;
+      hitEnemy(e,p.stats.dmg*mult,type,
+        {basicAttack:!!basicAttack,attackKind:'slash',angle:dir.a,attackGroup:attackGroup});
+      if(knockDist)knock(e,p.x,p.y,knockDist);
+      if(stunT)status(e,'stun',stunT);
       hits++;
     }
     if ((type==='slash'||type==='melee')&&CC.Breakables)
@@ -825,26 +875,76 @@
     c.fillStyle = 'rgba(0,0,0,0.4)'; c.beginPath(); c.ellipse(x, y + 10, 9, 3.5, 0, 0, 6.2832); c.fill();
     var i;
     if (p.classId === 'swordsman') {
-      R(c, x - 5, y + 4 + leg * 0.5, 4, 6, '#3b3f55'); R(c, x + 1, y + 4 - leg * 0.5, 4, 6, '#3b3f55');
-      R(c, x - 6, y - 6 + bob, 12, 11, '#7c8aa6'); R(c, x - 6, y + 2 + bob, 12, 2, '#4a3526'); R(c, x - 4, y - 5 + bob, 3, 4, '#aab6cc');
-      c.fillStyle = '#2f6db5'; c.beginPath(); c.ellipse(x - f * 8, y - 1 + bob, 3.5, 5, 0, 0, 6.2832); c.fill();
-      c.strokeStyle = '#ffd36b'; c.lineWidth = 1; c.stroke();
-      circ(c, x, y - 10 + bob, 5, '#f0c39a');
-      R(c, x - 5, y - 16 + bob, 10, 6, '#9aa7bd'); R(c, x - f * 6 - 1, y - 18 + bob, 3, 7, '#d9413b');
-      R(c, x + f * 2, y - 10 + bob, 1, 2, '#222');
-      var ang;
-      if (p.whirlT > 0) ang = p.anim * 22;
-      else if (p.atkAnim > 0) ang = p.swingAng + (p.atkAnim / 0.2 - 0.5) * 2.2 * (p.swingSign || 1);
-      else ang = f > 0 ? -1.1 : -2.04;
-      var hx = x + f * 7, hy = y - 1 + bob;
-      line(c, hx, hy, hx + Math.cos(ang) * 14, hy + Math.sin(ang) * 14, '#e6edf7', 3);
-      if (p.bloodTime > 0) {
-        c.save(); c.globalAlpha = Math.min(1, p.bloodTime / 5);
-        line(c, hx + Math.cos(ang) * 5, hy + Math.sin(ang) * 5,
-          hx + Math.cos(ang) * 14, hy + Math.sin(ang) * 14, '#9c101b', 1.8);
-        c.restore();
+      // The critical uses these SAME helmet, plate, cape, boots and sword assets.
+      // Only the body articulation changes: deep kneel, explosive thrust, recoil.
+      var cp=p.criticalPose||null, kneel=cp?cp.kneel:0,
+          drive=cp?cp.drive:0,withdraw=cp?cp.withdraw:0;
+      var low=kneel*5-drive*2.5,spread=kneel*4.2;
+      if(cp){
+        // Left boot folds onto the ground, right boot braces behind the thrust.
+        R(c,x-6-spread,y+4-low*.22,5,4+kneel*2,'#3b3f55');
+        R(c,x+1+spread,y+5,4,5,'#3b3f55');
+        line(c,x-4-spread,y+4-low*.24,x-9-spread,y+9,'#7e889d',2.7);
+        line(c,x+3+spread,y+4,x+8+spread,y+9,'#646b82',2.5);
+        R(c,x-11-spread,y+8,7,3,'#2a303e');
+        R(c,x+5+spread,y+8,7,3,'#2a303e');
+      }else{
+        R(c,x-5,y+4+leg*.5,4,6,'#3b3f55');
+        R(c,x+1,y+4-leg*.5,4,6,'#3b3f55');
       }
-      line(c, hx - Math.cos(ang) * 1, hy - Math.sin(ang) * 1, hx + Math.cos(ang) * 2, hy + Math.sin(ang) * 2, '#b8860b', 4);
+      // The plate armor, crest, cape and face ARE the live hero drawing.
+      R(c,x-6+drive*3,y-6+bob+low,12,11,'#7c8aa6');
+      R(c,x-6+drive*3,y+2+bob+low,12,2,'#4a3526');
+      R(c,x-4+drive*3,y-5+bob+low,3,4,'#aab6cc');
+      c.fillStyle='#2f6db5';c.beginPath();
+      c.ellipse(x-f*8+drive*3,y-1+bob+low,3.5,5,0,0,6.2832);c.fill();
+      c.strokeStyle='#ffd36b';c.lineWidth=1;c.stroke();
+      circ(c,x+drive*3,y-10+bob+low,5,'#f0c39a');
+      R(c,x-5+drive*3,y-16+bob+low,10,6,'#9aa7bd');
+      R(c,x-f*6-1+drive*3,y-18+bob+low,3,7,'#d9413b');
+      R(c,x+f*2+drive*3,y-10+bob+low,1,2,'#222');
+      var ang;
+      if(cp){
+        // Draw the gripping arm from the real sprite, then a luminous blue blade
+        // with enough length to reach the actual victim (not a fake icon at impact).
+        var sx=x+f*7+drive*5,sy=y-1+bob+low,
+            facing=Number.isFinite(cp.angle)?cp.angle:(f>0?0:Math.PI),
+            reach=clamp(cp.distance||34,20,64),
+            extension=-7+drive*(reach+11)-withdraw*(reach*.73);
+        var hx=sx+Math.cos(facing)*extension,
+            hy=sy+Math.sin(facing)*extension;
+        line(c,x+f*5+drive*3,y-3+low,hx,hy,'#8997aa',3.5);
+        circ(c,hx,hy,2.4,'#cda778');
+        var tipX=hx+Math.cos(facing)*18,tipY=hy+Math.sin(facing)*18;
+        c.save();
+        c.shadowColor='#369cff';c.shadowBlur=7+12*drive*(1-withdraw*.55);
+        line(c,hx,hy,tipX,tipY,'#1761be',6);
+        line(c,hx,hy,tipX,tipY,'#73d8ff',3.6);
+        line(c,hx+Math.cos(facing)*3,hy+Math.sin(facing)*3,tipX,tipY,'#f1fdff',1.7);
+        c.restore();
+        line(c,hx-Math.sin(facing)*5,hy+Math.cos(facing)*5,
+          hx+Math.sin(facing)*5,hy-Math.cos(facing)*5,'#d9b67d',2.5);
+        if(drive>.65){
+          var spark=drive*(1-withdraw);
+          c.save();c.globalAlpha=spark*.85;
+          circ(c,tipX,tipY,2+spark*2,'#c5f5ff');
+          c.restore();
+        }
+      }else{
+        if(p.whirlT>0)ang=p.anim*22;
+        else if(p.atkAnim>0)ang=p.swingAng+(p.atkAnim/.2-.5)*2.2*(p.swingSign||1);
+        else ang=f>0?-1.1:-2.04;
+        var hx0=x+f*7,hy0=y-1+bob;
+        line(c,hx0,hy0,hx0+Math.cos(ang)*14,hy0+Math.sin(ang)*14,'#e6edf7',3);
+        if(p.bloodTime>0){
+          c.save();c.globalAlpha=Math.min(1,p.bloodTime/5);
+          line(c,hx0+Math.cos(ang)*5,hy0+Math.sin(ang)*5,
+            hx0+Math.cos(ang)*14,hy0+Math.sin(ang)*14,'#9c101b',1.8);
+          c.restore();
+        }
+        line(c,hx0-Math.cos(ang),hy0-Math.sin(ang),
+          hx0+Math.cos(ang)*2,hy0+Math.sin(ang)*2,'#b8860b',4);
+      }
     } else if (p.classId === 'wizard') {
       poly(c, [x - 5, y - 5 + bob, x + 5, y - 5 + bob, x + 8, y + 9, x - 8, y + 9], '#5b3aa8');
       R(c, x - 8, y + 7, 16, 2, '#ffd36b'); R(c, x - 5, y + 1 + bob, 10, 2, '#3a2370');
@@ -1014,6 +1114,19 @@
     c.globalAlpha = 1;
   }
 
+  function drawCriticalHero(c,cam,pose){
+    var p=hero();if(!p)return;
+    var x=(Number.isFinite(pose.sourceX)?pose.sourceX:p.x)-cam.x,
+        y=(Number.isFinite(pose.sourceY)?pose.sourceY:p.y)-cam.y,
+        clone=Object.create(p);
+    clone.criticalPose=pose;clone.moving=false;clone.atkAnim=0;
+    clone.invuln=0;clone.face=Math.cos(pose.angle)>=0?1:-1;
+    var scale=pose.heroClass==='swordsman'?1.35:1.30;
+    c.save();c.translate(x,y);c.scale(scale,scale);c.translate(-x,-y);
+    drawHero(c,clone,x,y);
+    c.restore();
+  }
+
   function draw(c, cam) {
     var p = hero();
     if (!p) return;
@@ -1057,6 +1170,7 @@
   CC.Classes = {
     DEFS: DEFS, PERKS: PERKS, minions: minions, projectiles: projs,
     create: create, update: update, draw: draw, drawPlayer: drawPlayer,
+    drawCriticalHero: drawCriticalHero, critRadius: critRadius,
     gainXp: gainXp, xpToNext: xpToNext, damage: damage, heal: heal, damageMinion: damageMinion,
     applyItemStats: applyItemStats, choosePerk: choosePerk, hitEnemy: hitEnemy, status: status,
     get player() { return hero(); }
