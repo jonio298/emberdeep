@@ -80,7 +80,7 @@ function unlocked(p,slot){
  return true;
 }
 function aim(p,slot,drag){
- var d=slotDefinition(p,slot),dx=p.aimX||p.face||1,dy=p.aimY||0;
+ var d=slotDefinition(p,slot),dx=p.aimX||p.face||1,dy=p.aimY||0,autoDistance=null;
  // Stationary input: auto-target the closest visible monster in casting range.
  var best=null,range=d.range||95,bd=(range+24)*(range+24);
  if(!drag){
@@ -89,11 +89,14 @@ function aim(p,slot,drag){
      var e=foes[i],ds=dist(e.x,e.y,p.x,p.y);
      if(living(e)&&ds*ds<bd&&clearPath(p.x,p.y,e.x,e.y)){best=e;bd=ds*ds;}
    }
-   if(best&&slot!=='dash'){dx=best.x-p.x;dy=best.y-p.y;}
+   if(best&&slot!=='dash'){
+     dx=best.x-p.x;dy=best.y-p.y;
+     autoDistance=Math.hypot(dx,dy);
+   }
  }else{dx=drag.x;dy=drag.y;}
  var n=norm(dx,dy);
  // The stationary field spell Whirl remains centered on the player.
- var reach=d.range===0?0:range;
+ var reach=d.range===0?0:autoDistance!==null?Math.min(range,autoDistance):range;
  if(drag&&d.shape!=='dash')reach=clamp(drag.distance/83*range,34,range);
  var x=p.x+n.x*reach,y=p.y+n.y*reach;
  // Trim to solid walls. Never target a sealed room through the bark.
@@ -108,6 +111,7 @@ function begin(slot,sx,sy){
  var p=hero();
  if(!p||!DEFINITIONS[p.classId]||!unlocked(p,slot))return false;
  if(active)return false;
+ if(lastArea===null)lastArea=CC.state.area;
  active={slot:slot,hero:p,time:0,originX:sx||0,originY:sy||0,
    drag:null,charged:false};
  return true;
@@ -274,7 +278,8 @@ function combatTick(dt){
 function update(dt){
  frameTime+=dt;
  var a=CC.state&&CC.state.area;
- if(lastArea!==a){lastArea=a;cancel();effects.length=0;}
+ if(lastArea===null)lastArea=a;
+ else if(lastArea!==a){lastArea=a;cancel();effects.length=0;}
  combatTick(dt);
 }
 function glow(c,x,y,r,col){
