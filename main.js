@@ -1,0 +1,797 @@
+/* Emberdeep shell: loop, input, camera, HUD, title/death screens, game-feel.
+ *
+ * Contract for other modules (all optional, every call is guarded):
+ *   CC.state   {mode:'title'|'town'|'dungeon'|'dead', player, floor, gold, kills, map}
+ *   CC.input   {moveX, moveY, aimX, aimY, attack, spell1, spell2, dash}
+ *   camera     {x, y, w, h, zoom}: x,y = world top-left in px. The shell scales the ctx by zoom,
+ *              so modules draw at (worldX - camera.x, worldY - camera.y) in world px.
+ *   Dungeon    generate(floor) -> map {spawn:{x,y}, stairs:{x,y}, enemySpawns:[...]} (px coords), draw(ctx,cam)
+ *   Classes    create(classId), update(dt), draw(ctx,cam)
+ *   Enemies    spawnForFloor(floor, spawnPoints), update(dt), draw(ctx,cam)
+ *   Loot       update(dt), draw(ctx,cam)
+ *   Town       enter(), update(dt), draw(ctx,cam), load()
+ *   player     {x,y,hp,maxHp,mana,maxMana,xp,xpNext|xpToNext,level, cd:{attack,spell1,spell2,dash},
+ *               cdMax:{...}, spellNames:[a,b]} (cd values are seconds remaining)
+ * Shell API: CC.setMode, CC.startRun(floor), CC.nextFloor(), CC.returnToTown(), CC.addKill(),
+ *   CC.fx.shake(px), CC.fx.hitStop(sec), CC.fx.text(x,y,str,color,size), CC.fx.burst(x,y,color,n,speed)
+ */
+(function () {
+  'use strict';
+
+  var CC = window.CC = window.CC || {};
+  CC.TILE = CC.TILE || 32;
+  CC.input = { moveX: 0, moveY: 0, aimX: 1, aimY: 0, attack: false, spell1: false, spell2: false, dash: false };
+  CC.state = { mode: 'title', player: null, floor: 1, gold: 0, kills: 0, bestFloor: 1, map: null, classId: null, runGold: 0 };
+
+  CC.CaveDungeon = CC.CaveDungeon || CC.Dungeon; // the realms (town, forest) swap CC.Dungeon; this keeps the cave generator
+
+  var canvas = document.getElementById('game');
+  var ctx = canvas.getContext('2d');
+  var W = 360, H = 640, dpr = 1, zoom = 1.5;
+  var cam = { x: 0, y: 0, w: 240, h: 420, zoom: 1.5 };
+  var STEP = 1 / 60;
+  var time = 0;
+  var hitStopLeft = 0, shakeMag = 0;
+  var particles = [], texts = [], decals = [];
+  var flashT = 0, flashMax = 0.15, flashCol = '#ffffff', hurtT = 0, lastHp = null, beat = 0, vigKey = '', vigGrad = null;
+  var ui = [];                       // clickable canvas buttons rebuilt each frame
+  var warned = {};
+
+  var CLASSES = [
+    { id: 'swordsman', name: 'Swordsman', color: '#e8a23a', desc: 'Tough frontline fighter. Fast combos, dash-slash, whirlwind.', spells: ['Bash', 'Whirl'] },
+    { id: 'wizard', name: 'Wizard', color: '#5cc8ff', desc: 'Glass cannon. Arcane bolts, fireball, frost nova.', spells: ['Fire', 'Frost'] },
+    { id: 'necromancer', name: 'Necromancer', color: '#a46bff', desc: 'Raise skeleton minions, drain life, harvest souls.', spells: ['Raise', 'Drain'] },
+    { id: 'thief', name: 'Thief', color: '#7de0b8', desc: 'Fast and deadly. Crits, backstabs, throwing knives, shadow step.', spells: ['Knives', 'Smoke'] }
+  ];
+
+  /* ---------- safe module calls ---------- */
+  function mod(name) { return CC[name] || null; }
+  function call(name, fn) {
+    var m = CC[name];
+    if (!m || typeof m[fn] !== 'function') return undefined;
+    try { return m[fn].apply(m, Array.prototype.slice.call(arguments, 2)); }
+    catch (e) {
+      if (!warned[name + fn]) { warned[name + fn] = 1; console.warn('CC.' + name + '.' + fn + ' failed:', e); }
+    }
+    return undefined;
+  }
+  function has(name, fn) { return !!(CC[name] && typeof CC[name][fn] === 'function'); }
+  function uiOpen() { return !!(CC.UI && typeof CC.UI.isOpen === 'function' && CC.UI.isOpen()); } // skill tree / pack / map overlay
+
+  /* ---------- game-feel ---------- */
+  CC.fx = {
+    shake: function (px) { shakeMag = Math.max(shakeMag, px || 4); },
+    hitStop: function (sec) { hitStopLeft = Math.max(hitStopLeft, Math.min(sec || 0.05, 0.25)); },
+    text: function (x, y, str, color, size) {
+      if (texts.length > 80) texts.shift();
+      size = size || 11;
+      var big = size >= 14;
+      texts.push({ x: x + (Math.random() - 0.5) * 8, y: y, vy: big ? -48 : -34, life: big ? 1.0 : 0.8, max: big ? 1.0 : 0.8, age: 0, s: String(str), c: color || '#fff', size: size });
+    },
+    burst: function (x, y, color, n, speed) {
+      n = n || 10; speed = speed || 80;
+      for (var i = 0; i < n; i++) {
+        if (particles.length > 400) particles.shift();
+        var a = Math.random() * 6.2832, v = speed * (0.3 + Math.random() * 0.7);
+        particles.push({ x: x, y: y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.3 + Math.random() * 0.4, max: 0.7, c: color || '#fff', size: 1 + Math.random() * 2, spark: true });
+      }
+    },
+    // blood splatter: droplets arc under gravity (optionally biased along dx,dy) and leave floor stains where they land
+    blood: function (x, y, n, dx, dy, color) {
+      n = n || 8;
+      var base = (dx || dy) ? Math.atan2(dy, dx) : 0, cone = (dx || dy) ? 1.1 : 3.1416;
+      for (var i = 0; i < n; i++) {
+        if (particles.length > 400) particles.shift();
+        var a = base + (Math.random() * 2 - 1) * cone, v = 40 + Math.random() * 110;
+        particles.push({ x: x, y: y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 30, life: 0.45 + Math.random() * 0.45, max: 0.9, c: color || (Math.random() < 0.5 ? '#a01418' : '#6e0c10'), size: 1.5 + Math.random() * 2.5, blood: true });
+      }
+      if (n >= 6) addDecal(x, y, 3 + Math.random() * 4, color);
+    },
+    flash: function (color, sec) { flashCol = color || '#ffffff'; flashMax = flashT = Math.max(flashT, sec || 0.12); },
+    hurt: function (sec) { hurtT = Math.max(hurtT, sec || 0.4); }
+  };
+  function addDecal(x, y, r, color) {
+    if (decals.length > 220) decals.shift();
+    decals.push({ x: x, y: y, r: r, c: color || '#5a0a0e', rot: Math.random() * 3.14, sq: 0.5 + Math.random() * 0.4 });
+  }
+
+  CC.addKill = function () { CC.state.kills++; };
+
+  /* ---------- player fallback so the shell runs alone ---------- */
+  function stubPlayer(classId) {
+    var c = CLASSES.filter(function (k) { return k.id === classId; })[0] || CLASSES[0];
+    return { stub: true, classId: c.id, color: c.color, x: 0, y: 0, r: 8, hp: 100, maxHp: 100, mana: 50, maxMana: 50,
+      xp: 0, xpNext: 50, level: 1, speed: 90, cd: { attack: 0, spell1: 0, spell2: 0, dash: 0 },
+      cdMax: { attack: 0.4, spell1: 4, spell2: 6, dash: 2 }, spellNames: c.spells };
+  }
+
+  /* Axis-separated swept hitbox; exact tile contact, including negative edges. */
+  function movePlayer(p, dx, dy) {
+    var D = CC.Dungeon, T = CC.TILE, r = p.r || p.radius || 8, eps = 1e-7;
+    if (CC.state.mode !== 'dungeon' || !D || !D.isSolid) {
+      p.x += dx; p.y += dy;
+      return { x: p.x, y: p.y, hitX: false, hitY: false };
+    }
+    function blocked(x, y) {
+      return D.isSolid(x - r + eps, y - r + eps) ||
+        D.isSolid(x + r - eps, y - r + eps) ||
+        D.isSolid(x - r + eps, y + r - eps) ||
+        D.isSolid(x + r - eps, y + r - eps);
+    }
+    function axis(key, delta) {
+      var count = Math.max(1, Math.ceil(Math.abs(delta) / Math.min(T / 4, r)));
+      var step = delta / count, hit = false;
+      for (var n = 0; n < count; n++) {
+        var start = p[key], end = start + step;
+        var x = key === 'x' ? end : p.x, y = key === 'y' ? end : p.y;
+        if (!blocked(x, y)) { p[key] = end; continue; }
+        var lo = 0, hi = 1;
+        for (var k = 0; k < 40; k++) {
+          var mid = (lo + hi) / 2, v = start + step * mid;
+          if (blocked(key === 'x' ? v : p.x, key === 'y' ? v : p.y)) hi = mid;
+          else lo = mid;
+        }
+        p[key] = start + step * lo;
+        // Remove the probe tolerance so the physical edge rests on the wall.
+        var edge = p[key] + (step > 0 ? r : -r);
+        if (Math.abs(edge / T - Math.round(edge / T)) < 1e-6)
+          p[key] = Math.round(edge / T) * T - (step > 0 ? r : -r);
+        hit = true; break;
+      }
+      return hit;
+    }
+    var hitX = axis('x', dx), hitY = axis('y', dy);
+    return { x: p.x, y: p.y, hitX: hitX, hitY: hitY };
+  }
+  CC.movePlayer = movePlayer;
+  // Classes already route movement, blink and dash through this public helper.
+  if (CC.Dungeon && CC.Dungeon.moveWithCollision) {
+    var moveEntity = CC.Dungeon.moveWithCollision;
+    CC.Dungeon.moveWithCollision = function (e, dx, dy) {
+      if (e === CC.state.player) return movePlayer(e, dx, dy);
+      return moveEntity.call(this, e, dx, dy);
+    };
+  }
+
+  /* ---------- mode switching ---------- */
+  CC.setMode = function (mode) {
+    CC.state.mode = mode;
+    paused = false;
+    call('UI', 'close');
+    resetInputHeld();
+    if (mode === 'town') {
+      var p = CC.state.player;
+      if (p) { p.hp = p.maxHp; p.mana = p.maxMana; if (p.stub) { p.x = 0; p.y = 0; } }
+      call('Town', 'enter');
+      snapCamera();
+    }
+  };
+
+  CC.startRun = function (floor, area) {
+    var s = CC.state;
+    s.area = area === 'plains' && has('Plains', 'generate') ? 'plains' : area === 'forest' && has('Forest', 'generate') ? 'forest' : 'cave'; // 'forest' = the Giant Forest, then the Rolling Plains, in front of floor 1
+    s.floor = Math.max(1, floor | 0 || 1);
+    s.kills = 0; s.runGold = 0; s.startGold = s.gold;
+    s.mode = 'dungeon';
+    paused = false;
+    resetInputHeld();
+    loadFloor();
+  };
+
+  CC.nextFloor = function () {
+    if (CC.state.area === 'forest' && has('Plains', 'generate')) { // the forest's far edge opens onto the Rolling Plains
+      CC.state.area = 'plains';
+      CC.fx.text(cam.x + cam.w / 2, cam.y + cam.h / 2, 'THE OPEN PLAINS', '#ffd36b', 16);
+      loadFloor();
+      return;
+    }
+    if (CC.state.area === 'forest' || CC.state.area === 'plains') { // the hollow tree (or the barrow) leads down to floor 1 of the caves
+      var fromPlains = CC.state.area === 'plains';
+      CC.state.area = 'cave';
+      CC.fx.text(cam.x + cam.w / 2, cam.y + cam.h / 2, fromPlains ? 'THE BARROW' : 'THE HOLLOW', '#ffd36b', 16);
+      loadFloor();
+      return;
+    }
+    CC.state.floor++;
+    if (CC.state.floor > CC.state.bestFloor) CC.state.bestFloor = CC.state.floor;
+    CC.fx.text(cam.x + cam.w / 2, cam.y + cam.h / 2, 'FLOOR ' + CC.state.floor, '#ffd36b', 16);
+    loadFloor();
+  };
+
+  CC.returnToTown = function () { CC.state.fromForest = CC.state.mode === 'dungeon'; CC.setMode('town'); };
+
+  function loadFloor() {
+    var s = CC.state, p = s.player, map;
+    particles.length = 0; texts.length = 0; decals.length = 0;
+    if (s.area === 'forest') { map = call('Forest', 'generate'); CC.Dungeon = map; } // CC.Dungeon is whichever map the player is in
+    else if (s.area === 'plains') { map = call('Plains', 'generate'); CC.Dungeon = map; }
+    else { CC.Dungeon = CC.CaveDungeon; map = call('Dungeon', 'generate', s.floor); }
+    s.map = map || null;
+    var sp = map && (map.spawn || map.start);
+    if (p && sp) { p.x = sp.x; p.y = sp.y; }
+    else if (p && p.stub) { p.x = 0; p.y = 0; }
+    call('Enemies', 'spawnForFloor', s.floor, (map && (map.enemySpawns || map.spawns)) || []);
+    snapCamera();
+  }
+
+  function startGame(classId) {
+    var s = CC.state;
+    s.classId = classId; s.kills = 0; s.runGold = 0; s.floor = 1;
+    var p = call('Classes', 'create', classId);
+    if (!p || typeof p !== 'object') p = stubPlayer(classId);
+    s.player = p;
+    CC.setMode('town');
+  }
+
+  function playerDead() {
+    var p = CC.state.player;
+    return p && p.hp <= 0;
+  }
+  CC.killPlayer = function () { if (CC.state.player) CC.state.player.hp = 0; };
+
+  /* ---------- input ---------- */
+  var keys = {};
+  var joy = { id: null, bx: 0, by: 0, x: 0, y: 0 };
+  var held = { attack: 0, spell1: 0, spell2: 0, dash: 0, interact: 0 };
+  var pending = {};
+  var actionKeys = { Space: 'attack', KeyQ: 'spell1', KeyE: 'spell2',
+    ShiftLeft: 'dash', ShiftRight: 'dash', KeyF: 'interact', Enter: 'interact' };
+  var paused = false, uiWas = false;
+  function playing() { return CC.state.mode === 'town' || CC.state.mode === 'dungeon'; }
+  function pressAction(name) {
+    if (playing() && !paused && !uiOpen() && !(CC.state.player && CC.state.player.perkOpen)) pending[name] = true;
+  }
+  function togglePause() {
+    if (!playing()) return;
+    paused = !paused;
+    resetInputHeld();
+  }
+  function interact() {
+    var s = CC.state, p = s.player;
+    if (!p) return;
+    if (s.mode === 'town') {
+      if (has('Town', 'interact')) call('Town', 'interact');
+      else CC.startRun(1);
+      return;
+    }
+    if (s.area === 'forest' && has('Forest', 'interact') && call('Forest', 'interact')) return;
+    if (s.area === 'plains' && has('Plains', 'interact') && call('Plains', 'interact')) return;
+    var st = s.map && s.map.stairs;
+    if (st && Math.hypot(p.x - st.x, p.y - st.y) <= 26) { CC.nextFloor(); return; }
+    var chests = s.map && s.map.chests || [];
+    for (var n = 0; n < chests.length; n++) {
+      var c = chests[n];
+      if (!c.opened && Math.hypot(p.x - c.x, p.y - c.y) <= 32) {
+        if (call('Dungeon', 'openChest', c)) call('Loot', 'roll', c, s.floor, 0);
+        return;
+      }
+    }
+    call('Loot', 'pickupNear', p);
+  }
+  var ptrs = {};
+  var btns = {};                      // layout, recomputed on resize
+
+  function layout() {
+    var m = 18;
+    btns.attack = { x: W - m - 44, y: H - m - 74, r: 40, label: 'ATK' };
+    btns.spell1 = { x: W - m - 118, y: H - m - 40, r: 29, label: 'S1' };
+    btns.spell2 = { x: W - m - 100, y: H - m - 120, r: 29, label: 'S2' };
+    btns.dash = { x: W - m - 28, y: H - m - 154, r: 24, label: 'DASH' };
+  }
+
+  function resetInputHeld() {
+    held.attack = held.spell1 = held.spell2 = held.dash = held.interact = 0;
+    keys = {}; pending = {};
+    joy.id = null; joy.x = joy.y = 0;
+    ptrs = {};
+    call('Charge', 'cancel');
+    var i = CC.input; i.moveX = i.moveY = 0; i.attack = i.spell1 = i.spell2 = i.dash = i.interact = false;
+  }
+
+  function pollInput() {
+    var i = CC.input;
+    var kx = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
+    var ky = (keys.KeyS || keys.ArrowDown ? 1 : 0) - (keys.KeyW || keys.ArrowUp ? 1 : 0);
+    var mx = joy.x, my = joy.y;
+    if (kx || ky) {
+      var l = Math.sqrt(kx * kx + ky * ky);
+      mx = kx / l; my = ky / l;
+    }
+    i.moveX = mx; i.moveY = my;
+    if (Math.abs(mx) + Math.abs(my) > 0.2) {
+      var n = Math.sqrt(mx * mx + my * my);
+      i.aimX = mx / n; i.aimY = my / n;
+    }
+    ['attack', 'spell1', 'spell2', 'dash', 'interact'].forEach(function (name) {
+      i[name] = !!pending[name];
+    });
+    pending = {};
+  }
+
+  function hitUi(x, y) {
+    for (var k = ui.length - 1; k >= 0; k--) {
+      var b = ui[k];
+      if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return b;
+    }
+    return null;
+  }
+
+  function pos(e) {
+    var r = canvas.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * (W / r.width), y: (e.clientY - r.top) * (H / r.height) };
+  }
+
+  var JOY_R = 52;
+  canvas.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* not fatal */ }
+    var p = pos(e);
+    var u = hitUi(p.x, p.y);
+    if (u) { ptrs[e.pointerId] = { kind: 'ui' }; u.cb(); return; }
+    var mode = CC.state.mode;
+    if (paused || uiOpen() || (CC.state.player && CC.state.player.perkOpen) || (mode !== 'dungeon' && mode !== 'town')) return;
+    for (var name in btns) {
+      var b = btns[name], dx = p.x - b.x, dy = p.y - b.y;
+      if (dx * dx + dy * dy <= (b.r + 10) * (b.r + 10)) {
+        ptrs[e.pointerId] = { kind: 'btn', name: name };
+        if (!held[name]) pressAction(name);
+        held[name]++;
+        return;
+      }
+    }
+    if (joy.id === null && p.x < W * 0.6) {
+      joy.id = e.pointerId; joy.bx = p.x; joy.by = p.y; joy.x = joy.y = 0;
+      ptrs[e.pointerId] = { kind: 'joy' };
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('pointermove', function (e) {
+    if (e.pointerId !== joy.id) return;
+    e.preventDefault();
+    var p = pos(e), dx = p.x - joy.bx, dy = p.y - joy.by;
+    var d = Math.sqrt(dx * dx + dy * dy);
+    if (d > JOY_R) { // drag the base along so the thumb never runs out of range
+      joy.bx = p.x - dx / d * JOY_R; joy.by = p.y - dy / d * JOY_R;
+      dx = p.x - joy.bx; dy = p.y - joy.by; d = JOY_R;
+    }
+    var m = Math.min(1, d / JOY_R);
+    if (m < 0.12) { joy.x = joy.y = 0; } else { joy.x = dx / d * m; joy.y = dy / d * m; }
+  }, { passive: false });
+
+  function release(e) {
+    var r = ptrs[e.pointerId];
+    if (!r) return;
+    delete ptrs[e.pointerId];
+    if (r.kind === 'joy') { joy.id = null; joy.x = joy.y = 0; }
+    else if (r.kind === 'btn') held[r.name] = Math.max(0, held[r.name] - 1);
+  }
+  canvas.addEventListener('pointerup', release);
+  canvas.addEventListener('pointercancel', release);
+  canvas.addEventListener('lostpointercapture', release);
+  canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  ['gesturestart', 'gesturechange', 'dblclick'].forEach(function (n) {
+    document.addEventListener(n, function (e) { e.preventDefault(); });
+  });
+
+  window.addEventListener('keydown', function (e) {
+    if (actionKeys[e.code] || e.code === 'Escape' || e.code === 'KeyP' || e.code.indexOf('Arrow') === 0) e.preventDefault();
+    if (e.repeat || keys[e.code]) return;
+    keys[e.code] = true;
+    // K / I / M open the skill tree, pack and map; Escape closes whichever is open before it would pause
+    if (playing() && call('UI', 'key', e.code)) { resetInputHeld(); return; }
+    if (e.code === 'Escape' || e.code === 'KeyP') { togglePause(); return; }
+    if (e.code === 'KeyG') { call('Dungeon', 'toggleDebugGrid'); return; } // collision-grid overlay
+    if (actionKeys[e.code]) pressAction(actionKeys[e.code]);
+  });
+  window.addEventListener('keyup', function (e) { keys[e.code] = false; });
+  window.addEventListener('blur', function () { keys = {}; resetInputHeld(); });
+
+  /* ---------- sizing ---------- */
+  function resize() {
+    W = window.innerWidth || 360; H = window.innerHeight || 640;
+    dpr = Math.min(window.devicePixelRatio || 1, 3);
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+    zoom = Math.max(1, Math.min(3, H / 400));
+    cam.zoom = zoom; cam.w = W / zoom; cam.h = H / zoom;
+    layout();
+  }
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', resize);
+
+  /* ---------- update ---------- */
+  function snapCamera() {
+    var p = CC.state.player;
+    if (p) { cam.x = p.x - cam.w / 2; cam.y = p.y - cam.h / 2; }
+  }
+
+  function updateStub(dt) {
+    var p = CC.state.player, i = CC.input;
+    if (!p || !p.stub) return;
+    movePlayer(p, i.moveX * p.speed * dt, i.moveY * p.speed * dt);
+    for (var k in p.cd) if (p.cd[k] > 0) p.cd[k] = Math.max(0, p.cd[k] - dt);
+    p.mana = Math.min(p.maxMana, p.mana + 3 * dt);
+    var act = [['attack', i.attack], ['spell1', i.spell1], ['spell2', i.spell2], ['dash', i.dash]];
+    act.forEach(function (a) {
+      if (a[1] && p.cd[a[0]] <= 0) {
+        p.cd[a[0]] = p.cdMax[a[0]];
+        CC.fx.burst(p.x + i.aimX * 12, p.y + i.aimY * 12, p.color, 8, 90);
+        CC.fx.shake(a[0] === 'attack' ? 1 : 3);
+      }
+    });
+  }
+
+  function update(dt) {
+    var s = CC.state, p = s.player;
+    time += dt;
+    call('UI', 'update', dt);
+    if (uiOpen() !== uiWas) { uiWas = uiOpen(); resetInputHeld(); }
+    if (paused || uiWas) return;
+    pollInput();
+    if (CC.input.interact && playing()) { interact(); return; }
+
+    if (s.mode === 'town' || s.mode === 'dungeon') {
+      updateStub(dt);
+      if (s.mode === 'town') {
+        call('Town', 'update', dt);
+        if (!has('Town', 'update') && p && !p.stub) call('Classes', 'update', dt, { noCombat: true });
+      } else {
+        call('Classes', 'update', dt);
+        call('Enemies', 'update', dt);
+        call('Charge', 'update', dt, !!(keys.Space || held.attack > 0)); // hold attack to charge; a tap is the normal attack
+        call('Loot', 'update', dt);
+        // Stairs and chests are activated explicitly by F / Enter or USE.
+        if (playerDead()) { s.mode = 'dead'; resetInputHeld(); CC.fx.shake(10); }
+      }
+      if (s.mode !== 'town' && s.mode !== 'dungeon') return;
+    }
+
+    // camera follows with light smoothing
+    if (p && (s.mode === 'town' || s.mode === 'dungeon')) {
+      var tx = p.x - cam.w / 2, ty = p.y - cam.h / 2, k = 1 - Math.pow(0.0005, dt);
+      cam.x += (tx - cam.x) * k; cam.y += (ty - cam.y) * k;
+    }
+
+    for (var a = particles.length - 1; a >= 0; a--) {
+      var q = particles[a];
+      q.life -= dt; q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.92; q.vy *= 0.92;
+      if (q.blood) q.vy += 260 * dt;
+      if (q.life <= 0) {
+        if (q.blood && Math.random() < 0.5) addDecal(q.x, q.y, q.size * 0.8, q.c);
+        particles.splice(a, 1);
+      }
+    }
+    for (var b = texts.length - 1; b >= 0; b--) {
+      var t = texts[b];
+      t.life -= dt; t.age += dt; t.y += t.vy * dt; t.vy *= 0.94;
+      if (t.life <= 0) texts.splice(b, 1);
+    }
+    if (flashT > 0) flashT = Math.max(0, flashT - dt);
+    if (hurtT > 0) hurtT = Math.max(0, hurtT - dt);
+    // player damage / low-health feedback (detected from hp so every damage source is covered)
+    if (p && !p.stub && typeof p.hp === 'number') {
+      if (lastHp !== null && p.hp < lastHp - 0.5) { hurtT = Math.max(hurtT, 0.45); addDecal(p.x, p.y + 4, 4 + Math.random() * 3, '#6e0c10'); }
+      lastHp = p.hp;
+      if (p.maxHp && p.hp / p.maxHp < 0.35 && p.hp > 0) {
+        beat += dt * (1.2 + (0.35 - p.hp / p.maxHp) * 4); // heartbeat speeds up as health drops
+      } else beat = 0;
+    } else lastHp = null;
+    shakeMag *= Math.pow(0.002, dt);
+    if (shakeMag < 0.1) shakeMag = 0;
+  }
+
+  /* ---------- drawing helpers ---------- */
+  function rr(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath();
+  }
+  function font(px, weight) { ctx.font = (weight || 'bold') + ' ' + px + 'px Georgia, "Palatino Linotype", "Book Antiqua", serif'; } // same serif as ui.js
+  function label(str, x, y, px, color, align) {
+    font(px); ctx.textAlign = align || 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillText(str, x + 1, y + 1);
+    ctx.fillStyle = color; ctx.fillText(str, x, y);
+  }
+  function addButton(x, y, w, h, text, color, cb) {
+    ui.push({ x: x, y: y, w: w, h: h, cb: cb });
+    var g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, color); g.addColorStop(1, '#14101a');
+    rr(x, y, w, h, 6); ctx.fillStyle = g; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = '#5a4630'; ctx.stroke(); // bronze frame, as in ui.js
+    rr(x + 3, y + 3, w - 6, h - 6, 4); ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(224,168,74,0.22)'; ctx.stroke();
+    label(text, x + w / 2, y + h / 2, 16, '#e8dcc4');
+  }
+
+  function drawFallbackFloor() {
+    var T = CC.TILE, x0 = Math.floor(cam.x / T), y0 = Math.floor(cam.y / T);
+    var cols = Math.ceil(cam.w / T) + 2, rows = Math.ceil(cam.h / T) + 2;
+    for (var j = 0; j < rows; j++) for (var i = 0; i < cols; i++) {
+      var tx = x0 + i, ty = y0 + j;
+      ctx.fillStyle = ((tx + ty) & 1) ? '#1d1730' : '#221b38';
+      ctx.fillRect(tx * T - cam.x, ty * T - cam.y, T, T);
+    }
+  }
+
+  function drawFallbackPlayer() {
+    var p = CC.state.player;
+    if (!p || !p.stub) return;
+    var x = p.x - cam.x, y = p.y - cam.y;
+    ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(x, y + 7, 8, 3.5, 0, 0, 6.3); ctx.fill();
+    ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(x, y, p.r, 0, 6.3); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x + CC.input.aimX * 4, y + CC.input.aimY * 4 - 1, 2, 0, 6.3); ctx.fill();
+  }
+
+  // floor stains from blood splatter; only where the tile has been explored
+  function drawDecals() {
+    var D = CC.Dungeon, hasExp = D && typeof D.isExplored === 'function';
+    ctx.save();
+    for (var i = 0; i < decals.length; i++) {
+      var d = decals[i];
+      if (d.x < cam.x - 16 || d.x > cam.x + cam.w + 16 || d.y < cam.y - 16 || d.y > cam.y + cam.h + 16) continue;
+      if (hasExp && !D.isExplored(d.x, d.y)) continue;
+      ctx.globalAlpha = 0.75; ctx.fillStyle = d.c;
+      ctx.beginPath(); ctx.ellipse(d.x - cam.x, d.y - cam.y, d.r, d.r * d.sq, d.rot, 0, 6.2832); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // screen-space feedback: hit flash, red hurt pulse and the low-health vignette (logical W x H, like the HUD)
+  function drawScreenFx() {
+    var p = CC.state.player;
+    if (!p || p.stub) return;
+    var frac = p.maxHp ? p.hp / p.maxHp : 1, low = frac < 0.35 && p.hp > 0 ? (0.35 - frac) / 0.35 : 0;
+    var pulse = low ? 0.55 + 0.45 * Math.sin(beat * 6.2832) : 0, hurt = hurtT > 0 ? hurtT / 0.45 : 0;
+    var a = Math.max(low * (0.35 + 0.4 * pulse), hurt * 0.55);
+    if (a > 0.01) {
+      var key = W + 'x' + H;
+      if (vigKey !== key) {
+        vigGrad = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.25, W / 2, H / 2, Math.hypot(W, H) * 0.55);
+        vigGrad.addColorStop(0, 'rgba(160,0,10,0)'); vigGrad.addColorStop(1, 'rgba(160,0,10,1)');
+        vigKey = key;
+      }
+      ctx.globalAlpha = Math.min(1, a); ctx.fillStyle = vigGrad; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
+    }
+    if (flashT > 0) { ctx.globalAlpha = 0.28 * (flashT / flashMax); ctx.fillStyle = flashCol; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
+  }
+
+  function drawWorld() {
+    var s = CC.state;
+    var ox = shakeMag ? (Math.random() - 0.5) * shakeMag * 2 : 0;
+    var oy = shakeMag ? (Math.random() - 0.5) * shakeMag * 2 : 0;
+    var rx = cam.x, ry = cam.y;
+    cam.x = Math.round(cam.x + ox); cam.y = Math.round(cam.y + oy); // one offset for every world layer
+    ctx.save();
+    ctx.scale(zoom, zoom);
+    ctx.fillStyle = '#0b0812'; ctx.fillRect(0, 0, cam.w, cam.h);
+    if (s.mode === 'dungeon') {
+      // The shell already applied ctx.scale(zoom). Dungeon.draw scales by cam.zoom itself, so hand it a
+      // zoom-1 view of the same camera: tiles, fog and entities then share one world-to-screen mapping.
+      var dcam = { x: cam.x, y: cam.y, w: cam.w, h: cam.h, zoom: 1 };
+      if (has('Dungeon', 'draw')) call('Dungeon', 'draw', ctx, dcam); else drawFallbackFloor();
+      drawDecals();
+      call('Loot', 'draw', ctx, cam);
+      call('Enemies', 'draw', ctx, cam);
+      call('Classes', 'draw', ctx, cam);
+      call('Charge', 'draw', ctx, cam);
+      if (CC.Dungeon && typeof CC.Dungeon.drawFront === 'function') CC.Dungeon.drawFront(ctx, dcam); // trees and props in front of the hero redraw over the entities
+      if (CC.Dungeon && CC.Dungeon.realm) CC.Dungeon.drawLighting(ctx, dcam); // open-air maps light the whole scene after the entities
+    } else {
+      if (has('Town', 'draw')) call('Town', 'draw', ctx, cam);
+      else { drawFallbackFloor(); call('Classes', 'drawPlayer', ctx, cam); }
+    }
+    drawFallbackPlayer();
+    for (var a = 0; a < particles.length; a++) {
+      var q = particles[a], qa = Math.max(0, q.life / q.max);
+      ctx.globalAlpha = q.blood ? Math.min(1, qa * 2) : qa;
+      ctx.fillStyle = q.c;
+      var qs = q.blood ? q.size : q.size * (0.5 + 0.5 * qa);
+      ctx.fillRect(q.x - cam.x - qs / 2, q.y - cam.y - qs / 2, qs, qs);
+      if (q.spark && qs > 1.6) { // hot core
+        ctx.globalAlpha = qa * 0.6; ctx.fillStyle = '#fff';
+        ctx.fillRect(q.x - cam.x - 0.5, q.y - cam.y - 0.5, 1, 1);
+      }
+    }
+    ctx.globalAlpha = 1;
+    for (var b = 0; b < texts.length; b++) {
+      var t = texts[b], pop = t.age < 0.12 ? 1 + 0.6 * (1 - t.age / 0.12) : 1, sz = Math.round(t.size * pop);
+      ctx.globalAlpha = Math.min(1, t.life / (t.max * 0.5));
+      font(sz); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.lineJoin = 'round'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+      ctx.strokeText(t.s, t.x - cam.x, t.y - cam.y);
+      ctx.fillStyle = t.c; ctx.fillText(t.s, t.x - cam.x, t.y - cam.y);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+    cam.x = rx; cam.y = ry;
+  }
+
+  function bar(x, y, w, h, frac, c1, c2, text) {
+    frac = Math.max(0, Math.min(1, frac || 0));
+    // dark-fantasy bar (same palette as ui.js): near-black well, bronze frame, glossy fill
+    rr(x, y, w, h, 3); ctx.fillStyle = 'rgba(10,6,14,0.9)'; ctx.fill();
+    if (frac > 0) {
+      var g = ctx.createLinearGradient(0, y, 0, y + h);
+      g.addColorStop(0, c1); g.addColorStop(1, c2);
+      rr(x + 1.5, y + 1.5, Math.max(3, (w - 3) * frac), h - 3, 2); ctx.fillStyle = g; ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(x + 2, y + 2, Math.max(2, (w - 4) * frac), Math.max(1, (h - 4) * 0.35));
+    }
+    ctx.lineWidth = 1.5; ctx.strokeStyle = '#5a4630'; rr(x, y, w, h, 3); ctx.stroke();
+    ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(224,168,74,0.25)'; rr(x + 2, y + 2, w - 4, h - 4, 2); ctx.stroke();
+    if (text) label(text, x + w / 2, y + h / 2 + 0.5, Math.max(8, h - 3), '#fff');
+  }
+
+  function drawHud() {
+    var s = CC.state, p = s.player;
+    if (!p) return;
+    var top = 10, left = 12, bw = Math.min(170, W * 0.5);
+    if (has('Minimap', 'draw')) { // the minimap owns the upper-left corner; the bars sit to its right
+      call('Minimap', 'draw', ctx, CC.Minimap.margin, CC.Minimap.margin, function (x, y, w, h, cb) { ui.push({ x: x, y: y, w: w, h: h, cb: cb }); });
+      left = CC.Minimap.margin + CC.Minimap.size + 8; bw = Math.min(112, W - left - 110);
+    }
+    bar(left, top, bw, 16, p.hp / p.maxHp, '#ff6b6b', '#b01e3a', Math.ceil(p.hp) + '/' + Math.ceil(p.maxHp));
+    bar(left, top + 20, bw, 12, p.mana / p.maxMana, '#6bb8ff', '#2a56c8', null);
+    var xpNext = p.xpNext || p.xpToNext || 1;
+    bar(left, top + 36, bw, 9, p.xp / xpNext, '#9be36b', '#4a9a2a', null);
+    label('LV ' + (p.level || 1), left + bw + 8, top + 8, 13, '#e0a84a', 'left');
+
+    label(Math.floor(s.gold) + ' G', W - 12, top + 8, 15, '#e8c04a', 'right');
+    if (s.mode === 'dungeon') {
+      label(s.area === 'forest' ? 'Giant Forest' : s.area === 'plains' ? 'Rolling Plains' : 'Floor ' + s.floor, W - 12, top + 28, 13, '#e8dcc4', 'right');
+      addButton(W - 78, top + 42, 66, 26, 'Retreat', '#5a2a22', function () { CC.returnToTown(); });
+    } else {
+      label('Town', W - 12, top + 28, 13, '#e8dcc4', 'right');
+    }
+  }
+
+  function drawControls() {
+    // joystick
+    var bx = joy.id !== null ? joy.bx : 80, by = joy.id !== null ? joy.by : H - 90;
+    ctx.globalAlpha = joy.id !== null ? 0.9 : 0.35;
+    ctx.beginPath(); ctx.arc(bx, by, JOY_R, 0, 6.3);
+    ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(bx + joy.x * JOY_R, by + joy.y * JOY_R, 22, 0, 6.3);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fill();
+    ctx.globalAlpha = 1;
+
+    var p = CC.state.player;
+    for (var name in btns) {
+      var b = btns[name], on = held[name] > 0 || (name === 'attack' && keys.Space);
+      var txt = b.label;
+      if (p && p.spellNames) {
+        if (name === 'spell1' && p.spellNames[0]) txt = p.spellNames[0];
+        if (name === 'spell2' && p.spellNames[1]) txt = p.spellNames[1];
+      }
+      var col = name === 'attack' ? '255,140,70' : name === 'dash' ? '120,220,160' : '140,120,255';
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 6.3);
+      ctx.fillStyle = 'rgba(' + col + ',' + (on ? 0.7 : 0.35) + ')'; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.stroke();
+      var cd = p && p.cd ? p.cd[name] : 0, cdMax = p && p.cdMax ? p.cdMax[name] : 0;
+      if (cd > 0 && cdMax > 0) {
+        var f = Math.min(1, cd / cdMax);
+        ctx.beginPath(); ctx.moveTo(b.x, b.y);
+        ctx.arc(b.x, b.y, b.r, -Math.PI / 2, -Math.PI / 2 + f * 6.2832);
+        ctx.closePath(); ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fill();
+        label(cd.toFixed(cd < 10 ? 1 : 0), b.x, b.y - b.r - 8, 10, '#ddd');
+      }
+      label(txt, b.x, b.y, b.r > 35 ? 15 : 11, '#fff');
+    }
+  }
+
+  function drawTitle() {
+    var g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#1a0f2e'); g.addColorStop(1, '#07040d');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    for (var i = 0; i < 40; i++) { // drifting embers
+      var ph = (time * (8 + i % 7) + i * 97) % (H + 20);
+      var ex = (i * 53.7 + Math.sin(time + i) * 14) % W;
+      ctx.globalAlpha = 0.25 + 0.5 * ((i * 31) % 10) / 10;
+      ctx.fillStyle = i % 3 ? '#ff9a3c' : '#ffd36b';
+      ctx.fillRect(ex, H - ph, 2, 2);
+    }
+    ctx.globalAlpha = 1;
+    var pulse = 1 + Math.sin(time * 2) * 0.03;
+    ctx.save(); ctx.translate(W / 2, Math.max(50, H * 0.12)); ctx.scale(pulse, pulse);
+    label('EMBERDEEP', 0, 0, Math.min(44, W / 8.5), '#ffb347');
+    ctx.restore();
+    label('Pick your hero', W / 2, Math.max(50, H * 0.12) + 34, 14, '#cfc5ff');
+
+    var cw = Math.min(W - 32, 380), ch = Math.min(120, (H - 190) / CLASSES.length - 10), x = (W - cw) / 2, y = Math.max(50, H * 0.12) + 60;
+    CLASSES.forEach(function (c, n) {
+      var yy = y + n * (ch + 12);
+      ui.push({ x: x, y: yy, w: cw, h: ch, cb: function () { startGame(c.id); } });
+      rr(x, yy, cw, ch, 14);
+      var gr = ctx.createLinearGradient(x, yy, x + cw, yy);
+      gr.addColorStop(0, 'rgba(255,255,255,0.12)'); gr.addColorStop(1, 'rgba(255,255,255,0.03)');
+      ctx.fillStyle = gr; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = c.color; ctx.stroke();
+      // emblem
+      var ex2 = x + 38, ey = yy + ch / 2, bob = Math.sin(time * 3 + n) * 2;
+      ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.ellipse(ex2, ey + 20, 15, 5, 0, 0, 6.3); ctx.fill();
+      ctx.fillStyle = c.color; ctx.beginPath(); ctx.arc(ex2, ey + bob, 16, 0, 6.3); ctx.fill();
+      ctx.fillStyle = '#0b0812'; ctx.fillRect(ex2 - 8, ey - 4 + bob, 4, 4); ctx.fillRect(ex2 + 4, ey - 4 + bob, 4, 4);
+      label(c.name, x + 72, yy + 22, 18, c.color, 'left');
+      font(11, 'normal'); ctx.textAlign = 'left'; ctx.fillStyle = '#d8d0ee';
+      wrap(c.desc, x + 72, yy + 44, cw - 84, 14);
+    });
+    label('Tap a hero to begin', W / 2, H - 22, 12, '#8a80a8');
+  }
+
+  function wrap(text, x, y, maxW, lh) {
+    var words = text.split(' '), line = '';
+    for (var i = 0; i < words.length; i++) {
+      var t = line ? line + ' ' + words[i] : words[i];
+      if (ctx.measureText(t).width > maxW && line) { ctx.fillText(line, x, y); line = words[i]; y += lh; } else line = t;
+    }
+    ctx.fillText(line, x, y);
+  }
+
+  function drawDead() {
+    var s = CC.state;
+    ctx.fillStyle = 'rgba(20,0,10,0.82)'; ctx.fillRect(0, 0, W, H);
+    label('YOU DIED', W / 2, H * 0.22, 40, '#ff5a6a');
+    var y = H * 0.36, lines = [['Floor reached', s.floor], ['Enemies slain', s.kills],
+      ['Gold carried', Math.floor(s.gold)], ['Best floor', s.bestFloor]];
+    lines.forEach(function (l, n) {
+      label(l[0], W / 2 - 10, y + n * 30, 15, '#cfc5ff', 'right');
+      label(String(l[1]), W / 2 + 10, y + n * 30, 17, '#ffe08a', 'left');
+    });
+    addButton(W / 2 - 100, H * 0.62, 200, 52, 'Return to Town', '#3a6a3a', function () { CC.returnToTown(); });
+  }
+
+  function drawFallbackTownPanel() {
+    if (has('Town', 'draw')) return;
+    label('Town (shops coming online)', W / 2, H * 0.3, 15, '#cfc5ff');
+    addButton(W / 2 - 100, H * 0.38, 200, 50, 'Descend to Floor ' + Math.max(1, CC.state.floor), '#6a3a2a', function () { CC.startRun(1); });
+  }
+
+  function draw() {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ui = [];
+    var m = CC.state.mode;
+    if (m === 'title') { drawTitle(); return; }
+    drawWorld();
+    if (m === 'town' || m === 'dungeon' || m === 'dead') drawScreenFx();
+    if (m === 'town' || m === 'dungeon') {
+      drawHud(); drawControls();
+      if (m === 'town') drawFallbackTownPanel();
+      addButton(W - 154, 78, 142, 28, 'USE [F / Enter]', '#3a546a', function () { pressAction('interact'); });
+      addButton(W - 94, 112, 82, 28, paused ? 'Resume' : 'Pause', '#4a3a6a', togglePause);
+      if (paused) {
+        ctx.fillStyle = 'rgba(8,4,16,0.65)'; ctx.fillRect(0, H * 0.4, W, 80);
+        label('PAUSED', W / 2, H * 0.4 + 40, 28, '#ffe08a');
+      }
+      var addHit = function (x, y, w, h, cb) { ui.push({ x: x, y: y, w: w, h: h, cb: cb }); };
+      if (m === 'town') call('Town', 'drawPanel', ctx, W, H, addHit);
+      else if (CC.state.area === 'forest') call('Forest', 'drawOverlay', ctx, W, H);
+      else if (CC.state.area === 'plains') call('Plains', 'drawOverlay', ctx, W, H);
+      call('UI', 'drawHud', ctx, W, H, addHit);   // K / I / M buttons
+      call('UI', 'draw', ctx, W, H, addHit);      // overlays (registered last, so they win taps) and the boss bar
+    } else if (m === 'dead') {
+      drawHud(); drawDead();
+    }
+  }
+
+  /* ---------- main loop ---------- */
+  var last = 0, acc = 0;
+  function frame(now) {
+    var dt = Math.min(0.1, (now - last) / 1000 || 0);
+    last = now;
+    try {
+      if (hitStopLeft > 0) { hitStopLeft -= dt; time += dt; }
+      else {
+        acc += dt;
+        while (acc >= STEP) { update(STEP); acc -= STEP; }
+      }
+      draw();
+    } catch (e) {
+      if (!warned.frame) { warned.frame = 1; console.error('frame error', e); }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  resize();
+  call('Town', 'load');
+  requestAnimationFrame(function (t) { last = t; requestAnimationFrame(frame); });
+})();

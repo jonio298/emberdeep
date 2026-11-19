@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b0812">
+<title>Emberdeep</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+<noscript>Emberdeep needs JavaScript.</noscript>
+<!-- Load order is part of the contract: modules first, shell last. Missing files are tolerated by the shell,
+     but every tag below must exist or the browser logs a 404. realm.js -> forest.js -> town.js build on enemies.js and dungeon.js. -->
+<script src="dungeon.js"></script>
+<script src="classes.js"></script>
+<script src="skilltree.js"></script>
+<script src="loot.js"></script>
+<script src="enemies.js"></script>
+<script src="ui.js"></script>
+<script src="realm.js"></script>
+<script src="forest.js"></script>
+<script src="plains.js"></script>
+<script src="town.js"></script>
+<script src="charge.js"></script>
+<script src="minimap.js"></script>
+<script src="main.js"></script>
+</body>
+</html>

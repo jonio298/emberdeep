@@ -1,0 +1,41 @@
+/* dark-fantasy shell: all in-game UI (HUD, inventory, tooltips) is drawn on the canvas in ui.js with this same palette:
+   panels #120c18, bronze frames #5a4630, ember accent #e0a84a, parchment text #e8dcc4, serif (Georgia) type */
+html, body {
+  font-family: Georgia, "Palatino Linotype", "Book Antiqua", serif;
+  color: #e8dcc4;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: radial-gradient(ellipse at center, #1a1020 0%, #07040a 100%);
+  overscroll-behavior: none;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#game {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  display: block;
+  touch-action: none;
+  image-rendering: pixelated;
+  background: #0b0812;
+  animation: ember-fade-in 0.6s ease-out both; /* smooth first paint; overlays animate inside the canvas (ui.js) */
+}
+
+@keyframes ember-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #game { animation: none; }
+}
