@@ -31,9 +31,11 @@ function appendTargets(scene,list){
  for(var j=0;j<list.length;j++){
    var e=list[j];if(!e)continue;
    var id=e.id;
-   if(scene.targets.some(function(t){return t.id===id;}))continue;
    var shot=snapshot(e);
-   if(shot)scene.targets.push(shot);
+   if(!shot)continue;
+   var existing=scene.targets.find(function(t){return t.id===id;});
+   if(existing)Object.assign(existing,shot);
+   else scene.targets.push(shot);
  }
 }
 function addTargets(list){if(active)appendTargets(active,list);}
