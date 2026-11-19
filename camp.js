@@ -112,6 +112,11 @@ function restoreWorld() {
   s.area=home.area; s.floor=home.floor; s.mode=home.mode;
   s.map=home.map; CC.Dungeon=home.dungeon;
   if (p) { p.x=home.x; p.y=home.y; }
+  if(home.needsEnemies&&home.mode==='dungeon'&&CC.Enemies){
+    home.needsEnemies=false;
+    CC.Enemies.spawnForFloor(home.floor,(home.map&&(home.map.enemySpawns||home.map.spawns))||[]);
+    if(home.area==='tree-tunnel'&&CC.TreeTunnel)CC.TreeTunnel.populate(home.floor);
+  }
   return true;
 }
 function leave(pack) {
@@ -235,6 +240,15 @@ Camp.respawn = function() {
     if(E.projectiles)E.projectiles.length=0;
   }
   note('You awaken at your camp.');
+  return true;
+};
+// Waystone destination: arrive inside the existing campsite, retaining its
+// original world map, chest, checkpoint and any stored items.
+Camp.travelTo=function(){
+  if(!home||!hero())return false;
+  home.needsEnemies=true;
+  goOutside();
+  note('The waystone returns you safely to your campsite.');
   return true;
 };
 Camp.clear = function(){uninstallWorldFence();room='';modal='';home=null;inventory.length=0;};
