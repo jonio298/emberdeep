@@ -76,6 +76,16 @@ function restoreWorld() {
   return true;
 }
 function leave(pack) {
+  if (!home) return;
+  if (pack) {
+    // Packing the campsite also packs its chest; never discard stored equipment.
+    var bag = state().inventory = state().inventory || [];
+    if (bag.length + inventory.length > 40) {
+      modal = ''; note('Not enough room in your pack. Empty the camp chest first.');
+      return;
+    }
+    while (inventory.length) bag.push(inventory.shift());
+  }
   if (!restoreWorld()) return;
   if (pack) { home = null; inventory.length=0; }
   else note('Camp remains here. Return to the marker to enter.');
