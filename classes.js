@@ -292,6 +292,15 @@
     else e.hp -= dmg;
     fxText(e.x, e.y - (e.r || 8) - 4, crit ? dmg + '!' : String(dmg), crit ? '#ffd24a' : back ? '#7de0b8' : '#fff', crit ? 17 : 10);
     fxBurst(e.x, e.y, crit ? '#ffd24a' : '#ffffff', crit ? 14 : 4, crit ? 110 : 60);
+    if (p && !opts.minion && (type === 'slash' || type === 'melee' || type === 'physical') &&
+        Math.hypot(p.x - e.x, p.y - e.y) < 72 && !(e.ghost)) {
+      // Blood on armor and blades is refreshed by close-range hits, fading in five seconds.
+      p.bloodTime = 5;
+      p.bloodMarks = [];
+      for (var bi = 0; bi < 12; bi++)
+        p.bloodMarks.push({ x: (Math.random() - 0.5) * 12, y: -13 + Math.random() * 22,
+          r: 0.55 + Math.random() * 1.6 });
+    }
     if (type !== 'poison' && type !== 'fire') {
       e._hitFlash = crit ? 0.16 : 0.09;
       fxBlood(e.x, e.y, crit ? 10 : 4, p ? e.x - p.x : 0, p ? e.y - p.y : 0);
@@ -709,6 +718,7 @@
     }
     if (Math.abs(mx) > 0.1) p.face = mx > 0 ? 1 : -1;
     p.anim += dt * (p.moving ? 1 : 0.35);
+    if (p.bloodTime > 0) p.bloodTime = Math.max(0, p.bloodTime - dt);
 
     if (opts && opts.noCombat) { updateFx(dt); return; }
 
@@ -758,6 +768,12 @@
       else ang = f > 0 ? -1.1 : -2.04;
       var hx = x + f * 7, hy = y - 1 + bob;
       line(c, hx, hy, hx + Math.cos(ang) * 14, hy + Math.sin(ang) * 14, '#e6edf7', 3);
+      if (p.bloodTime > 0) {
+        c.save(); c.globalAlpha = Math.min(1, p.bloodTime / 5);
+        line(c, hx + Math.cos(ang) * 5, hy + Math.sin(ang) * 5,
+          hx + Math.cos(ang) * 14, hy + Math.sin(ang) * 14, '#9c101b', 1.8);
+        c.restore();
+      }
       line(c, hx - Math.cos(ang) * 1, hy - Math.sin(ang) * 1, hx + Math.cos(ang) * 2, hy + Math.sin(ang) * 2, '#b8860b', 4);
     } else if (p.classId === 'wizard') {
       poly(c, [x - 5, y - 5 + bob, x + 5, y - 5 + bob, x + 8, y + 9, x - 8, y + 9], '#5b3aa8');
@@ -783,6 +799,12 @@
       var tang = p.atkAnim > 0 ? p.swingAng + (p.atkAnim / 0.12 - 0.5) * 1.6 * (p.swingSign || 1) : (f > 0 ? -0.6 : -2.54);
       var thx = x + f * 6, thy = y - 1 + bob;
       line(c, thx, thy, thx + Math.cos(tang) * 9, thy + Math.sin(tang) * 9, '#e6edf7', 2);
+      if (p.bloodTime > 0) {
+        c.save(); c.globalAlpha = Math.min(1, p.bloodTime / 5);
+        line(c, thx + Math.cos(tang) * 3, thy + Math.sin(tang) * 3,
+          thx + Math.cos(tang) * 9, thy + Math.sin(tang) * 9, '#9c101b', 1.3);
+        c.restore();
+      }
       line(c, x - f * 6, y - 1 + bob, x - f * 6 - Math.cos(tang) * 6, y - 1 + bob + 3, '#cfd8e6', 2);
       if (p.ambushT > 0) { c.globalAlpha = 0.35; circ(c, x, y - 2 + bob, 11, '#7de0b8'); c.globalAlpha = 1; }
     } else {
@@ -800,6 +822,14 @@
         var wa = t * 3 + i * 6.2832 / 5;
         circ(c, x + Math.cos(wa) * 15, y - 2 + Math.sin(wa) * 6 + bob, 1.8, '#7dff9a');
       }
+    }
+    if (p.bloodTime > 0 && p.bloodMarks) {
+      c.save(); c.globalAlpha = Math.min(0.9, p.bloodTime / 5 * 0.9); c.fillStyle = '#a0141d';
+      for (var spl = 0; spl < p.bloodMarks.length; spl++) {
+        var mark = p.bloodMarks[spl];
+        c.beginPath(); c.ellipse(x + mark.x, y + bob + mark.y, mark.r, mark.r * 0.7, 0, 0, 6.2832); c.fill();
+      }
+      c.restore();
     }
   }
 
