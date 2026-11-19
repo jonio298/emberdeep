@@ -5,7 +5,7 @@
 'use strict';
 var CC = window.CC = window.CC || {};
 var Camp = CC.Camp = {};
-var home = null, room = '', modal = '', page = 0, inventory = [], message = '', messageTime = 0, elapsed = 0;
+var home = null, pendingHome = null, room = '', modal = '', page = 0, inventory = [], message = '', messageTime = 0, elapsed = 0;
 var OUT = {w: 560, h: 420}, IN = {w: 360, h: 270};
 function state() { return CC.state; }
 function hero() { return state() && state().player; }
@@ -114,8 +114,11 @@ function restoreWorld() {
   if (p) { p.x=home.x; p.y=home.y; }
   if(home.needsEnemies&&home.mode==='dungeon'&&CC.Enemies){
     home.needsEnemies=false;
-    CC.Enemies.spawnForFloor(home.floor,(home.map&&(home.map.enemySpawns||home.map.spawns))||[]);
-    if(home.area==='tree-tunnel'&&CC.TreeTunnel)CC.TreeTunnel.populate(home.floor);
+    if(!(CC.restoreSessionWorld&&CC.restoreSessionWorld(home.area,home.floor,home.treeFloor))){
+      CC.Enemies.spawnForFloor(home.floor,(home.map&&(home.map.enemySpawns||home.map.spawns))||[]);
+      if(home.area==='tree-tunnel'&&CC.TreeTunnel)CC.TreeTunnel.populate(home.floor);
+      if(home.area==='tree-ascent'&&CC.TreeAscent)CC.TreeAscent.populate(home.treeFloor||1);
+    }
   }
   return true;
 }
@@ -136,7 +139,7 @@ function leave(pack) {
 }
 Camp.request = function() {
   if (inCamp() || !hero() || !state() || (state().mode !== 'dungeon' && state().mode !== 'town')) return;
-  if (home) { note('One camp at a time. Return to your camp or pack it up.'); return; }
+  if (home||pendingHome) { note('One camp at a time. Return to your camp or pack it up.'); return; }
   modal = 'set';
 };
 Camp.cancel = function() { modal = ''; };
@@ -146,6 +149,7 @@ Camp.confirm = function(yes) {
     if (!yes || !hero()) return;
     var s=state(), p=hero();
     home = {mode:s.mode,area:s.area,floor:s.floor,map:s.map,dungeon:CC.Dungeon,x:p.x,y:p.y,
+      treeFloor:s.treeFloor||1,
       caveSnapshot: s.area === 'cave' ? snapshotCave(CC.Dungeon) : null};
     installWorldFence();
     enter();
@@ -158,7 +162,7 @@ Camp.confirm = function(yes) {
   }
 };
 Camp.isInside = inCamp;
-Camp.hasCamp = function(){return !!home;};
+Camp.hasCamp = function(){return !!home||!!pendingHome;};
 Camp.isOpen = function(){return !!modal;};
 Camp.isWorldCampNear = function() {
   var s=state(), p=hero();
@@ -223,7 +227,11 @@ Camp.key = function(code) {
   return true;
 };
 Camp.respawn = function() {
+  if(!home&&pendingHome&&CC.reenterSavedCamp){
+    if(CC.reenterSavedCamp(pendingHome))Camp.bindToMap(pendingHome.area,state().map);
+  }
   if(!home||!hero())return false;
+  if(CC.rememberSessionWorld)CC.rememberSessionWorld();
   // The generated source map is intentionally retained, so the exact checkpoint still exists.
   room='';modal='';
   var p=hero(),s=state();
@@ -233,11 +241,12 @@ Camp.respawn = function() {
   s.area=home.area;s.floor=home.floor;s.map=home.map;s.mode=home.mode;
   CC.Dungeon=home.dungeon;
   p.x=home.x;p.y=home.y;p.hp=p.maxHp;p.mana=p.maxMana;p.invuln=2;
-  if(CC.Enemies){ // reset hostile encounters near the checkpoint, not the entire map
-    var E=CC.Enemies;
-    if(E.list) E.list = sameWorld ?
-      E.list.filter(function(e){return !e.dead && distance(e,home)>160;}) : [];
-    if(E.projectiles)E.projectiles.length=0;
+  if(CC.Enemies){
+    // Never resurrect slain creatures or erase surviving ones on death.
+    if(!sameWorld&&CC.restoreSessionWorld)
+      CC.restoreSessionWorld(home.area,home.floor,home.treeFloor);
+    if(CC.Enemies.projectiles)CC.Enemies.projectiles.length=0;
+    CC.Enemies.zones=[];
   }
   note('You awaken at your camp.');
   return true;
@@ -245,13 +254,40 @@ Camp.respawn = function() {
 // Waystone destination: arrive inside the existing campsite, retaining its
 // original world map, chest, checkpoint and any stored items.
 Camp.travelTo=function(){
+  if(!home&&pendingHome&&CC.reenterSavedCamp){
+    if(CC.reenterSavedCamp(pendingHome))Camp.bindToMap(pendingHome.area,state().map);
+  }
   if(!home||!hero())return false;
   home.needsEnemies=true;
   goOutside();
   note('The waystone returns you safely to your campsite.');
   return true;
 };
-Camp.clear = function(){uninstallWorldFence();room='';modal='';home=null;inventory.length=0;};
+Camp.exportState=function(){
+  if(!home)return pendingHome||null;
+  return {area:home.area,mode:home.mode,floor:home.floor,
+    treeFloor:home.treeFloor||1,x:home.x,y:home.y,
+    seed:home.map&&home.map.seed||null,items:inventory.slice()};
+};
+Camp.importState=function(data){
+  if(!data||!Number.isFinite(data.x)||!Number.isFinite(data.y))return false;
+  pendingHome={area:data.area,mode:data.mode||'dungeon',floor:data.floor||1,
+    treeFloor:data.treeFloor||1,x:data.x,y:data.y,
+    seed:data.seed,items:Array.isArray(data.items)?data.items:[]};
+  return Camp.bindToMap(state().area,state().map);
+};
+Camp.bindToMap=function(area,worldMap){
+  if(!pendingHome||!worldMap||pendingHome.area!==area||
+    (state().floor||1)!==(pendingHome.floor||1))return false;
+  if(pendingHome.area==='tree-ascent'&&
+    (state().treeFloor||1)!==(pendingHome.treeFloor||1))return false;
+  if(home)uninstallWorldFence();
+  var c=pendingHome;pendingHome=null;
+  home={area:c.area,mode:c.mode,floor:c.floor,treeFloor:c.treeFloor,
+    map:worldMap,dungeon:worldMap,x:c.x,y:c.y,caveSnapshot:null};
+  inventory=c.items.slice();installWorldFence();return true;
+};
+Camp.clear = function(){uninstallWorldFence();room='';modal='';home=null;pendingHome=null;inventory.length=0;};
 
 /* Hand-painted 2.5D camp artwork. All objects use world coordinates to match gameplay collision. */
 function rect(c,x,y,w,h,color){c.fillStyle=color;c.fillRect(x,y,w,h);}
