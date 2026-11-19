@@ -1206,7 +1206,9 @@
         for (var l = 0; l < 4; l++) { var lo = Math.sin(e.anim * 14 + l) * 2; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-r - 3, -r * 0.8 + l * 4 + lo); ctx.moveTo(0, 0); ctx.lineTo(r + 3, -r * 0.8 + l * 4 - lo); ctx.stroke(); }
         ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(0, 1, r * (e.boss ? 1.0 : 0.9), r * 0.8, 0, 0, PI2); ctx.fill();
         ctx.fillStyle = e.boss ? '#ff7ad0' : '#ff3a3a'; ctx.fillRect(-4, -3, 2, 2); ctx.fillRect(-1, -4, 2, 2); ctx.fillRect(2, -3, 2, 2); break;
-      default: // Giant Forest monsters draw themselves; anything unknown is a plain disc
+      default: // Area-specific monsters are rendered by their own scene modules.
+        if (CC.TreeTunnel && CC.TreeTunnel.drawMonster &&
+            CC.TreeTunnel.drawMonster(ctx, e, r, col, dark, t)) break;
         if (CC.Forest && CC.Forest.drawMonster && CC.Forest.drawMonster(ctx, e, r, col, dark, t)) break;
         ctx.fillStyle = col; ctx.beginPath(); ctx.arc(0, 0, r, 0, PI2); ctx.fill();
     }
