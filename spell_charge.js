@@ -159,7 +159,7 @@ function cast(p,slot,where,power){
    p.dashT=.32+.035*power;
    var speed=(500+62*power),direction=norm(where.dx,where.dy);
    p.dashVX=direction.x*speed;p.dashVY=direction.y*speed;
-   p.dashHit=[];p.chargedDash=true;
+   p.dashHit=[];p.chargedDash=p.classId==='thief';
    p.dashAttack=p.classId==='thief';
    p.iframes=Math.max(p.iframes||0,p.dashT+.08);
    p.cd.dash=Math.max(p.cd.dash||0,p.cdMax.dash*1.50);
