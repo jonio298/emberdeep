@@ -1021,6 +1021,32 @@
     }
   };
 
+  // Critical cutscenes reuse the SAME enemy sprites and accumulated gore/wounds as
+  // regular gameplay, but never redraw unrelated enemies, corpses, HUD or scenery.
+  E.drawCriticalTargets = function (ctx, cam, participants) {
+    if(!Array.isArray(participants))return;
+    var seen=[],t=this._time;
+    for(var i=0;i<participants.length;i++){
+      var e=participants[i];
+      if(!e||seen.indexOf(e.id)>=0)continue;
+      seen.push(e.id);
+      var x=e.x-cam.x,y=e.y-cam.y,r=e.r||9;
+      if(x < -70||y < -70||x > cam.w+70||y > cam.h+70)continue;
+      ctx.save();
+      // Subtle silhouette rim light on the black cinematic stage.
+      ctx.shadowColor='#bd384f';ctx.shadowBlur=7;
+      ctx.globalAlpha=.36;ctx.strokeStyle='#ba3b52';ctx.lineWidth=1.3;
+      ctx.beginPath();ctx.ellipse(x,y+Math.min(10,r*.85),r*1.12,r*.47,0,0,Math.PI*2);
+      ctx.stroke();ctx.globalAlpha=1;ctx.shadowBlur=0;
+      ctx.translate(x,y);ctx.scale(1.23,1.23);ctx.translate(-x,-y);
+      // A lethal crit must still show its victim during the finishing blow,
+      // including its detached anatomy and damage marks.
+      var display=e.dead ? Object.assign({},e,{dead:false,deadT:0,hp:Math.max(1,e.hp||0)}) : e;
+      drawEnemy(ctx,display,Math.round(x),Math.round(y),t);
+      ctx.restore();
+    }
+  };
+
   // shared telegraph -> dash -> recover loop for the melee lunge monsters (skeleton, ghoul, scorpion, snake)
   function dashAI(E, e, dt, d, ang, f, sp, c) {
     if (e.state === 'idle') {
