@@ -21,7 +21,7 @@
     good: '#8fd46a', bad: '#e0584a', gold: '#e8c04a' };
   var FONT = 'Georgia, "Palatino Linotype", "Book Antiqua", serif';
   var mouse = { cx: 0, cy: 0, on: false, x: -1, y: -1, bound: false }, hoverInfo = null, canvasEl = null;
-  var TABS = [{ id: 'skills', key: 'KeyK', name: 'Skills' }, { id: 'inv', key: 'KeyI', name: 'Pack' }, { id: 'map', key: 'KeyM', name: 'Map' }, { id: 'stats', key: 'KeyC', name: 'Stats' }];
+  var TABS = [{ id: 'skills', key: 'KeyK', name: 'Skills' }, { id: 'inv', key: 'KeyI', name: 'Pack' }, { id: 'map', key: 'KeyM', name: 'Map' }, { id: 'quests', key: 'KeyJ', name: 'Quests' }, { id: 'stats', key: 'KeyC', name: 'Stats' }];
   var BAG_MAX = 40, FRACT = { crit: 1, speed: 1, cdr: 1, lifesteal: 1 };
 
   var cur = null, target = false, t = 0, clock = 0, hovering = false;
@@ -448,7 +448,8 @@
         var bx = px + 10 + i * (tw + 4), by = py + 10, on = tb.id === cur;
         rr(c, bx, by, tw, 28, 6); c.fillStyle = on ? 'rgba(224,168,74,0.2)' : (target && mouse.x >= bx && mouse.x < bx + tw && mouse.y >= by && mouse.y < by + 28 ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.05)'); c.fill();
         c.lineWidth = on ? 2 : 1; c.strokeStyle = on ? COL.accent : COL.line; c.stroke();
-        tx(c, tb.name + ' [' + tb.key.slice(3) + ']', bx + tw / 2, by + 14.5, 12, on ? COL.accent : COL.dim, 'center');
+        tx(c,pw<425?tb.name:tb.name+' ['+tb.key.slice(3)+']',bx+tw/2,by+14.5,
+           pw<350?10:12,on?COL.accent:COL.dim,'center');
         if (target) addHit(bx, by, tw, 28, function () { open(tb.id); });
       });
       var cx0 = px + pw - 34;
@@ -460,6 +461,7 @@
       if (cur === 'skills') drawSkills(c, hit, ax, ay, aw, ah, p);
       else if (cur === 'inv') drawInv(c, hit, ax, ay, aw, ah, p);
       else if (cur === 'map') drawMap(c, ax, ay, aw, ah);
+      else if (cur === 'quests' && CC.EggQuest) CC.EggQuest.drawJournal(c,ax,ay,aw,ah);
       else if (cur === 'stats') drawStats(c, ax, ay, aw, ah, p);
       c.restore();
       if (target && e > 0.9 && cur === 'inv') drawTip(c, W, H, p);
@@ -514,7 +516,7 @@
     hudBar(c, px + 10, py + 9, bw, 15, p.hp / (p.maxHp || 1), '#ff6b6b', '#b01e3a', Math.ceil(p.hp) + ' / ' + Math.ceil(p.maxHp));
     hudBar(c, px + 10, py + 27, bw, 11, p.mana / (p.maxMana || 1), '#6bb8ff', '#2a56c8', null);
     hudBar(c, px + 10, py + 41, bw, 8, p.xp / (p.xpNext || 1), '#9be36b', '#4a9a2a', null);
-    var where = s.mode === 'dungeon' ? (s.area === 'forest' ? 'Giant Forest' : s.area === 'plains' ? 'Rolling Plains' : 'Floor ' + s.floor) : 'Town';
+    var where = s.mode === 'dungeon' ? (s.area === 'forest' ? 'Giant Forest' : s.area === 'plains' ? 'Rolling Plains' : s.area === 'tree-ascent' ? 'Tree Bough '+(s.treeFloor||1) : 'Floor ' + s.floor) : 'Town';
     tx(c, 'LV ' + (p.level || 1), px + 12, py + 61, 13, COL.accent);
     tx(c, where, px + pw / 2, py + 61, 11, COL.text, 'center');
     tx(c, Math.floor(s.gold || 0) + ' G', px + pw - 12, py + 61, 13, COL.gold, 'right');
@@ -525,6 +527,12 @@
     c.lineWidth = 2; c.strokeStyle = on ? COL.accent : COL.line; c.stroke();
     tx(c, 'PACK', px + 12 + pk / 2, by + sz / 2 + 0.5, 11, on ? COL.accent : '#fff', 'center');
     addHit(px + 12, by, pk, sz, function () { toggle('inv'); });
+    var qx=px+12+pk+7;
+    rr(c,qx,by,49,sz,6);
+    c.fillStyle=target&&cur==='quests'?'rgba(224,168,74,.32)':'rgba(16,10,20,.88)';
+    c.fill();c.lineWidth=1.5;c.strokeStyle='#8e7352';c.stroke();
+    tx(c,'QUEST',qx+24.5,by+sz/2+.5,10,'#e8d2ac','center');
+    addHit(qx,by,49,sz,function(){toggle('quests');});
     if (pts > 0) {
       var pulse = 1 + Math.sin(clock * 5) * 0.12;
       c.beginPath(); c.arc(px + 12 + pk - 2, by + 3, 7 * pulse, 0, 6.2832); c.fillStyle = COL.good; c.fill();
