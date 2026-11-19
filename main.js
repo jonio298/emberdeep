@@ -322,6 +322,47 @@
     if(s.map&&s.map.stairs&&s.player){s.player.x=s.map.stairs.x;s.player.y=s.map.stairs.y+55;}
     call('SaveGame','save');return true;
   };
+  // Continue retains RPG/quest progress; level geometry may regenerate after a
+  // browser restart, while all in-memory maps survive ordinary deaths/returns.
+  CC.loadSavedGame=function(data){
+    if(!data||!data.player||!data.classId)return false;
+    clearWorldCache();
+    call('Camp','clear');call('CriticalScene','reset');call('UI','close');
+    call('Waypoints','reset');call('EggQuest','restore',data.quest);
+    var s=CC.state,p=call('Classes','create',data.classId);
+    if(!p)return false;
+    Object.assign(p,data.player);
+    var hp=p.hp,mp=p.mana;
+    call('Classes','applyItemStats',p);
+    p.hp=Math.max(1,Math.min(p.maxHp,hp));
+    p.mana=Math.max(0,Math.min(p.maxMana,mp));
+    p.perkOpen=false;p.perkChoices=null;p.invuln=1;
+    p.dashHit=null;p.grabbedBy=null;p.grabT=0;
+    s.player=p;s.classId=data.classId;
+    s.floor=Math.max(1,data.floor||1);
+    s.treeFloor=Math.max(1,Math.min(5,data.treeFloor||1));
+    s.gold=data.gold||0;s.kills=data.kills||0;s.runGold=data.runGold||0;
+    s.bestFloor=data.bestFloor||1;s.bridgeDown=!!data.bridgeDown;
+    s.potions=data.potions||0;s.inventory=Array.isArray(data.inventory)?data.inventory:[];
+    s.area=data.area||'town';s.resumeSeed=data.seed;
+    if(data.waypoints&&CC.Waypoints&&CC.Waypoints.restore)
+      CC.Waypoints.restore(data.waypoints);
+    paused=false;resetInputHeld();
+    if(s.area==='town'||data.mode==='town'){
+      s.mode='town';CC.setMode('town');p.hp=Math.max(1,Math.min(p.maxHp,hp));
+      p.mana=Math.max(0,Math.min(p.maxMana,mp));
+    }else{
+      s.mode='dungeon';loadFloor();
+      var nx=Number(data.x),ny=Number(data.y),D=CC.Dungeon,rad=p.r||8;
+      if(Number.isFinite(nx)&&Number.isFinite(ny)&&D&&D.isSolid&&
+          !D.isSolid(nx-rad,ny-rad)&&!D.isSolid(nx+rad,ny+rad)&&
+          !D.isSolid(nx-rad,ny+rad)&&!D.isSolid(nx+rad,ny-rad)){
+        p.x=nx;p.y=ny;
+      }
+    }
+    if(data.camp&&CC.Camp&&CC.Camp.importState)CC.Camp.importState(data.camp);
+    snapCamera();return true;
+  };
   function playerDead() {
     var p = CC.state.player;
     return p && p.hp <= 0;
@@ -948,7 +989,8 @@
     ctx.restore();
     label('Pick your hero', W / 2, Math.max(50, H * 0.12) + 34, 14, '#cfc5ff');
 
-    var cw = Math.min(W - 32, 380), ch = Math.min(120, (H - 190) / CLASSES.length - 10), x = (W - cw) / 2, y = Math.max(50, H * 0.12) + 60;
+    var cw = Math.min(W - 32, 380),
+        ch = Math.max(66,Math.min(120, (H-(call('SaveGame','exists')?265:190))/CLASSES.length-10)), x = (W - cw) / 2, y = Math.max(50, H * 0.12) + 60;
     CLASSES.forEach(function (c, n) {
       var yy = y + n * (ch + 12);
       ui.push({ x: x, y: yy, w: cw, h: ch, cb: function () { startGame(c.id); } });
@@ -969,7 +1011,12 @@
       font(11,'normal');ctx.textAlign='left';ctx.fillStyle='#d8d0ee';
       wrap(c.desc,textX,yy+44,cw-portraitWidth-31,14);
     });
-    label('Tap a hero to begin', W / 2, H - 22, 12, '#8a80a8');
+    if(call('SaveGame','exists')){
+      addButton(W/2-120,H-85,240,43,'Continue Saved Adventure','#436c56',function(){
+        call('SaveGame','load');
+      });
+      label('Choose a hero for a new adventure',W/2,H-21,11,'#aa9cbd');
+    }else label('Tap a hero to begin',W/2,H-22,12,'#8a80a8');
   }
 
   function wrap(text, x, y, maxW, lh) {
@@ -996,7 +1043,8 @@
         if (call('Camp', 'respawn')) { resetInputHeld(); snapCamera(); }
       });
       addButton(W / 2 - 110, H * 0.69, 220, 44, 'Return to Town', '#3a6a3a', function () { CC.returnToTown(); });
-    } else addButton(W / 2 - 100, H * 0.62, 200, 52, 'Return to Town', '#3a6a3a', function () { CC.returnToTown(); });
+    } else addButton(W / 2 - 100, H * 0.72, 200, 47, 'Return to Town', '#3a6a3a', function () { CC.returnToTown(); });
+    addButton(W/2-110,H*.57,220,45,'Respawn — preserve map','#657446',function(){CC.respawnHere();});
   }
 
   function drawFallbackTownPanel() {
