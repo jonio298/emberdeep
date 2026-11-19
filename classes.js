@@ -883,20 +883,46 @@
 
     p.hp = Math.min(p.maxHp, p.hp + p.stats.regen * dt);
     p.mana = Math.min(p.maxMana, p.mana + p.stats.manaRegen * dt);
+    // Real teleport: hero is intangible and cannot drift or attack during
+    // dissolve/reform. SpellCharge owns the timed relocation and arrival hit.
+    if(p.teleportPhase){
+      p.moving=false;
+      updateProjectiles(p,dt);updateBurning(p,dt);
+      updateMinions(p,dt);updateFx(dt);return;
+    }
 
     var mx = +inp.moveX || 0, my = +inp.moveY || 0, ml = Math.sqrt(mx * mx + my * my);
     if (ml > 1) { mx /= ml; my /= ml; ml = 1; }
     if (inp.aimX || inp.aimY) { p.aimX = inp.aimX; p.aimY = inp.aimY; }
     var sp = p.speed * (p.whirlT > 0 ? 0.6 : 1);
     if (p.dashT > 0) {
-      var dsx = p.x, dsy = p.y;
-      var dres = move(p, p.dashVX * dt, p.dashVY * dt);
-      p.dashT -= dt;
-      if (solidAt(p.x, p.y)) { p.x = dsx; p.y = dsy; p.dashT = 0; }
-      if (dres && (dres.hitX || dres.hitY)) { // wall: end the dash at its edge
-        p.dashT = 0;
-        addFx({ kind: 'puff', x: p.x, y: p.y, r: 10, t: 0.2, max: 0.2, col: '#ffd36b' });
-        fxShake(2);
+      var dsx=p.x,dsy=p.y,dres;
+      if(p.chargedDash&&p.dashTarget){
+        // Move by at most remaining distance: a charged dash stops on its
+        // selected world-space landing pixel, never at a fixed dash length.
+        var tx=p.dashTarget.x,ty=p.dashTarget.y,
+          remaining=Math.hypot(tx-p.x,ty-p.y);
+        var step=Math.min(remaining,(p.dashSpeed||600)*dt);
+        var scale=remaining>0?step/remaining:0;
+        dres=move(p,(tx-p.x)*scale,(ty-p.y)*scale);
+        p.dashT-=dt;
+        var reached=Math.hypot(tx-p.x,ty-p.y)<1.35;
+        var blocked=(dres&&(dres.hitX||dres.hitY))||
+          Math.hypot(p.x-dsx,p.y-dsy)<step*.50;
+        if(solidAt(p.x,p.y)){p.x=dsx;p.y=dsy;blocked=true;}
+        if(reached||blocked||p.dashT<=0){
+          p.dashT=0;p.dashTarget=null;
+          if(CC.SpellCharge&&CC.SpellCharge.land)CC.SpellCharge.land(p);
+        }
+      }else{
+        dres=move(p,p.dashVX*dt,p.dashVY*dt);
+        p.dashT-=dt;
+        if(solidAt(p.x,p.y)){p.x=dsx;p.y=dsy;p.dashT=0;}
+        if(dres&&(dres.hitX||dres.hitY)){
+          p.dashT=0;
+          addFx({kind:'puff',x:p.x,y:p.y,r:10,t:.2,max:.2,col:'#ffd36b'});
+          fxShake(2);
+        }
       }
       var l = p.dashAttack ? foes() : [];
       for (k = 0; k < l.length; k++) {
@@ -1179,6 +1205,13 @@
     c.fillStyle = col; c.beginPath(); c.ellipse(px, py + 9, 12 + act * 12, 4.5 + act * 4, 0, 0, 6.2832); c.fill();
     c.restore();
     if (p.invuln > 0 && p.hp > 0 && Math.sin(p.invuln * 60) > 0) c.globalAlpha = 0.5;
+    if(p.teleportPhase){
+      var tp=p.teleportPhase,tpart=tp.t/tp.duration;
+      // Violet smoke / azure rune stream covers the vanished hero; no
+      // fake ground-traversing dash frames during teleport.
+      c.globalAlpha*=!tp.shifted?Math.max(.025,1-tpart*2.65):
+        Math.max(.08,Math.min(1,(tpart-.48)*2.45));
+    }
     // squash and stretch: lean into movement, stretch on attack
     var sq = p.moving ? 1 + Math.sin(p.anim * 14) * 0.04 : 1 + Math.sin(p.anim * 3) * 0.015, st = (p.atkAnim || 0) > 0 ? 1.08 : 1;
     c.save(); c.translate(px, py + 10); c.scale(st / sq, sq * (2 - st)); c.translate(-px, -(py + 10));
