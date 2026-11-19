@@ -76,8 +76,12 @@ function view(w,h){
    var maxScale=Math.min(w/(maxX-minX+72),h/(maxY-minY+84));
    zoom=1+(Math.min(desired,Math.max(1,maxScale))-1)*k;
  }
+ // Tiny camera compression at the two steel impacts, without harsh shakes.
+ var impulse=o.heroClass==='swordsman'?
+    Math.exp(-Math.pow((now-.23)/.042,2))*.04+
+    Math.exp(-Math.pow((now-.46)/.044,2))*.035:0;
  return {x:(minX+maxX)/2,y:(minY+maxY)/2,
-   scale:zoom,blend:k};
+   scale:zoom+impulse*k,blend:k};
 }
 function rate(){return active&&!reduced?1-.76*envelope():1;}
 function stroke(c,x1,y1,x2,y2,color,width){
@@ -269,7 +273,7 @@ function drawWorld(c,cam){
  c.globalAlpha=fade;
  // Only participants actually struck by the crit, plus our original hero.
  var E=CC.Enemies;
- if(E&&E.drawCriticalTargets)E.drawCriticalTargets(c,cam,o.targets);
+ if(E&&E.drawCriticalTargets)E.drawCriticalTargets(c,cam,o.targets,o,t);
  var cp={
    heroClass:o.heroClass,sourceX:o.sourceX,sourceY:o.sourceY,
    angle:o.angle,distance:Math.hypot(o.x-o.sourceX,o.y-o.sourceY),
@@ -371,6 +375,7 @@ CC.CriticalScene={
  isActive:function(){return !!active;},
  drawWorld:drawWorld,drawScreen:drawScreen,drawProjectile:drawProjectile,
  status:function(){return {active:!!active,kind:active&&active.kind,
-  heroClass:active&&active.heroClass,queued:queue.length,time:now,duration:L()};}
+  heroClass:active&&active.heroClass,queued:queue.length,time:now,
+  duration:L(),targets:active?active.targets.length:0};}
 };
 })(window);
