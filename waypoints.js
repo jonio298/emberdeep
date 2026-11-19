@@ -31,6 +31,9 @@ W.discover=function(location,map){
  if(map)point(map,location);
 };
 W.reset=function(){known={town:true,plains:false};open=false;};
+W.restore=function(o){
+ known={town:true,plains:!!(o&&o.plains)};open=false;
+};
 W.isOpen=function(){return open;};
 W.isNear=function(){
  var s=state(),p=s.player,loc=area();
