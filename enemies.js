@@ -48,7 +48,14 @@
     snake: ['tail', 'tail', 'head', 'tail'], bat: ['armLeft', 'armRight', 'head', 'legLeft'],
     slime: ['chunk', 'chunk', 'chunk', 'chunk'], spitter: ['chunk', 'chunk', 'chunk', 'chunk'],
     ghoul: ['armLeft', 'armRight', 'head', 'legLeft'], skeleton: ['armLeft', 'armRight', 'head', 'legLeft'],
-    archer: ['armLeft', 'armRight', 'head', 'legLeft']
+    archer: ['armLeft', 'armRight', 'head', 'legLeft'],
+    bear: ['legLeft', 'armRight', 'legRight', 'head'],
+    scarecrow: ['armLeft', 'armRight', 'head', 'legLeft'],
+    horror: ['armLeft', 'head', 'legLeft', 'armRight'],
+    direwolf: ['legLeft', 'armRight', 'head', 'legRight'],
+    mawworm: ['chunk', 'chunk', 'head', 'chunk'],
+    raven: ['armLeft', 'armRight', 'head', 'legLeft'],
+    crow: ['armLeft', 'armRight', 'head', 'legLeft']
   };
   var ARMOR_LOOK = { skeleton: 1, archer: 1, charger: 1, demon: 1, dragon: 1, scorpion: 1 };
   /* Bone piles: every bone/skull left by a death or a torn-off part adds to the pile within PILE_R px. A pile that stays untouched for
@@ -213,8 +220,8 @@
 
   function make(type, x, y, floor, opts) {
     var d = TYPES[type], hs = 1 + 0.18 * (floor - 1), e = {
-      id: nextId++, type: type, name: d.name, x: x, y: y, r: d.r, hp: 0, maxHp: 0, dmg: Math.round(d.dmg * (1 + 0.12 * (floor - 1))),
-      spd: d.spd, xp: d.xp, color: d.color, state: 'idle', t: 0, cd: 0.5 + R() * 1.5, face: 1, flash: 0, slow: 0, burn: 0,
+      id: nextId++, type: type, name: d.name, x: x, y: y, r: d.r, hp: 0, maxHp: 0, dmg: Math.round(d.dmg * (1 + 0.12 * (floor - 1)) * 1.10),
+      spd: d.spd * 1.07, xp: d.xp, color: d.color, state: 'idle', t: 0, cd: 0.42 + R() * 1.25, face: 1, flash: 0, slow: 0, burn: 0,
       asleep: true, dead: false, contact: 0, size: 0, floor: floor, ang: 0, tele: null, group: 0, anim: R() * 10, strafe: R() < 0.5 ? 1 : -1
     };
     opts = opts || {};
@@ -507,11 +514,12 @@
         var nub = e.nubs[i];
         nub.t += dt; nub.next -= dt;
         if (nub.next > 0) continue;
-        nub.next = nub.t < 2 ? 0.13 + R() * 0.16 : 0.7 + R() * 0.7;
+        nub.next = e.type === 'bear' ? (nub.t < 3 ? .09 + R() * .12 : .38 + R() * .25) :
+          nub.t < 2 ? 0.13 + R() * 0.16 : 0.7 + R() * 0.7;
         var pt = this._nubPosition(e, nub.slot), face = e.face || 1;
         var ang = Math.atan2(pt.y, pt.x * face) + (R() - 0.5) * 0.4;
         var bx = e.x + pt.x * face, by = e.y + pt.y;
-        for (var k = 0; k < (nub.t < 2 ? 3 : 1); k++) {
+        for (var k = 0; k < (e.type === 'bear' && nub.t < 3 ? 5 : nub.t < 2 ? 3 : 1); k++) {
           var a = ang + (R() - 0.5) * 0.6, v = 75 + R() * 80;
           this._gorePart(bx, by, Math.cos(a) * v, Math.sin(a) * v, 40 + R() * 55,
             'blood', this._bloodOf(e), 0.7 + R() * 0.5, 0);
@@ -592,6 +600,7 @@
         if (sx < -20 || sx > vw + 20 || sy < -40 || sy > vh + 20) continue;
         var py = sy - Math.max(0, q.z);
         ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(sx, sy, 1.5 + q.s, 1, 0, 0, PI2); ctx.fill();
+        if (CC.WoundArt && CC.WoundArt.flying(ctx,q,sx,py)) continue;
         if (q.kind === 'blood') {
           ctx.strokeStyle = q.col; ctx.lineWidth = 1 + q.s * 0.6; ctx.lineCap = 'round';
           ctx.beginPath(); ctx.moveTo(sx, py); ctx.lineTo(sx - q.vx * 0.025, py - q.vy * 0.025 + q.vz * 0.025); ctx.stroke(); ctx.lineCap = 'butt';
@@ -951,10 +960,7 @@
         if (D && D.isVisible && !D.isVisible(e.x, e.y)) continue;
         if (e.hidden) continue; // burrowed boss
         drawEnemy(ctx, e, Math.round(e.x - cam.x), Math.round(e.y - cam.y), t);
-        if (e.lostN && !e.dead) { // wound marks: one red stump per detached part
-          ctx.fillStyle = '#a01018';
-          for (var wk = 0; wk < e.lostN; wk++) ctx.fillRect(Math.round(e.x - cam.x) + (wk - 1.5) * e.r * 0.5 - 1, Math.round(e.y - cam.y) - e.r * 0.2 + (wk % 2) * 3, 3, 3);
-        }
+
       }
       this._drawGore(ctx, cam, vw, vh);
       for (i = 0; i < this.piles.length; i++) { // big bone piles stir as the rise roll nears
@@ -1091,20 +1097,9 @@
     var look = e.boss ? e.def.look : e.type;
     // Clip away detached anatomy before drawing both base art and horror details.
     // The hole is genuine transparency, not a dark patch painted over the sprite.
-    var missing = e.missing || {}, cuts = [], rr0 = r;
-    if (missing.head) cuts.push([-r * 0.67, -r * 1.6, r * 1.34, r * 1.37]);
-    if (missing.hornLeft) cuts.push([-r * 1.45, -r * 1.65, r * 0.95, r * 0.8]);
-    if (missing.hornRight) cuts.push([r * 0.5, -r * 1.65, r * 0.95, r * 0.8]);
-    if (missing.armLeft) cuts.push([-r * 2, -r * 0.13, r * 1.35, r * 0.9]);
-    if (missing.armRight) cuts.push([r * 0.65, -r * 0.13, r * 1.35, r * 0.9]);
-    if (missing.legLeft) cuts.push([-r * 1.1, r * 0.62, r * 0.95, r * 1.1]);
-    if (missing.legRight) cuts.push([r * 0.15, r * 0.62, r * 0.95, r * 1.1]);
+    // Monster-specific jagged anatomical tears replace uniform rectangular cutouts.
     ctx.save();
-    if (cuts.length) {
-      ctx.beginPath(); ctx.rect(-r * 4, -r * 4, r * 8, r * 8);
-      for (var ci = 0; ci < cuts.length; ci++) ctx.rect(cuts[ci][0], cuts[ci][1], cuts[ci][2], cuts[ci][3]);
-      ctx.clip('evenodd');
-    }
+    if (CC.WoundArt) CC.WoundArt.clip(ctx,e,look,r);
     switch (look) {
       case 'bat': // wings flap
         var fl = Math.sin(e.anim * 22) * 5;
@@ -1216,26 +1211,7 @@
     }
     if (!e.collapsed) horrorArt(ctx, e, look, r, col, dark, t);
     ctx.restore(); // restore anatomy clipping
-    if (!e.collapsed && e.nubs) {
-      var bc = (TYPES[e.type] || {}).blood || BLOOD;
-      var bone = (TYPES[e.type] || {}).bone && !(TYPES[e.type] || {}).blood;
-      for (var ni = 0; ni < e.nubs.length; ni++) {
-        var n = e.nubs[ni], pt = { x: 0, y: 0 };
-        if (n.slot === 'head') { pt.y = -r * 0.23; }
-        else if (n.slot.indexOf('horn') === 0) { pt.x = n.slot === 'hornLeft' ? -r * 0.55 : r * 0.55; pt.y = -r * 0.75; }
-        else if (n.slot.indexOf('arm') === 0) { pt.x = n.slot === 'armLeft' ? -r * 0.73 : r * 0.73; pt.y = r * 0.12; }
-        else if (n.slot.indexOf('leg') === 0) { pt.x = n.slot === 'legLeft' ? -r * 0.42 : r * 0.42; pt.y = r * 0.63; }
-        else { pt.x = -r; pt.y = r * 0.3; }
-        ctx.fillStyle = bone ? '#605c53' : '#3a080c';
-        ctx.beginPath(); ctx.ellipse(pt.x, pt.y, Math.max(2, r * 0.20), Math.max(1.8, r * 0.13), 0, 0, PI2); ctx.fill();
-        if (!bone) {
-          ctx.fillStyle = bc; ctx.beginPath(); ctx.ellipse(pt.x, pt.y, Math.max(1.5, r * 0.14), Math.max(1.3, r * 0.10), 0, 0, PI2); ctx.fill();
-          var pulse = n.t < 2 ? 1 + 0.5 * Math.sin(n.t * 31) : 0.5;
-          ctx.strokeStyle = bc; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.moveTo(pt.x, pt.y);
-          ctx.lineTo(pt.x + (pt.x < 0 ? -1 : 1) * pulse * 3, pt.y + 2 + pulse * 3); ctx.stroke();
-        }
-      }
-    }
+    if (!e.collapsed && CC.WoundArt) CC.WoundArt.paint(ctx,e,look,r,t);
     ctx.restore();
     if (dead) return;
     if (e.shield > 0) { ctx.strokeStyle = 'rgba(120,160,255,0.8)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(sx, sy, e.r + 2, 0, PI2); ctx.stroke(); }
