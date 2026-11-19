@@ -57,8 +57,10 @@
   };
 
   function newMods() {
-    return { dmgPct: 0, hpPct: 0, manaPct: 0, speedPct: 0, cdrPct: 0, critPct: 0, critDmg: 0, lifesteal: 0, regenHp: 0, regenMana: 0, armor: 0, xpPct: 0, aoePct: 0 };
+    return { dmgPct: 0, hpPct: 0, manaPct: 0, speedPct: 0, cdrPct: 0, critPct: 0, critDmg: 0, lifesteal: 0, regenHp: 0, regenMana: 0, armor: 0, xpPct: 0, aoePct: 0, spell1Pct: 0, spell2Pct: 0, spellCdr: 0 };
   }
+  // spell power from the skill tree: 1 + the class's Mastery bonus for spell 1 or 2
+  function sm(p, n) { return 1 + (p.mods['spell' + n + 'Pct'] || 0); }
   function flag(p, k) { p.flags[k] = (p.flags[k] || 0) + 1; }
   function perk(id, name, desc, fn) { return { id: id, name: name, desc: desc, apply: fn }; }
 
@@ -146,7 +148,7 @@
     if (p.maxHp > oldHp) p.hp += p.maxHp - oldHp;
     if (p.maxMana > oldMana) p.mana += p.maxMana - oldMana;
     p.hp = Math.min(p.hp, p.maxHp); p.mana = Math.min(p.mana, p.maxMana);
-    for (var c in d.cdMax) p.cdMax[c] = d.cdMax[c] * (1 - p.stats.cdr);
+    for (var c in d.cdMax) p.cdMax[c] = d.cdMax[c] * (1 - p.stats.cdr) * ((c === 'spell1' || c === 'spell2') ? 1 - Math.min(0.5, m.spellCdr || 0) : 1);
   }
 
   function create(classId) {
@@ -155,7 +157,7 @@
     var p = {
       isHero: true, classId: id, name: d.name, color: d.color, x: 0, y: 0, r: 8,
       level: 1, xp: 0, xpNext: xpToNext(1), hp: 0, maxHp: 0, mana: 0, maxMana: 0, stats: {},
-      equipment: { weapon: null, armor: null, ring: null, amulet: null, trinket: null },
+      equipment: { weapon: null, armor: null, helm: null, gloves: null, boots: null, ring: null, amulet: null, trinket: null },
       mods: newMods(), flags: {}, perks: [], perkQueue: 0, perkOpen: false, perkChoices: null,
       cd: { attack: 0, spell1: 0, spell2: 0, dash: 0 }, cdMax: {}, cost: { spell1: d.cost.spell1, spell2: d.cost.spell2 },
       spells: d.spells.slice(), spellNames: [], face: 1, aimX: 1, aimY: 0, moving: false, anim: 0, atkAnim: 0, swingAng: 0, castFlash: 0,
@@ -184,6 +186,10 @@
       syncSpells(p);
       fxText(p.x, p.y - 20, 'LEVEL UP! ' + p.level, '#ffe08a', 14);
       if (p.level === SPELL2_LEVEL) fxText(p.x, p.y - 34, p.spells[1] + ' unlocked!', '#9fe3ff', 12);
+      if (p.level === 10 || p.level === 20 || p.level === 30) { // a new charge attack, equipped at once (change it on the skill screen)
+        var ST = CC.SkillTree, cs = ST && ST.chargeSkills(p.classId)[p.level / 10];
+        if (cs) { p.chargeSel = p.level / 10; fxText(p.x, p.y - 48, 'NEW CHARGE: ' + cs.name, '#ffd36b', 12); }
+      }
       fxBurst(p.x, p.y, '#ffe08a', 24, 110);
       addFx({ kind: 'ring', x: p.x, y: p.y, r: 36, t: 0.5, max: 0.5, col: '#ffe08a' });
       if (p.level % 3 === 0) { p.perkQueue++; if (!p.perkOpen) openPerk(p); }
@@ -300,6 +306,7 @@
       fxFlash('#ffe9a0', 0.08);
       addFx({ kind: 'ring', x: e.x, y: e.y, r: 18, t: 0.22, max: 0.22, col: '#ffd24a' });
       fxShake(2); fxStop(0.05);
+      if (p && !opts.noCine && !opts.minion && alive(e) && CC.Cine) CC.Cine.crit(p, e);
     }
     if (back && !crit) fxText(e.x, e.y - (e.r || 8) - 14, 'Backstab', '#7de0b8', 9);
     if (p && p.flags.venom && !opts.minion && type !== 'poison' && type !== 'fire' && alive(e)) ignite(e, 3, p.stats.dmg * 0.4, '#7dff5a', 'poison');
@@ -478,7 +485,7 @@
       var rx = p.x + Math.cos(a) * d, ry = p.y + Math.sin(a) * d;
       if (solidAt(rx, ry)) { rx = p.x; ry = p.y; } // never raise a skeleton inside a wall
       minions.push({ x: rx, y: ry, r: 6, hp: hp, maxHp: hp, life: 18 * (1 + 0.5 * (p.flags.linger || 0)),
-        dmg: (5 + p.stats.dmg * 0.6) * (1 + 0.5 * (p.flags.deadly || 0)), atkCd: 0, anim: rnd(0, 6), face: 1, spawn: 0.35 });
+        dmg: (5 + p.stats.dmg * 0.6) * (1 + 0.5 * (p.flags.deadly || 0)) * sm(p, 1), atkCd: 0, anim: rnd(0, 6), face: 1, spawn: 0.35 });
       addFx({ kind: 'puff', x: rx, y: ry, r: 14, t: 0.4, max: 0.4, col: '#7dff9a' });
     }
     if (!free) addFx({ kind: 'ring', x: p.x, y: p.y, r: 34, t: 0.4, max: 0.4, col: '#7dff9a' });
@@ -490,19 +497,19 @@
     if (cls === 'swordsman') { // shield bash
       if (!spend(p, 'spell1')) return;
       dir = aimDir(p, 48);
-      cone(p, dir, 38, 0.85, 1.3, 'bash', 18, 1.0 + 0.6 * (p.flags.stun || 0));
+      cone(p, dir, 38, 0.85, 1.3 * sm(p, 1), 'bash', 18, 1.0 + 0.6 * (p.flags.stun || 0));
       addFx({ kind: 'arc', x: p.x, y: p.y, a: dir.a, half: 0.85, r: 38, t: 0.25, max: 0.25, col: '#6bb8ff' });
       p.swingAng = dir.a; p.atkAnim = 0.25; fxShake(4); fxStop(0.05);
     } else if (cls === 'wizard') { // fireball
       if (!spend(p, 'spell1')) return;
       dir = aimDir(p, 190);
-      shoot(p, dir.a, 170, 1.2, 2.4, 6, 'fire', 'fire', '#ff8a3c', { aoe: 40 * (1 + p.mods.aoePct + 0.3 * (p.flags.inferno || 0)) });
+      shoot(p, dir.a, 170, 1.2, 2.4 * sm(p, 1), 6, 'fire', 'fire', '#ff8a3c', { aoe: 40 * (1 + p.mods.aoePct + 0.3 * (p.flags.inferno || 0)) });
       p.castFlash = 0.3; fxShake(2);
     } else if (cls === 'thief') { // throwing knives
       if (!spend(p, 'spell1')) return;
       dir = aimDir(p, 170);
       var spread = p.flags.storm ? [-0.4, -0.2, 0, 0.2, 0.4] : [-0.14, 0, 0.14];
-      for (var ki = 0; ki < spread.length; ki++) shoot(p, dir.a + spread[ki], 300, 0.6, 0.8, 3, 'shard', 'knife', '#cfd8e6');
+      for (var ki = 0; ki < spread.length; ki++) shoot(p, dir.a + spread[ki], 300, 0.6, 0.8 * sm(p, 1), 3, 'shard', 'knife', '#cfd8e6');
       p.atkAnim = 0.15; p.castFlash = 0.1;
     } else { // raise skeletons
       var cap = 2 + Math.floor(p.level / 3) + 2 * (p.flags.legion || 0);
@@ -523,12 +530,12 @@
     } else if (cls === 'wizard') { // frost nova
       if (!spend(p, 'spell2')) return;
       var rad = 72 * (1 + p.mods.aoePct);
-      radial(p, p.x, p.y, rad, 1.0, 'frost', 2.5 + 1.5 * (p.flags.frostbite || 0), 0.45);
+      radial(p, p.x, p.y, rad, 1.0 * sm(p, 2), 'frost', 2.5 + 1.5 * (p.flags.frostbite || 0), 0.45);
       addFx({ kind: 'ring', x: p.x, y: p.y, r: rad, t: 0.45, max: 0.45, col: '#9fe3ff' });
       fxBurst(p.x, p.y, '#9fe3ff', 20, 120); fxShake(3); p.castFlash = 0.3;
     } else if (cls === 'thief') { // smoke bomb: slows nearby foes, brief invulnerability, primes an ambush
       if (!spend(p, 'spell2')) return;
-      radial(p, p.x, p.y, 56, 0.4, 'smoke', 2.5, 0.5);
+      radial(p, p.x, p.y, 56, 0.4 * sm(p, 2), 'smoke', 2.5, 0.5);
       p.iframes = Math.max(p.iframes, 0.5); p.ambushT = 2;
       addFx({ kind: 'ring', x: p.x, y: p.y, r: 56, t: 0.5, max: 0.5, col: '#8a90a8' });
       addFx({ kind: 'puff', x: p.x, y: p.y, r: 22, t: 0.5, max: 0.5, col: '#5a5f78' });
@@ -537,7 +544,7 @@
       var t = nearest(p.x, p.y, 110);
       if (!t) { if (noManaT <= 0) { fxText(p.x, p.y - 18, 'No target', '#aaa', 10); noManaT = 0.6; } return; }
       if (!spend(p, 'spell2')) return;
-      var dealt = hitEnemy(t, p.stats.dmg * 2.0, 'drain');
+      var dealt = hitEnemy(t, p.stats.dmg * 2.0 * sm(p, 2), 'drain');
       heal(p, dealt * (0.5 + 0.5 * (p.flags.vampirism || 0)));
       addFx({ kind: 'beam', x: p.x, y: p.y, x2: t.x, y2: t.y, t: 0.3, max: 0.3, col: '#7dff9a', ref: t });
       p.castFlash = 0.3; p.face = t.x >= p.x ? 1 : -1;
@@ -545,26 +552,45 @@
     p.cd.spell2 = p.cdMax.spell2;
   }
 
+  // The dash goes where the hero is moving, never toward a target. Standing still it goes the way the hero faces.
+  // Swordsman: a plain dash (invulnerable, no damage). Thief: a dash attack that can chain up to 3 times, the 2nd and 3rd only after the previous one hit something.
+  var CHAIN_MAX = 3, CHAIN_WINDOW = 1.4;
   function doDash(p) {
     var inp = CC.input || {};
     var dx = +inp.moveX || 0, dy = +inp.moveY || 0;
-    if (Math.abs(dx) + Math.abs(dy) < 0.2) { dx = p.aimX; dy = p.aimY; }
+    if (Math.abs(dx) + Math.abs(dy) < 0.2) { dx = p.face || 1; dy = 0; }
     var l = Math.sqrt(dx * dx + dy * dy) || 1; dx /= l; dy /= l;
-    p.cd.dash = p.cdMax.dash;
     p.iframes = 0.22;
-    if (p.classId === 'swordsman') { // dash-slash
-      p.dashT = 0.16; p.dashVX = dx * 440; p.dashVY = dy * 440; p.dashHit = [];
-      p.swingAng = Math.atan2(dy, dx); p.atkAnim = 0.2;
-    } else { // blink / shadow step, stepped so walls stop it
-      addFx({ kind: 'puff', x: p.x, y: p.y, r: 14, t: 0.3, max: 0.3, col: p.classId === 'wizard' ? '#c9a8ff' : p.classId === 'thief' ? '#8a90a8' : '#7dff9a' });
+    if (p.classId === 'swordsman' || p.classId === 'thief') {
+      var attack = p.classId === 'thief';
+      p.cd.dash = attack ? 0 : p.cdMax.dash; // the thief's cool-down starts when the chain ends
+      p.dashT = attack ? 0.14 : 0.16; p.dashVX = dx * (attack ? 460 : 440); p.dashVY = dy * (attack ? 460 : 440); p.dashHit = []; p.dashAttack = attack;
+      p.swingAng = Math.atan2(dy, dx);
+      if (attack) {
+        p.atkAnim = 0.14; p.ambushT = Math.max(p.ambushT || 0, 0.4);
+        p.dashComboT = CHAIN_WINDOW; // stays open until the next dash or it runs out
+        addFx({ kind: 'puff', x: p.x, y: p.y, r: 12, t: 0.25, max: 0.25, col: '#b9a6ff' });
+      } else addFx({ kind: 'puff', x: p.x, y: p.y, r: 10, t: 0.2, max: 0.2, col: '#ffd36b' });
+    } else { // blink, stepped so walls stop it
+      p.cd.dash = p.cdMax.dash;
+      addFx({ kind: 'puff', x: p.x, y: p.y, r: 14, t: 0.3, max: 0.3, col: '#c9a8ff' });
       var bx0 = p.x, by0 = p.y;
-      if (p.classId === 'thief') p.ambushT = 1.2; // next hit after a shadow step is a guaranteed backstab crit
       move(p, dx * 64, dy * 64);
       if (solidAt(p.x, p.y)) { p.x = bx0; p.y = by0; } // never end inside a wall
-      // stepped + circle-resolved by the dungeon: stops at the wall edge, never inside
       addFx({ kind: 'puff', x: p.x, y: p.y, r: 14, t: 0.3, max: 0.3, col: p.classId === 'wizard' ? '#c9a8ff' : '#7dff9a' });
     }
     if (dx) p.face = dx > 0 ? 1 : -1;
+  }
+  // Called when a dash ends. Thief: a dash that hit opens the next link of the chain (up to 3); a miss, or the third link, starts the cool-down.
+  function endDash(p) {
+    if (!p.dashAttack) return;
+    var hits = p.dashHit ? p.dashHit.length : 0;
+    p.dashChain = (p.dashChain || 0) + 1;
+    if (hits > 0 && p.dashChain < CHAIN_MAX) {
+      p.cd.dash = 0; p.dashComboT = CHAIN_WINDOW;
+      fxText(p.x, p.y - 24, 'DASH ' + (p.dashChain + 1) + '/' + CHAIN_MAX + ' READY', '#b9a6ff', 9);
+    } else { p.dashChain = 0; p.dashComboT = 0; p.cd.dash = p.cdMax.dash; }
+    p.dashAttack = false;
   }
 
   /* ---------- per-frame systems ---------- */
@@ -695,7 +721,7 @@
         addFx({ kind: 'puff', x: p.x, y: p.y, r: 10, t: 0.2, max: 0.2, col: '#ffd36b' });
         fxShake(2);
       }
-      var l = foes();
+      var l = p.dashAttack ? foes() : [];
       for (k = 0; k < l.length; k++) {
         var e = l[k]; if (!alive(e) || p.dashHit.indexOf(e) >= 0) continue;
         var dx = e.x - p.x, dy = e.y - p.y, rr = (e.r || 8) + p.r + 6;
@@ -703,7 +729,9 @@
       }
       addFx({ kind: 'puff', x: p.x, y: p.y, r: 8, t: 0.2, max: 0.2, col: '#ffffff' });
       p.moving = true;
+      if (p.dashT <= 0) endDash(p);
     } else {
+      if (p.dashComboT > 0) { p.dashComboT -= dt; if (p.dashComboT <= 0) { p.dashChain = 0; p.cd.dash = p.cdMax.dash; } }
       move(p, mx * sp * dt, my * sp * dt);
       p.moving = ml > 0.1;
     }
@@ -722,7 +750,7 @@
       if (p.whirlTick <= 0) {
         p.whirlTick = 0.14;
         var rad = 34 * (1 + p.mods.aoePct + 0.3 * (p.flags.wide || 0));
-        if (radial(p, p.x, p.y, rad, 0.8, 'slash')) fxStop(0.02);
+        if (radial(p, p.x, p.y, rad, 0.8 * sm(p, 2), 'slash')) fxStop(0.02);
         addFx({ kind: 'ring', x: p.x, y: p.y, r: rad, t: 0.2, max: 0.2, col: '#ffffff' });
       }
     }
@@ -952,7 +980,7 @@
 
   CC.Classes = {
     DEFS: DEFS, PERKS: PERKS, minions: minions, projectiles: projs,
-    create: create, update: update, draw: draw, drawPlayer: drawPlayer,
+    create: create, update: update, draw: draw, drawPlayer: drawPlayer, drawHero: drawHero,
     gainXp: gainXp, xpToNext: xpToNext, damage: damage, heal: heal, damageMinion: damageMinion,
     applyItemStats: applyItemStats, choosePerk: choosePerk, hitEnemy: hitEnemy, status: status,
     get player() { return hero(); }

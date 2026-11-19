@@ -5,7 +5,7 @@
  *   source: an enemy {x,y,elite?,boss?} or a chest {x,y,tier,opened}. roll() spawns drop entities
  *   (opts.spawn === false only returns them) and returns the array.
  * Item: {uid,name,slot,rarity,rarityName,color,ilvl,stats,effect,legendary,value,compare(equipped)}
- *   slots: weapon, armor, ring, amulet, trinket. compare() returns tooltip data (see Loot.compare).
+ *   slots: weapon, armor, helm, gloves, boots, ring, amulet, trinket. compare() returns tooltip data (see Loot.compare).
  *   After JSON save/load call CC.Loot.hydrate(item) to restore compare().
  * Pickup: gold -> CC.state.gold, hp/mana orbs heal the player, potions -> CC.state.potions,
  *   items -> CC.state.inventory (auto-sold for gold when 40 are held). update() calls pickupNear(CC.state.player).
@@ -56,16 +56,19 @@
   var RARITY_TIER_BONUS = { normal: 0, elite: 1, boss: 2 };
   var LUCK_CAP = 30;
   var LEVEL_ODDS = 0.06, FLOOR_ODDS = 0.02; // per player level / per floor shift of the rarity weights
-  var SLOTS = ['weapon', 'armor', 'ring', 'amulet', 'trinket'];
-  var SLOT_W = { weapon: 25, armor: 25, ring: 17, amulet: 15, trinket: 18 };
+  var SLOTS = ['weapon', 'armor', 'helm', 'gloves', 'boots', 'ring', 'amulet', 'trinket'];
+  var SLOT_W = { weapon: 22, armor: 18, helm: 12, gloves: 10, boots: 10, ring: 14, amulet: 12, trinket: 14 };
   var LABEL = { dmg: 'Damage', armor: 'Armor', hp: 'Max HP', mana: 'Max Mana', crit: 'Crit %', speed: 'Move Speed %',
     lifesteal: 'Life Steal %', luck: 'Luck', cdr: 'Cooldown Reduction %', regen: 'HP Regen/s', magnet: 'Pickup Range', gold: 'Gold Find %' };
   var BASE = { dmg: 3, armor: 3, hp: 12, mana: 10, crit: 2, speed: 2, lifesteal: 1, luck: 3, cdr: 2, regen: 0.4, magnet: 10, gold: 5 };
   var SCORE = { dmg: 3, armor: 1.5, hp: 0.5, mana: 0.4, crit: 2, speed: 2, lifesteal: 3, luck: 1, cdr: 2.5, regen: 5, magnet: 0.2, gold: 0.4 };
-  var PRIMARY = { weapon: 'dmg', armor: 'armor', ring: 'crit', amulet: 'mana', trinket: 'luck' };
+  var PRIMARY = { weapon: 'dmg', armor: 'armor', helm: 'armor', gloves: 'crit', boots: 'speed', ring: 'crit', amulet: 'mana', trinket: 'luck' };
   var POOL = {
     weapon: ['dmg', 'crit', 'lifesteal', 'speed', 'cdr', 'mana'],
     armor: ['armor', 'hp', 'regen', 'speed', 'hp', 'luck'],
+    helm: ['armor', 'hp', 'mana', 'luck', 'regen', 'cdr'],
+    gloves: ['crit', 'dmg', 'speed', 'lifesteal', 'armor', 'cdr'],
+    boots: ['speed', 'armor', 'hp', 'regen', 'luck', 'cdr'],
     ring: ['crit', 'speed', 'lifesteal', 'cdr', 'dmg', 'gold'],
     amulet: ['mana', 'hp', 'regen', 'cdr', 'luck', 'magnet'],
     trinket: ['luck', 'gold', 'magnet', 'speed', 'cdr', 'crit']
@@ -73,6 +76,9 @@
   var BASES = {
     weapon: ['Rusty Blade', 'Iron Sword', 'Oak Staff', 'Bone Wand', 'Hooked Cleaver', 'Crystal Rod', 'Hunter Bow', 'Short Bow', 'Iron Mace', 'Spiked Club', 'Hunting Spear', 'Boar Pike'],
     armor: ['Leather Vest', 'Chain Shirt', 'Moth-eaten Robe', 'Bone Plate', 'Hide Cuirass', 'Cloth Wrap'],
+    helm: ['Leather Cap', 'Iron Helm', 'Bone Crown', 'Cloth Hood', 'Horned Helm', 'Skull Mask'],
+    gloves: ['Cloth Wraps', 'Leather Gloves', 'Iron Gauntlets', 'Bone Claws', 'Hide Mitts', 'Spiked Fists'],
+    boots: ['Worn Boots', 'Leather Boots', 'Iron Greaves', 'Soft Sandals', 'Hide Treads', 'Bone Stompers'],
     ring: ['Copper Ring', 'Bone Ring', 'Iron Band', 'Silver Loop', 'Jade Ring', 'Twisted Band'],
     amulet: ['Fang Necklace', 'Glass Pendant', 'Rune Charm', 'Amber Amulet', 'Tooth Talisman', 'Shell Choker'],
     trinket: ['Old Coin', 'Glowing Pebble', 'Cracked Idol', 'Mushroom Cap', 'Spider Silk Knot', 'Lantern Shard']
@@ -591,6 +597,9 @@
     switch (it.slot) {
       case 'weapon': ctx.beginPath(); ctx.moveTo(x - 4 * s, y + 4 * s); ctx.lineTo(x + 4 * s, y - 4 * s); ctx.stroke(); ctx.fillRect(x - 4 * s, y + 1 * s, 4 * s, 2); break;
       case 'armor': ctx.beginPath(); ctx.moveTo(x - 4 * s, y - 4 * s); ctx.lineTo(x + 4 * s, y - 4 * s); ctx.lineTo(x + 3 * s, y + 2 * s); ctx.lineTo(x, y + 5 * s); ctx.lineTo(x - 3 * s, y + 2 * s); ctx.closePath(); ctx.fill(); break;
+      case 'helm': ctx.beginPath(); ctx.arc(x, y, 4.5 * s, Math.PI, 0); ctx.lineTo(x + 4.5 * s, y + 4 * s); ctx.lineTo(x - 4.5 * s, y + 4 * s); ctx.closePath(); ctx.fill(); break;
+      case 'gloves': ctx.fillRect(x - 3 * s, y - 1 * s, 6 * s, 5 * s); ctx.fillRect(x - 3 * s, y - 5 * s, 1.5 * s, 4 * s); ctx.fillRect(x - 0.7 * s, y - 5 * s, 1.5 * s, 4 * s); ctx.fillRect(x + 1.6 * s, y - 5 * s, 1.5 * s, 4 * s); break;
+      case 'boots': ctx.beginPath(); ctx.moveTo(x - 2 * s, y - 5 * s); ctx.lineTo(x + 2 * s, y - 5 * s); ctx.lineTo(x + 2 * s, y + 1 * s); ctx.lineTo(x + 5 * s, y + 4 * s); ctx.lineTo(x - 3 * s, y + 4 * s); ctx.closePath(); ctx.fill(); break;
       case 'ring': ctx.beginPath(); ctx.arc(x, y + 1, 3.5 * s, 0, 6.3); ctx.stroke(); ctx.fillRect(x - 1, y - 5 * s, 3, 3); break;
       case 'amulet': ctx.beginPath(); ctx.moveTo(x - 4 * s, y - 5 * s); ctx.lineTo(x, y - 1 * s); ctx.lineTo(x + 4 * s, y - 5 * s); ctx.stroke(); ctx.beginPath(); ctx.arc(x, y + 2 * s, 2.5 * s, 0, 6.3); ctx.fill(); break;
       case 'charm': ctx.beginPath(); ctx.moveTo(x, y - 5 * s); ctx.lineTo(x + 4 * s, y); ctx.lineTo(x, y + 5 * s); ctx.lineTo(x - 4 * s, y); ctx.closePath(); ctx.fill(); break;

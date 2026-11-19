@@ -32,6 +32,7 @@
   var STEP = 1 / 60;
   var time = 0;
   var hitStopLeft = 0, shakeMag = 0;
+  var timeScale = 1;                 // set by CC.Cine: 0 freezes the game, 0.2 is slow motion
   var particles = [], texts = [], decals = [];
   var flashT = 0, flashMax = 0.15, flashCol = '#ffffff', hurtT = 0, lastHp = null, beat = 0, vigKey = '', vigGrad = null;
   var ui = [];                       // clickable canvas buttons rebuilt each frame
@@ -603,6 +604,7 @@
       else { drawFallbackFloor(); call('Classes', 'drawPlayer', ctx, cam); }
     }
     drawFallbackPlayer();
+    if (s.mode === 'dungeon') call('Cine', 'draw', ctx, cam);
     for (var a = 0; a < particles.length; a++) {
       var q = particles[a], qa = Math.max(0, q.life / q.max);
       ctx.globalAlpha = q.blood ? Math.min(1, qa * 2) : qa;
@@ -651,6 +653,7 @@
       call('Minimap', 'draw', ctx, CC.Minimap.margin, CC.Minimap.margin, function (x, y, w, h, cb) { ui.push({ x: x, y: y, w: w, h: h, cb: cb }); });
       left = CC.Minimap.margin + CC.Minimap.size + 8; bw = Math.min(112, W - left - 110);
     }
+    if (has('UI', 'drawHud')) return; // the themed panel (bars, level, gold, area, K / I / M, Retreat) is drawn by CC.UI.drawHud
     bar(left, top, bw, 16, p.hp / p.maxHp, '#ff6b6b', '#b01e3a', Math.ceil(p.hp) + '/' + Math.ceil(p.maxHp));
     bar(left, top + 20, bw, 12, p.mana / p.maxMana, '#6bb8ff', '#2a56c8', null);
     var xpNext = p.xpNext || p.xpToNext || 1;
@@ -802,7 +805,9 @@
     var dt = Math.min(0.1, (now - last) / 1000 || 0);
     last = now;
     try {
-      if (hitStopLeft > 0) { hitStopLeft -= dt; time += dt; }
+      if (CC.Cine) { CC.Cine.tick(dt); timeScale = CC.fx.scale == null ? 1 : CC.fx.scale; } else timeScale = 1;
+      dt *= timeScale;
+      if (hitStopLeft > 0 && timeScale > 0) { hitStopLeft -= dt; time += dt; }
       else {
         acc += dt;
         while (acc >= STEP) { update(STEP); acc -= STEP; }

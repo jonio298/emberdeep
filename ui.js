@@ -25,7 +25,7 @@
   var BAG_MAX = 40, FRACT = { crit: 1, speed: 1, cdr: 1, lifesteal: 1 };
 
   var cur = null, target = false, t = 0, clock = 0, hovering = false;
-  var sel = { skill: null, item: null };      // item: {src:'bag', i} | {src:'eq', key}
+  var sel = { skill: null, item: null, charge: null };      // item: {src:'bag', i} | {src:'eq', key}
   var toast = { s: '', t: 0, c: COL.text };
   var flash = {};                             // skill id -> seconds of pulse left
   var bb = { pct: 1, chip: 1, alpha: 0, name: '', phase: 1, intro: 0, introMax: 2.2, color: '#c03a3a' };
@@ -100,7 +100,7 @@
     var C = CC.Classes;
     if (C && typeof C.applyItemStats === 'function') { try { C.applyItemStats(p); } catch (e) { /* best effort */ } }
   }
-  function lootSlots() { return CC.Loot && Array.isArray(CC.Loot.SLOTS) && CC.Loot.SLOTS.length ? CC.Loot.SLOTS : ['weapon', 'armor', 'ring', 'amulet', 'trinket']; }
+  function lootSlots() { return CC.Loot && Array.isArray(CC.Loot.SLOTS) && CC.Loot.SLOTS.length ? CC.Loot.SLOTS : ['weapon', 'armor', 'helm', 'gloves', 'boots', 'ring', 'amulet', 'trinket']; }
   function charmCount() {
     var L = CC.Loot;
     if (!L) return 0;
@@ -118,7 +118,7 @@
     var n = Math.round(v * 10) / 10; // item data already holds whole percents for crit/speed/cdr/lifesteal
     return (n > 0 ? '+' : '') + n + (FRACT[k] ? '%' : '');
   }
-  function glyph(slot) { return { weapon: 'W', armor: 'A', ring: 'R', amulet: 'N', trinket: 'T', charm: 'C' }[slot] || '?'; }
+  function glyph(slot) { return { weapon: 'W', armor: 'A', helm: 'H', gloves: 'G', boots: 'B', ring: 'R', amulet: 'N', trinket: 'T', charm: 'C' }[slot] || '?'; }
   function equippedFor(p, it) {
     if (!it || !p || !p.equipment) return null;
     return it.slot === 'charm' ? null : (p.equipment[it.slot] || null);
@@ -189,11 +189,11 @@
   function drawSkills(c, addHit, x, y, w, h, p) {
     var ST = CC.SkillTree;
     if (!ST || !p) { tx(c, ST ? 'No hero yet' : 'Skill tree unavailable', x + w / 2, y + h / 2, 14, COL.dim, 'center'); return; }
-    var pts = ST.points(p), list = ST.nodes(p.classId), detailH = 96;
+    var pts = ST.points(p), list = ST.nodes(p.classId), detailH = 90, stripH = 64, lvl = p.level || 1;
     tx(c, 'Skill points: ' + pts, x + 6, y + 8, 14, pts > 0 ? COL.good : COL.dim);
-    tx(c, p.name + '  LV ' + (p.level || 1), x + w - 6, y + 8, 12, p.color || COL.text, 'right');
-    var colW = w / 4, top = y + 50, rowH = Math.max(46, Math.min(86, (h - detailH - 64) / 3)), R = Math.max(13, Math.min(21, colW * 0.34, rowH * 0.34)), i, n, cx, cy;
-    for (i = 0; i < 4; i++) tx(c, ST.colTitle(p.classId, i), x + colW * (i + 0.5), y + 30, 11, i === 3 ? (p.color || COL.accent) : COL.dim, 'center');
+    tx(c, p.name + '  LV ' + lvl + '/' + ST.MAX_LEVEL, x + w - 6, y + 8, 12, p.color || COL.text, 'right');
+    var colW = w / 4, top = y + 44, avail = h - detailH - stripH - 60, rowH = Math.max(32, Math.min(64, avail / 6)), R = Math.max(10, Math.min(17, colW * 0.3, rowH * 0.36)), i, n, cx, cy;
+    for (i = 0; i < 4; i++) tx(c, ST.colTitle(p.classId, i), x + colW * (i + 0.5), y + 28, 11, i === 3 ? (p.color || COL.accent) : COL.dim, 'center');
     function pos(nd) { return { x: x + colW * (nd.col + 0.5), y: top + nd.tier * rowH + R }; }
     var byId = {};
     list.forEach(function (nd) { byId[nd.id] = nd; });
@@ -206,24 +206,45 @@
     });
     list.forEach(function (nd) {
       var ps = pos(nd); cx = ps.x; cy = ps.y;
-      var rk = ST.rank(p, nd.id), can = ST.canBuy(p, nd.id).ok, chosen = sel.skill === nd.id, f = flash[nd.id] || 0;
+      var rk = ST.rank(p, nd.id), can = ST.canBuy(p, nd.id).ok, chosen = sel.skill === nd.id, f = flash[nd.id] || 0, locked = lvl < nd.lvl;
       if (can) { c.globalAlpha = 0.35 + 0.35 * Math.sin(clock * 4); c.strokeStyle = COL.good; c.lineWidth = 2; c.beginPath(); c.arc(cx, cy, R + 4, 0, 6.2832); c.stroke(); c.globalAlpha = 1; }
       if (f > 0) { c.globalAlpha = f * 1.6; c.strokeStyle = '#fff'; c.lineWidth = 2; c.beginPath(); c.arc(cx, cy, R + 4 + (0.6 - f) * 40, 0, 6.2832); c.stroke(); c.globalAlpha = 1; }
-      c.beginPath(); c.arc(cx, cy, R, 0, 6.2832);
-      c.fillStyle = rk > 0 ? (nd.mastery ? (p.color || COL.accent) : '#5a4a9a') : 'rgba(255,255,255,0.07)'; c.fill();
-      c.lineWidth = chosen ? 3 : 1.5; c.strokeStyle = chosen ? '#fff' : (rk > 0 || can ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.2)'); c.stroke();
+      c.beginPath();
+      if (nd.capstone) { c.moveTo(cx, cy - R - 3); c.lineTo(cx + R + 3, cy); c.lineTo(cx, cy + R + 3); c.lineTo(cx - R - 3, cy); c.closePath(); } else c.arc(cx, cy, R, 0, 6.2832);
+      c.fillStyle = rk > 0 ? (nd.mastery || nd.capstone ? (p.color || COL.accent) : '#5a4a9a') : locked ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.07)'; c.fill();
+      c.lineWidth = chosen ? 3 : 1.5; c.strokeStyle = chosen ? '#fff' : (nd.capstone ? COL.gold : (rk > 0 || can ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.2)')); c.stroke();
       tx(c, nd.name.charAt(0), cx, cy + 0.5, Math.round(R * 0.95), rk > 0 ? '#fff' : (can ? COL.text : COL.dim), 'center');
-      tx(c, rk + '/' + nd.max, cx, cy + R + 9, 10, rk >= nd.max ? COL.good : COL.dim, 'center');
-      addHit(cx - R - 6, cy - R - 6, (R + 6) * 2, (R + 6) * 2 + 14, function () { sel.skill = nd.id; });
+      if (rk === 0 && locked) tx(c, 'L' + nd.lvl, cx, cy + R + 9, 9, COL.bad, 'center');
+      else tx(c, rk + '/' + nd.max, cx, cy + R + 9, 10, rk >= nd.max ? COL.good : COL.dim, 'center');
+      addHit(cx - R - 6, cy - R - 6, (R + 6) * 2, (R + 6) * 2 + 14, function () { sel.skill = nd.id; sel.charge = null; });
+    });
+    // charge attacks: the starting one and the three that unlock at levels 10, 20 and 30
+    var sy = y + h - detailH - stripH + 4, cl = ST.chargeSkills(p.classId), cw = (w - 3 * 5) / 4, curCharge = ST.chargeSelected(p);
+    tx(c, 'Charge attack (hold ATK)', x + 6, sy + 4, 11, COL.accent);
+    cl.forEach(function (cs, k) {
+      var bx = x + k * (cw + 5), by = sy + 14, bh = stripH - 22, open = ST.chargeUnlocked(p, k), on = curCharge === k;
+      rr(c, bx, by, cw, bh, 6); c.fillStyle = on ? 'rgba(224,168,74,0.28)' : open ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)'; c.fill();
+      c.lineWidth = on ? 2.5 : 1.5; c.strokeStyle = on ? COL.accent : open ? COL.line : 'rgba(255,255,255,0.12)'; c.stroke();
+      var nm = cs.name.length > 11 ? cs.name.replace(/ .*/, '') : cs.name;
+      tx(c, nm, bx + cw / 2, by + bh * 0.38, 10, open ? (on ? COL.accent : COL.text) : COL.dim, 'center');
+      tx(c, open ? (on ? 'ACTIVE' : 'Tap to use') : 'Level ' + cs.lvl, bx + cw / 2, by + bh * 0.72, 9, open ? (on ? COL.good : COL.dim) : COL.bad, 'center', 'normal');
+      addHit(bx, by, cw, bh, function () { sel.charge = k; sel.skill = null; if (open) ST.selectCharge(p, k); });
     });
     // detail box
     var dy = y + h - detailH, nd = sel.skill && ST.node(p.classId, sel.skill);
     frame(c, x, dy, w, detailH, true);
+    if (sel.charge !== null && cl[sel.charge]) {
+      var csel = cl[sel.charge];
+      tx(c, csel.name, x + 12, dy + 16, 15, COL.accent);
+      wrapText(c, csel.desc, x + 12, dy + 38, w - 24, 15, 12, COL.text);
+      tx(c, ST.chargeUnlocked(p, sel.charge) ? (curCharge === sel.charge ? 'Equipped' : 'Tap it to equip') : 'Unlocks at level ' + csel.lvl, x + 12, dy + detailH - 14, 11, ST.chargeUnlocked(p, sel.charge) ? COL.good : COL.dim);
+      return;
+    }
     if (!nd) { tx(c, 'Tap a skill to read it. Glowing skills can be learned.', x + w / 2, dy + detailH / 2, 12, COL.dim, 'center'); return; }
     var chk = ST.canBuy(p, nd.id), rk2 = ST.rank(p, nd.id);
     tx(c, nd.name + '  ' + rk2 + '/' + nd.max, x + 12, dy + 16, 15, nd.mastery ? (p.color || COL.accent) : COL.text);
     n = wrapText(c, nd.desc, x + 12, dy + 38, w - 24 - 96, 15, 12, COL.text);
-    tx(c, chk.ok ? 'Cost: 1 point' : chk.reason, x + 12, dy + detailH - 14, 11, chk.ok ? COL.good : COL.dim);
+    tx(c, chk.ok ? 'Cost: 1 point  (needs level ' + nd.lvl + ')' : chk.reason, x + 12, dy + detailH - 14, 11, chk.ok ? COL.good : COL.dim);
     button(c, addHit, x + w - 100, dy + detailH - 40, 88, 30, rk2 >= nd.max ? 'Maxed' : 'Learn', chk.ok, function () {
       if (ST.buy(p, nd.id)) flash[nd.id] = 0.6;
     });
@@ -276,6 +297,17 @@
     c.restore();
   }
 
+  // the pack as a stitched leather satchel: a leather body, a buckled flap along the top and a pip for every slot in use
+  function satchel(c, x, y, w, h, used) {
+    rr(c, x, y, w, h, 12);
+    var g = c.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, '#3a2616'); g.addColorStop(1, '#22150c');
+    c.fillStyle = g; c.fill(); c.lineWidth = 2; c.strokeStyle = '#6b4a2a'; c.stroke();
+    c.save(); c.setLineDash([4, 3]); c.lineWidth = 1; c.strokeStyle = 'rgba(224,168,74,0.45)'; rr(c, x + 3, y + 3, w - 6, h - 6, 9); c.stroke(); c.restore();
+    rr(c, x + w / 2 - 9, y - 5, 18, 10, 3); c.fillStyle = COL.gold; c.fill(); c.lineWidth = 1.5; c.strokeStyle = '#5a4630'; c.stroke(); // buckle
+    c.fillStyle = '#2a1a0c'; c.fillRect(x + w / 2 - 1.5, y - 2, 3, 4);
+    for (var i = 0; i < BAG_MAX; i += 5) { c.fillStyle = used > i ? COL.accent : 'rgba(255,255,255,0.1)'; c.fillRect(x + 10 + (i / 5) * 6, y + h + 2, 4, 3); }
+  }
+
   function drawInv(c, addHit, x, y, w, h, p) {
     if (!p) { tx(c, 'No hero yet', x + w / 2, y + h / 2, 14, COL.dim, 'center'); return; }
     var bag = inv(), keys = slotKeys(), COLS = 8, gap = 4, detailH = 112, nCharm = keys.filter(function (k) { return k.indexOf('charm') === 0; }).length;
@@ -287,7 +319,7 @@
       x + w - 6, yy + 7, 11, COL.text, 'right');
     yy += 18;
     // paper doll: hero silhouette with slots around it (amulet head, weapon / armor / ring across the body, trinket at the feet), charms in a row below
-    var step = cs + 12, mid = x + w / 2 - cs / 2, POS = { amulet: [0, 0], weapon: [-1, 1], armor: [0, 1], ring: [1, 1], trinket: [0, 2] }, extra = 0, ci = 0, i;
+    var step = cs + 12, mid = x + w / 2 - cs / 2, POS = { amulet: [-1, 0], helm: [0, 0], trinket: [1, 0], weapon: [-1, 1], armor: [0, 1], ring: [1, 1], gloves: [-1, 2], boots: [1, 2] }, extra = 0, ci = 0, i;
     c.save(); c.fillStyle = 'rgba(224,168,74,0.08)';
     c.beginPath(); c.arc(x + w / 2, yy + cs * 0.55, cs * 0.4, 0, 6.2832); c.fill();
     rr(c, x + w / 2 - cs * 0.65, yy + cs * 1.05, cs * 1.3, cs * 1.6, cs * 0.28); c.fill(); c.restore();
@@ -304,6 +336,7 @@
     tx(c, 'Pack ' + bag.length + '/' + BAG_MAX, x + 6, yy + 7, 12, bag.length >= BAG_MAX ? COL.bad : COL.dim);
     button(c, addHit, x + w - 104, yy - 1, 100, 17, 'Sort by value', bag.length > 1, sortBag, '#4a3a22');
     yy += 18;
+    satchel(c, gx - 5, yy - 4, cs * COLS + gap * (COLS - 1) + 10, Math.ceil(BAG_MAX / COLS) * (cs + gap) + 4, bag.length);
     for (i = 0; i < BAG_MAX; i++) {
       (function (idx) {
         var cx = gx + (idx % COLS) * (cs + gap), cy = yy + Math.floor(idx / COLS) * (cs + gap), it = bag[idx];
@@ -419,23 +452,48 @@
     c.restore();
   }
 
+  // one themed bar: dark well, bronze frame, glossy fill, optional centred label
+  function hudBar(c, x, y, w, h, frac, c1, c2, label) {
+    frac = Math.max(0, Math.min(1, frac || 0));
+    rr(c, x, y, w, h, 3); c.fillStyle = 'rgba(10,6,14,0.9)'; c.fill();
+    if (frac > 0) {
+      var g = c.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, c1); g.addColorStop(1, c2);
+      rr(c, x + 1.5, y + 1.5, Math.max(3, (w - 3) * frac), h - 3, 2); c.fillStyle = g; c.fill();
+      c.fillStyle = 'rgba(255,255,255,0.18)'; c.fillRect(x + 2, y + 2, Math.max(2, (w - 4) * frac), Math.max(1, (h - 4) * 0.35));
+    }
+    c.lineWidth = 1.5; c.strokeStyle = COL.line; rr(c, x, y, w, h, 3); c.stroke();
+    if (label) { c.save(); c.shadowColor = '#000'; c.shadowBlur = 3; tx(c, label, x + w / 2, y + h / 2 + 0.5, Math.max(8, h - 5), '#fff', 'center'); c.restore(); }
+  }
+
+  // the unified top-right panel: health, mana and experience bars, level, gold, where you are, the K / I / M buttons and Retreat, all in one dark-fantasy frame
   function drawHud(c, W, H, addHit) {
     var p = hero();
     if (!p || p.perkOpen) return;
-    var sz = 28, gap = 4, x0 = W - 12 - (sz * 3 + gap * 2), y0 = 146, pts = CC.SkillTree ? CC.SkillTree.points(p) : 0;
-    TABS.forEach(function (tb, i) {
-      var x = x0 + i * (sz + gap), on = target && cur === tb.id;
-      rr(c, x, y0, sz, sz, 6); c.fillStyle = on ? 'rgba(224,168,74,0.35)' : 'rgba(16,10,20,0.85)'; c.fill();
+    var s = CC.state, mm = CC.Minimap, left = mm ? mm.margin + mm.size + 8 : 12;
+    var pw = Math.min(214, Math.max(150, W - 8 - left)), px = W - 8 - pw, py = 8, ph = 104, bw = pw - 20, pts = CC.SkillTree ? CC.SkillTree.points(p) : 0, i;
+    frame(c, px, py, pw, ph, false);
+    hudBar(c, px + 10, py + 9, bw, 15, p.hp / (p.maxHp || 1), '#ff6b6b', '#b01e3a', Math.ceil(p.hp) + ' / ' + Math.ceil(p.maxHp));
+    hudBar(c, px + 10, py + 27, bw, 11, p.mana / (p.maxMana || 1), '#6bb8ff', '#2a56c8', null);
+    hudBar(c, px + 10, py + 41, bw, 8, p.xp / (p.xpNext || 1), '#9be36b', '#4a9a2a', null);
+    var where = s.mode === 'dungeon' ? (s.area === 'forest' ? 'Giant Forest' : s.area === 'plains' ? 'Rolling Plains' : 'Floor ' + s.floor) : 'Town';
+    tx(c, 'LV ' + (p.level || 1), px + 12, py + 61, 13, COL.accent);
+    tx(c, where, px + pw / 2, py + 61, 11, COL.text, 'center');
+    tx(c, Math.floor(s.gold || 0) + ' G', px + pw - 12, py + 61, 13, COL.gold, 'right');
+    c.fillStyle = 'rgba(224,168,74,0.25)'; c.fillRect(px + 12, py + 70, pw - 24, 1);
+    var sz = 24, gap = 4, by = py + 74;
+    TABS.forEach(function (tb, k) {
+      var x = px + 12 + k * (sz + gap), on = target && cur === tb.id;
+      rr(c, x, by, sz, sz, 6); c.fillStyle = on ? 'rgba(224,168,74,0.35)' : 'rgba(16,10,20,0.85)'; c.fill();
       c.lineWidth = 2; c.strokeStyle = on ? COL.accent : COL.line; c.stroke();
-      rr(c, x + 3, y0 + 3, sz - 6, sz - 6, 4); c.lineWidth = 1; c.strokeStyle = 'rgba(224,168,74,0.2)'; c.stroke();
-      tx(c, tb.key.slice(3), x + sz / 2, y0 + sz / 2 + 0.5, 13, on ? COL.accent : '#fff', 'center');
-      addHit(x, y0, sz, sz, function () { toggle(tb.id); });
+      tx(c, tb.key.slice(3), x + sz / 2, by + sz / 2 + 0.5, 12, on ? COL.accent : '#fff', 'center');
+      addHit(x, by, sz, sz, function () { toggle(tb.id); });
       if (tb.id === 'skills' && pts > 0) { // unspent-points badge
         var pulse = 1 + Math.sin(clock * 5) * 0.12;
-        c.beginPath(); c.arc(x + sz - 3, y0 + 3, 7 * pulse, 0, 6.2832); c.fillStyle = COL.good; c.fill();
-        tx(c, String(pts), x + sz - 3, y0 + 3.5, 9, '#0b0812', 'center');
+        c.beginPath(); c.arc(x + sz - 3, by + 3, 7 * pulse, 0, 6.2832); c.fillStyle = COL.good; c.fill();
+        tx(c, String(pts), x + sz - 3, by + 3.5, 9, '#0b0812', 'center');
       }
     });
+    if (s.mode === 'dungeon') button(c, addHit, px + pw - 12 - 68, by, 68, sz, 'Retreat', true, function () { if (CC.returnToTown) CC.returnToTown(); }, '#5a2a22');
   }
 
   function update(dt) {

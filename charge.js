@@ -65,9 +65,127 @@
   }
 
   /* ---------- release effects ---------- */
+  function skillIndex(p) { return CC.SkillTree && CC.SkillTree.chargeSelected ? CC.SkillTree.chargeSelected(p) : 0; }
+  function skillName(p) { var l = CC.SkillTree && CC.SkillTree.chargeSkills(p.classId); var i = skillIndex(p); return l && l[i] ? l[i].name : NAMES[p.classId]; }
+  function within(p, r) { return foes().filter(function (f) { return alive(f) && Math.hypot(f.x - p.x, f.y - p.y) <= r + (f.r || 8); }); }
+  function later(t, fn) { effects.push({ kind: 'later', t: t, max: t, fn: fn, x: 0, y: 0 }); }
+  function ring(x, y, rad, col, t) { effects.push({ kind: 'ring', x: x, y: y, rad: rad, col: col, t: t, max: t }); }
+  function beam(x, y, x2, y2, col, t) { effects.push({ kind: 'beam', x: x, y: y, x2: x2, y2: y2, col: col, t: t, max: t }); }
+
+  // The charge attacks unlocked at levels 10, 20 and 30 (CC.SkillTree.CHARGE, index 1-3); index 0 is each class's original attack in release().
+  function releaseSkill(p, cls, idx, pow, a, scale) {
+    var dmg = p.stats.dmg, i, l, e;
+    if (cls === 'swordsman') {
+      if (idx === 1) { // Blade Storm: three spinning cuts around the hero
+        for (i = 0; i < 3; i++) (function (n) {
+          later(0.14 * n, function () {
+            within(p, 62).forEach(function (f) { hit(f, dmg * 1.7 * scale, 'slash'); knock(f, p.x, p.y, 6); });
+            ring(p.x, p.y, 62, '#ffffff', 0.25); burst(p.x, p.y, '#ffd36b', 14, 130); shake(3);
+          });
+        })(i);
+      } else if (idx === 2) { // Dragon Rush: a long cutting dash
+        var len = 130 + 40 * pow, steps = 10, hitList = [], sx = p.x, sy = p.y;
+        p.iframes = Math.max(p.iframes || 0, 0.5);
+        for (i = 0; i < steps; i++) {
+          move(p, a.x * len / steps, a.y * len / steps);
+          within(p, 14).forEach(function (f) { if (hitList.indexOf(f) < 0) { hitList.push(f); hit(f, dmg * 3.4 * scale, 'slash'); burst(f.x, f.y, '#ffd36b', 10, 120); } });
+        }
+        beam(sx, sy, p.x, p.y, '#ffffff', 0.4); shake(6);
+      } else { // Sky Cleaver: three huge shockwaves
+        [-0.5, 0, 0.5].forEach(function (off) {
+          var ca = Math.atan2(a.y, a.x) + off;
+          effects.push({ kind: 'wave', x: p.x, y: p.y, dx: Math.cos(ca), dy: Math.sin(ca), run: 0, range: 240 + 80 * pow, w: 26, dmg: dmg * 4.2 * scale, hit: [], trail: [] });
+        });
+        shake(9); burst(p.x, p.y, '#ff8a4a', 30, 160); ring(p.x, p.y, 50, '#ffd0a0', 0.4);
+      }
+    } else if (cls === 'wizard') {
+      if (idx === 1) { // Chain Lightning
+        var cur = { x: p.x, y: p.y }, left = foes().filter(function (f) { return alive(f) && Math.hypot(f.x - p.x, f.y - p.y) <= 190; }), n = 0;
+        while (left.length && n < 6) {
+          left.sort(function (u, v) { return Math.hypot(u.x - cur.x, u.y - cur.y) - Math.hypot(v.x - cur.x, v.y - cur.y); });
+          e = left.shift(); beam(cur.x, cur.y, e.x, e.y, '#bfe9ff', 0.35); hit(e, dmg * (3.2 - n * 0.3) * scale, 'arcane'); status(e, 'stun', 0.5);
+          burst(e.x, e.y, '#bfe9ff', 10, 110); cur = { x: e.x, y: e.y }; n++;
+        }
+        shake(4);
+      } else if (idx === 2) { // Blizzard
+        var rad = 96 + 20 * pow; ring(p.x, p.y, rad, '#9fe3ff', 0.7);
+        for (i = 0; i < 4; i++) (function (k) {
+          later(0.18 * k, function () { within(p, rad).forEach(function (f) { hit(f, dmg * 1.3 * scale, 'frost'); status(f, 'slow', 3, 0.4); }); burst(p.x, p.y, '#cfefff', 18, 150); });
+        })(i);
+        shake(4);
+      } else { // Meteor Storm
+        var tg = foes().filter(function (f) { return alive(f) && Math.hypot(f.x - p.x, f.y - p.y) <= 200; });
+        for (i = 0; i < 5; i++) (function (k) {
+          later(0.22 * k, function () {
+            var f = tg.length ? tg[k % tg.length] : null, live = f && alive(f);
+            var tx = live ? f.x : p.x + a.x * (50 + k * 20) + rnd(-30, 30), ty = live ? f.y : p.y + a.y * (50 + k * 20) + rnd(-30, 30);
+            effects.push({ kind: 'meteor', x: tx, y: ty, t: 0.6, max: 0.6, rad: 52, dmg: dmg * 3.6 * scale });
+          });
+        })(i);
+      }
+    } else if (cls === 'necromancer') {
+      if (idx === 1) { // Soul Spear: a piercing drain along a line
+        var healed = 0, reach = 190 + 40 * pow;
+        beam(p.x, p.y, p.x + a.x * reach, p.y + a.y * reach, '#7dff9a', 0.45);
+        foes().forEach(function (f) {
+          if (!alive(f)) return;
+          var px = f.x - p.x, py = f.y - p.y, along = px * a.x + py * a.y, off = Math.abs(px * -a.y + py * a.x);
+          if (along > 0 && along < reach && off < 18 + (f.r || 8)) {
+            hit(f, dmg * 3.2 * scale, 'drain');
+            if (healed < 5) { healed++; if (CC.Classes.heal) CC.Classes.heal(p, p.maxHp * 0.03); }
+            burst(f.x, f.y, '#7dff9a', 8, 100);
+          }
+        });
+        shake(4);
+      } else if (idx === 2) { // Plague Nova
+        var pr = 120 + 30 * pow; ring(p.x, p.y, pr, '#9acd32', 0.7);
+        within(p, pr).forEach(function (f) { hit(f, dmg * 2.6 * scale, 'poison'); status(f, 'slow', 3.5, 0.55); burst(f.x, f.y, '#9acd32', 8, 90); });
+        shake(5);
+      } else { // Army of the Dead
+        var mm = CC.Classes.minions, cap = 12;
+        for (i = 0; i < 6 && mm && mm.length < cap; i++) {
+          var ang = rnd(0, 6.28), hp = 40 + p.level * 4;
+          mm.push({ x: p.x + Math.cos(ang) * 24, y: p.y + Math.sin(ang) * 24, r: 6, hp: hp, maxHp: hp, life: 22, dmg: 6 + dmg * 0.7, atkCd: 0, anim: rnd(0, 6), face: 1, spawn: 0.35 });
+        }
+        within(p, 90).forEach(function (f) { hit(f, dmg * 2.4 * scale, 'drain'); status(f, 'stun', 0.8); });
+        ring(p.x, p.y, 90, '#7dff9a', 0.6); shake(8); burst(p.x, p.y, '#7dff9a', 30, 150);
+      }
+    } else { // thief
+      if (idx === 1) { // Venom Burst
+        ring(p.x, p.y, 80, '#7dff5a', 0.6);
+        within(p, 80).forEach(function (f) { hit(f, dmg * 2.4 * scale, 'poison'); status(f, 'slow', 3, 0.5); burst(f.x, f.y, '#7dff5a', 8, 90); });
+        shake(3);
+      } else if (idx === 2) { // Phantom Blades: up to five foes, two strikes each
+        l = foes().filter(function (f) { return alive(f) && Math.hypot(f.x - p.x, f.y - p.y) <= 160; })
+          .sort(function (u, v) { return Math.hypot(u.x - p.x, u.y - p.y) - Math.hypot(v.x - p.x, v.y - p.y); }).slice(0, 5);
+        p.iframes = Math.max(p.iframes || 0, 1.0); p.ambushT = 2;
+        l.forEach(function (f, n) {
+          later(0.12 * n, function () {
+            if (!alive(f)) return;
+            var fx0 = p.x, fy0 = p.y, ddx = f.x - p.x, ddy = f.y - p.y, d = Math.sqrt(ddx * ddx + ddy * ddy) || 1;
+            move(p, ddx / d * Math.max(0, d - 12), ddy / d * Math.max(0, d - 12)); beam(fx0, fy0, p.x, p.y, '#d8ccff', 0.3);
+            hit(f, dmg * 1.5 * scale, 'shadow'); if (alive(f)) hit(f, dmg * 1.5 * scale, 'shadow');
+            burst(f.x, f.y, '#b9a6ff', 10, 110);
+          });
+        });
+        shake(3);
+      } else { // Deathmark
+        l = within(p, 210); p.iframes = Math.max(p.iframes || 0, 0.8);
+        l.forEach(function (f) { ring(f.x, f.y, 14, '#ff5a6a', 1.0); });
+        later(1.0, function () { l.forEach(function (f) { if (!alive(f)) return; hit(f, dmg * 7 * scale, 'shadow'); burst(f.x, f.y, '#ff5a6a', 16, 140); }); shake(8); });
+      }
+    }
+  }
+
   function release(p, pow) {
     var cls = p.classId, dmg = p.stats.dmg, a = aim(p), i, e, l;
     var scale = 0.6 + 0.6 * pow; // a partial charge is weaker, a full one hits hardest
+    var sidx = skillIndex(p);
+    if (sidx > 0) {
+      releaseSkill(p, cls, sidx, pow, a, scale);
+      text(p.x, p.y - 26, skillName(p) + (pow >= 0.99 ? '!' : ''), COLORS[cls] || '#fff', pow >= 0.99 ? 13 : 10);
+      return;
+    }
     if (cls === 'swordsman') {
       effects.push({ kind: 'wave', x: p.x, y: p.y, dx: a.x, dy: a.y, run: 0, range: 190 + 90 * pow, w: 20 + 10 * pow,
         dmg: dmg * 3.2 * scale, hit: [], trail: [] });
@@ -139,6 +257,9 @@
           burst(e.x, e.y, '#ffb070', 8, 100);
         }
         if (f.run >= f.range) effects.splice(k, 1);
+      } else if (f.kind === 'later') {
+        f.t -= dt;
+        if (f.t <= 0) { effects.splice(k, 1); try { f.fn(); } catch (err) { /* a skill step never breaks the loop */ } }
       } else if (f.kind === 'meteor') {
         f.t -= dt;
         if (f.t <= 0) {
@@ -281,6 +402,13 @@
         var v = 1 - f.t / f.max;
         arc(ctx, sx, sy, f.rad * v, 0, 6.2832, '#7dff9a', 6 * (1 - v) + 1, 1 - v);
         arc(ctx, sx, sy, f.rad * v * 0.7, 0, 6.2832, '#2a8a4a', 3, 0.6 * (1 - v));
+      } else if (f.kind === 'ring') {
+        var rv = 1 - f.t / f.max;
+        arc(ctx, sx, sy, f.rad * (0.3 + 0.7 * rv), 0, 6.2832, f.col, 4 * (1 - rv) + 1, 1 - rv);
+      } else if (f.kind === 'beam') {
+        var bw = f.t / f.max;
+        ctx.globalAlpha = bw; ctx.strokeStyle = f.col; ctx.lineWidth = 3 * bw + 0.8;
+        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(f.x2 - cam.x, f.y2 - cam.y); ctx.stroke();
       } else if (f.kind === 'slash') {
         var w = f.t / f.max;
         ctx.globalAlpha = w; ctx.strokeStyle = '#d8ccff'; ctx.lineWidth = 3 * w + 0.5;

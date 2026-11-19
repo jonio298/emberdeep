@@ -15,7 +15,7 @@
   var CC = root.CC = root.CC || {};
   var T = CC.TILE = CC.TILE || 32;
   var PI2 = Math.PI * 2;
-  var SIZE = 104, MARGIN = 6, ZOOMS = [12, 18, 26, 40], zi = 1;
+  var SIZE = 130, MARGIN = 6, ZOOMS = [12, 18, 26, 40], zi = 1;
   var M = CC.Minimap = { size: SIZE, margin: MARGIN, width: SIZE + MARGIN * 2, height: SIZE + 14 + MARGIN, zoomIndex: function () { return zi; } };
 
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
