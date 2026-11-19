@@ -737,7 +737,7 @@
     else if(slot==='spell2')doSpell2(p);
     else if(slot==='dash'&&p.dashT<=0)doDash(p);
     else return false;
-    return p.cd[slot]>.001;
+    return p.cd[slot]>.001||(slot==='dash'&&p.dashT>0);
   }
   function summonCharged(x,y,count,p) {
     p=p||hero();if(!p||p.classId!=='necromancer')return 0;
