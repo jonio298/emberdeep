@@ -681,6 +681,7 @@
     call('EggQuest','update',dt);
     call('SaveGame','auto',dt);
     if (uiOpen() !== uiWas) { uiWas = uiOpen(); resetInputHeld(); }
+    if (call('Eagle', 'sceneActive')) return; // the egg is hatching: the game waits
     if (paused || uiWas || (p && p.perkOpen) ||
         (CC.Waypoints && CC.Waypoints.isOpen && CC.Waypoints.isOpen()) ||
         (CC.Camp && CC.Camp.isOpen && CC.Camp.isOpen())) return;
@@ -1119,6 +1120,7 @@
       call('UI', 'draw', ctx, W, H, addHit);
       call('Camp', 'drawUI', ctx, W, H, addHit);
       call('Waypoints','drawUI',ctx,W,H,addHit);
+      call('Eagle','drawScene',ctx,W,H,addHit); // hatching scene and naming, above everything
     } else if (m === 'dead') {
       drawHud(); drawDead();
     }

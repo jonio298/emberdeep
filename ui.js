@@ -346,8 +346,8 @@
       var egg=CC.EggQuest.status(),labelEgg='';
       if(egg.stage==='gathered')labelEgg='3 RESCUED EGGS';
       else if(egg.stage==='nest')labelEgg='WARM EAGLE EGG';
-      else if(egg.stage==='complete')labelEgg=egg.hatched?'EAGLET COMPANION':
-        'WARM EGG '+egg.steps+'/'+egg.required;
+      else if(egg.stage==='complete')labelEgg=egg.hatched?('EAGLE'+(egg.name?' · '+egg.name.toUpperCase():'')):
+        'WARM EGG · HATCHES AT LV '+egg.hatchLevel;
       if(labelEgg)tx(c,labelEgg,x+w*.51,yy+7,10,'#eed39c','center');
     }
     button(c, addHit, x + w - 104, yy - 1, 100, 17, 'Sort by value', bag.length > 1, sortBag, '#4a3a22');

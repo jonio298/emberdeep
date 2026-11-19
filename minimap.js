@@ -148,6 +148,7 @@
       if (e.boss) { ctx.fillStyle = '#fff'; ctx.fillRect(ex2 - 1.5, ey2 - 1, 1, 1.4); ctx.fillRect(ex2 + 0.5, ey2 - 1, 1, 1.4); }
       ctx.globalAlpha = 1;
     }
+    if (CC.Eagle && CC.Eagle.drawMinimap) CC.Eagle.drawMinimap(ctx, sx, sy, sc); // the eagle: its sight circle and a small bird
     ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.beginPath(); ctx.arc(cx, cy, 6.5, 0, PI2); ctx.fill(); // the hero: a white arrow
     ctx.save(); ctx.translate(cx, cy); ctx.rotate(ang);
     ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#10141c'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(5.5, 0); ctx.lineTo(-3.6, 3.6); ctx.lineTo(-1.6, 0); ctx.lineTo(-3.6, -3.6); ctx.closePath(); ctx.stroke(); ctx.fill();

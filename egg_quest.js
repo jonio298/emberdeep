@@ -4,31 +4,30 @@
 (function(root){
 'use strict';
 var CC=root.CC=root.CC||{},Q=CC.EggQuest={},TAU=Math.PI*2;
-var HATCH_STEPS=800,stage='unstarted',stepCount=0,stepFraction=0,hatched=false,clock=0;
+var HATCH_LEVEL=10,stage='unstarted',hatched=false,hatching=false,clock=0;
 var messages={
  unstarted:'Sister Alder cares for the birds by the town fire. Speak with her.',
  climbing:'Climb the Ancient Tree in the Giant Forest. Clear all five boughs.',
  gathered:'Three orphaned eagle eggs are safe in your sack. Return to Sister Alder.',
  nest:'Two eggs are warming by the town fire. Accept one to keep warm in your sack.',
- complete:'Keep the eagle egg warm while you travel. It will hatch after enough steps.'
+ complete:'Keep the eagle egg warm in your sack. It hatches when you reach level 10.'
 };
 function notice(s,col){
  var p=CC.state&&CC.state.player;
  if(p&&CC.fx&&CC.fx.text)CC.fx.text(p.x,p.y-25,s,col||'#dfd79f',12);
 }
 function save(){if(CC.SaveGame&&CC.SaveGame.save)CC.SaveGame.save();}
-Q.reset=function(){stage='unstarted';stepCount=0;stepFraction=0;hatched=false;clock=0;};
+Q.reset=function(){stage='unstarted';hatched=false;hatching=false;clock=0;if(CC.Eagle&&CC.Eagle.reset)CC.Eagle.reset();};
 Q.restore=function(o){
  o=o||{};var choices=['unstarted','climbing','gathered','nest','complete'];
  stage=choices.indexOf(o.stage)>=0?o.stage:'unstarted';
- stepCount=Math.max(0,Math.floor(o.steps||0));stepFraction=0;
- hatched=!!o.hatched||stepCount>=HATCH_STEPS;
- if(stage!=='complete'){stepCount=0;hatched=false;}
+ hatching=false;hatched=stage==='complete'&&!!o.hatched;
+ if(CC.Eagle&&CC.Eagle.setName)CC.Eagle.setName(hatched&&o.name?o.name:'');
 };
-Q.serialize=function(){return {stage:stage,steps:stepCount,hatched:hatched};};
-Q.status=function(){return {stage:stage,steps:stepCount,required:HATCH_STEPS,
+Q.serialize=function(){return {stage:stage,hatched:hatched,name:CC.Eagle&&CC.Eagle.name?CC.Eagle.name():''};};
+Q.status=function(){return {stage:stage,hatchLevel:HATCH_LEVEL,
  eggCount:stage==='gathered'?3:stage==='nest'?1:stage==='complete'&&!hatched?1:0,
- hatched:hatched,complete:stage==='complete'};};
+ hatched:hatched,hatching:hatching,complete:stage==='complete',name:CC.Eagle&&CC.Eagle.name?CC.Eagle.name():''};};
 Q.stage=function(){return stage;};
 Q.accept=function(){
  if(stage!=='unstarted')return false;
@@ -48,27 +47,28 @@ Q.deliver=function(){
 };
 Q.keepEgg=function(){
  if(stage!=='nest')return false;
- stage='complete';stepCount=0;stepFraction=0;hatched=false;
+ stage='complete';hatched=false;hatching=false;
  notice('A WARM EAGLE EGG JOINS YOUR SACK','#cbefb1');save();return true;
 };
 Q.tunnelUnlocked=function(){return stage==='complete';};
-Q.onMovement=function(dx,dy){
- if(stage!=='complete'||hatched)return;
- var d=Math.hypot(dx,dy);
- if(!isFinite(d)||d<=0||d>45)return; // reject teleports and scene snaps
- stepFraction+=d/16; // one counted step per 16 world pixels walked
- var whole=Math.floor(stepFraction);
- if(whole>0){
-   stepCount+=whole;stepFraction-=whole;
-   if(stepCount>=HATCH_STEPS){
-     stepCount=HATCH_STEPS;hatched=true;
-     notice('YOUR EAGLE HAS HATCHED!','#b6eac0');
-     if(CC.fx&&CC.fx.burst){var p=CC.state.player;CC.fx.burst(p.x,p.y,'#f3daa7',40,95);}
-     save();
-   }
+Q.onMovement=function(){}; // hatching no longer depends on walking
+// The egg hatches when the hero reaches level 10: a short scene in which the player names the eagle.
+Q.update=function(dt){
+ clock+=dt;
+ var p=CC.state&&CC.state.player,mode=CC.state&&CC.state.mode;
+ if(stage==='complete'&&!hatched&&!hatching&&p&&p.level>=HATCH_LEVEL&&(mode==='town'||mode==='dungeon')){
+   if(CC.Eagle&&CC.Eagle.beginHatch){
+     hatching=true;
+     CC.Eagle.beginHatch(function(name){
+       hatching=false;hatched=true;
+       notice(String(name||'Your eagle').toUpperCase()+' JOINS YOU!','#b6eac0');
+       if(CC.fx&&CC.fx.burst&&p)CC.fx.burst(p.x,p.y,'#f3daa7',40,95);
+       save();
+     });
+   }else{hatched=true;save();}
  }
+ if(CC.Eagle&&CC.Eagle.update)CC.Eagle.update(dt);
 };
-Q.update=function(dt){clock+=dt;};
 Q.drawTownNest=function(c,cam){
  var x=24*32+131-cam.x,y=18*32+27-cam.y;
  c.save();c.translate(x,y);
@@ -90,6 +90,7 @@ Q.drawTownNest=function(c,cam){
 };
 Q.drawCompanion=function(c,cam){
  if(stage!=='complete')return;
+ if(CC.Eagle&&CC.Eagle.draw){CC.Eagle.draw(c,cam);return;}
  var p=CC.state&&CC.state.player;if(!p)return;
  if(!hatched)return; // before hatching: egg is safely inside pack, not on the ground
  var x=p.x-cam.x-23+Math.sin(clock*1.8)*4,
@@ -115,7 +116,7 @@ Q.drawHud=function(c,w,h){
  c.fillStyle='#edc88a';c.font='bold 10px Georgia';
  c.fillText('THE UNHATCHED',18,126);
  c.fillStyle='#d4dbc0';c.font='10px Georgia';
- var v=stage==='complete'?hatched?'Eagle chick hatched!':stepCount+' / '+HATCH_STEPS+' steps until hatching':
+ var v=stage==='complete'?hatched?(CC.Eagle&&CC.Eagle.name&&CC.Eagle.name()?CC.Eagle.name()+' flies with you':'Your eagle flies with you'):'The egg hatches at level '+HATCH_LEVEL:
  stage==='gathered'?'Eggs: 3 · return to Sister Alder':
  stage==='nest'?'Accept your egg from Alder':'Ascend five floors';
  c.fillText(v,18,139);
@@ -139,7 +140,7 @@ Q.drawJournal=function(c,x,y,w,h){
  ];
  for(var i=0;i<lines.length;i++)c.fillText(lines[i],x+9,y+76+i*24);
  var stateMsg=messages[stage];
- if(hatched)stateMsg='Your eaglet hatched and now follows you!';
+ if(hatched)stateMsg=(CC.Eagle&&CC.Eagle.name&&CC.Eagle.name()?CC.Eagle.name():'Your eagle')+' hatched and fights at your side!';
  var pieces=String(stateMsg).split(' '),lineText='',rows=[];
  c.font='bold 12px Georgia';
  for(i=0;i<pieces.length;i++){
@@ -151,10 +152,6 @@ Q.drawJournal=function(c,x,y,w,h){
  var yy=Math.max(y+306,y+h-85);
  c.fillStyle='#b8d8a8';
  for(i=0;i<rows.length;i++)c.fillText(rows[i],x+9,yy+i*18);
- if(stage==='complete'&&!hatched){
-   c.fillStyle='#373a29';c.fillRect(x+9,y+h-33,w-18,12);
-   c.fillStyle='#c1d89e';c.fillRect(x+9,y+h-33,(w-18)*stepCount/HATCH_STEPS,12);
- }
  c.restore();
 };
 Q.dialog=function(d){
@@ -169,18 +166,18 @@ Q.dialog=function(d){
    d.text='You found them! Come to the woven nest here by the fire. I can keep two warm and fed if you will carry the third.';
    d.actions.push({label:'Place the three eggs in Alder’s care',run:function(){
      Q.deliver();d.text='Two eggs are safe in their warm nest. The third is still yours to carry, if you accept it.';d.actions=[{label:'Keep one warm in your sack',run:function(){
-       Q.keepEgg();d.text='Keep it near your heart. Walk eight hundred careful steps and listen for a tiny beak.';d.actions=[];
+       Q.keepEgg();d.text='Keep it near your heart. When you have grown strong enough, at level ten, it will hatch.';d.actions=[];
      }}];
    }});
  }else if(stage==='nest'){
    d.text='Two eggs are safe here. Would you keep the third warm in your sack? When it hatches, it may follow you.';
    d.actions.push({label:'Take one warm eagle egg',run:function(){
-     Q.keepEgg();d.text='There. Keep it safe as you walk. The hollow-tree tunnel is yours to explore now.';d.actions=[];
+     Q.keepEgg();d.text='There. Keep it safe. It will hatch when you reach level ten. The hollow-tree tunnel is yours to explore now.';d.actions=[];
    }});
  }else{
    d.text=hatched?
      'It hatched! See how it follows you. The two here are growing stronger every day. Thank you for saving their family.':
-     'The two eggs by my fire are safe. Your egg will hatch after '+Math.max(0,HATCH_STEPS-stepCount)+' more steps. Keep it warm as you travel.';
+     'The two eggs by my fire are safe. Your egg will hatch when you reach level '+HATCH_LEVEL+'. Keep it warm as you travel.';
  }
  return d;
 };
