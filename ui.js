@@ -423,20 +423,12 @@
     var p = hero();
     if (!p || p.perkOpen) return;
     // Keep Skills, Pack and Map tabs inside the overlay, but show only Pack on the HUD.
-    var sz = 42, x0 = W - 12 - sz, y0 = 146, pts = CC.SkillTree ? CC.SkillTree.points(p) : 0;
-    TABS.filter(function (tb) { return tb.id === 'inv'; }).forEach(function (tb, i) {
-      var x = x0, on = target && cur === tb.id;
-      rr(c, x, y0, sz, sz, 6); c.fillStyle = on ? 'rgba(224,168,74,0.35)' : 'rgba(16,10,20,0.85)'; c.fill();
-      c.lineWidth = 2; c.strokeStyle = on ? COL.accent : COL.line; c.stroke();
-      rr(c, x + 3, y0 + 3, sz - 6, sz - 6, 4); c.lineWidth = 1; c.strokeStyle = 'rgba(224,168,74,0.2)'; c.stroke();
-      tx(c, 'PACK', x + sz / 2, y0 + sz / 2 + 0.5, 11, on ? COL.accent : '#fff', 'center');
-      addHit(x, y0, sz, sz, function () { toggle(tb.id); });
-      if (false && tb.id === 'skills' && pts > 0) { // badges stay available on the Skills tab
-        var pulse = 1 + Math.sin(clock * 5) * 0.12;
-        c.beginPath(); c.arc(x + sz - 3, y0 + 3, 7 * pulse, 0, 6.2832); c.fillStyle = COL.good; c.fill();
-        tx(c, String(pts), x + sz - 3, y0 + 3.5, 9, '#0b0812', 'center');
-      }
-    });
+    var sz = 42, x = W - 12 - sz, y = 146, on = target && cur === 'inv';
+    rr(c, x, y, sz, sz, 6); c.fillStyle = on ? 'rgba(224,168,74,0.35)' : 'rgba(16,10,20,0.85)'; c.fill();
+    c.lineWidth = 2; c.strokeStyle = on ? COL.accent : COL.line; c.stroke();
+    rr(c, x + 3, y + 3, sz - 6, sz - 6, 4); c.lineWidth = 1; c.strokeStyle = 'rgba(224,168,74,0.2)'; c.stroke();
+    tx(c, 'PACK', x + sz / 2, y + sz / 2 + 0.5, 11, on ? COL.accent : '#fff', 'center');
+    addHit(x, y, sz, sz, function () { toggle('inv'); });
   }
 
   function update(dt) {
