@@ -644,6 +644,39 @@ Camp.drawScene=function(c,cam){
   c.restore();
 };
 
+// Draw the rich scene into a 2x-resolution buffer at 20fps. The hero/HUD continue at full
+// frame rate; the fire, smoke and flap animate without thousands of vector draws per frame.
+var rawDrawScene=Camp.drawScene, sceneBuffer=null, sceneKey='';
+Camp.drawScene=function(c,cam){
+  if(typeof document==='undefined'||!document.createElement||!c.drawImage)
+    return rawDrawScene(c,cam);
+  var dim=dimensions(),p=hero();
+  var hot='';
+  if(p&&room==='outside'){
+    hot=distance(p,{x:OUT.w/2,y:OUT.h/2-65})<57?'tent':
+      distance(p,{x:OUT.w/2-125,y:OUT.h/2+57})<42?'stump':
+      p.y>OUT.h-96&&Math.abs(p.x-OUT.w/2)<GATE_HALF+20?'gate':'';
+  }else if(p&&room==='tent'){
+    hot=distance(p,{x:IN.w/2-75,y:IN.h/2})<48?'bed':
+      distance(p,{x:IN.w/2+80,y:IN.h/2})<50?'chest':
+      p.y>IN.h-102&&Math.abs(p.x-IN.w/2)<70?'door':'';
+  }
+  var key=room+'|'+biome()+'|'+Math.floor(elapsed*20)+'|'+hot;
+  if(!sceneBuffer||sceneBuffer.width!==dim.w*2||sceneBuffer.height!==dim.h*2){
+    sceneBuffer=document.createElement('canvas');
+    sceneBuffer.width=dim.w*2;sceneBuffer.height=dim.h*2;
+    sceneKey='';
+  }
+  if(sceneKey!==key){
+    var bc=sceneBuffer.getContext('2d');
+    if(!bc)return rawDrawScene(c,cam);
+    bc.setTransform(2,0,0,2,0,0);
+    bc.clearRect(0,0,dim.w,dim.h);
+    rawDrawScene(bc,{x:0,y:0,w:dim.w,h:dim.h});
+    sceneKey=key;
+  }
+  c.drawImage(sceneBuffer,-cam.x,-cam.y,dim.w,dim.h);
+};
 Camp.drawUI=function(c,W,H,hit){
   if(!inCamp()&&!modal)return;
   c.save();
