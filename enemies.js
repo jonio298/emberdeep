@@ -472,9 +472,9 @@
     // one body part per equal slice of lost HP (PARTS order); the enemy keeps attacking until hp reaches 0
     _dismember: function (e) {
       if (GORE <= 0 || e.ghost || e.collapsed || e.dead || e.hp <= 0) return;
-      var n = PARTS.length, want = Math.min(n, Math.floor((1 - e.hp / e.maxHp) * (n + 1)));
-      e.lostN = e.lostN || 0;
       var parts = ANATOMY[e.type] || PARTS;
+      var n = parts.length, want = Math.min(n, Math.floor((1 - e.hp / e.maxHp) * (n + 1)));
+      e.lostN = e.lostN || 0;
       while (e.lostN < want) this._detach(e, parts[e.lostN++]);
     },
     _detach: function (e, slot) {
