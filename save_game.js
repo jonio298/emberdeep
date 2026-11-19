@@ -44,11 +44,18 @@ S.save=function(){
  var st=storage(),s=CC.state,p=s&&s.player;
  if(!st||!p||p.hp<=0||!(s.mode==='town'||s.mode==='dungeon'))return false;
  try{
+  var campMeta=CC.Camp&&CC.Camp.exportState?CC.Camp.exportState():null;
+  var inside=!!(campMeta&&CC.Camp&&CC.Camp.isInside&&CC.Camp.isInside());
+  var where=inside?campMeta.area:(s.area||'town');
+  var currentFloor=inside?campMeta.floor:s.floor;
+  var currentTreeFloor=inside?campMeta.treeFloor:s.treeFloor;
+  var location=inside?campMeta:{x:p.x,y:p.y};
+  var seed=inside?campMeta.seed:s.map&&s.map.seed;
   var data={
    version:2,savedAt:Date.now(),classId:p.classId,
-   player:safePlayer(p),area:s.area||'town',mode:s.mode,
-   floor:Math.max(1,s.floor||1),treeFloor:Math.max(1,s.treeFloor||1),
-   x:p.x,y:p.y,seed:s.map&&Number.isFinite(s.map.seed)?s.map.seed:null,
+   player:safePlayer(p),area:where,mode:inside?'dungeon':s.mode,
+   floor:Math.max(1,currentFloor||1),treeFloor:Math.max(1,currentTreeFloor||1),
+   x:location.x,y:location.y,seed:Number.isFinite(seed)?seed:null,
    gold:s.gold||0,kills:s.kills||0,runGold:s.runGold||0,
    bestFloor:s.bestFloor||1,bridgeDown:!!s.bridgeDown,
    potions:s.potions||0,inventory:Array.isArray(s.inventory)?s.inventory:[],
