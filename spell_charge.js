@@ -111,14 +111,17 @@ function aim(p,slot,drag){
      dx=best.x-p.x;dy=best.y-p.y;
      autoDistance=Math.hypot(dx,dy);
    }
- }else{dx=drag.x;dy=drag.y;}
+ }else if(drag.world){dx=drag.x-p.x;dy=drag.y-p.y;}
+ else{dx=drag.x;dy=drag.y;}
  var n=norm(dx,dy);
  // The stationary field spell Whirl remains centered on the player.
  var reach=d.range===0?0:autoDistance!==null?Math.min(range,autoDistance):range;
  if(drag){
-   // Dash distance is proportional to thumb displacement, not fixed at max.
-   if(slot==='dash')reach=clamp(drag.distance/MAX_AIM*range,0,range);
-   else if(d.range!==0)reach=clamp(drag.distance/83*range,34,range);
+   // Mobile: thumb displacement scales from zero to the original max range.
+   // Mouse: selected world coordinate determines the exact travel distance.
+   var amount=drag.world?Math.hypot(drag.x-p.x,drag.y-p.y):drag.distance;
+   if(slot==='dash')reach=clamp(drag.world?amount:amount/MAX_AIM*range,0,range);
+   else if(d.range!==0)reach=clamp(drag.world?amount:amount/83*range,26,range);
  }
  var x,y,valid=true;
  if(slot==='dash'){
@@ -152,13 +155,23 @@ function drag(x,y){
 function cancel(){active=null;}
 function clear(){active=null;effects.length=0;}
 function isActive(){return !!active;}
+function landingRadius(p){
+ var ST=CC.SkillTree,f=ST&&ST.rank?ST.rank(p,'focus'):0,
+ q=ST&&ST.rank?ST.rank(p,'quickening'):0;
+ return ({swordsman:35,wizard:42,necromancer:43,thief:38}[p.classId]||36)+f*4+q*9;
+}
+function worldAim(x,y){
+ if(!active||!Number.isFinite(x)||!Number.isFinite(y))return;
+ active.drag={x:x,y:y,distance:0,world:true};
+}
 function info(){
  if(!active)return null;
  var p=hero();if(!p||p!==active.hero)return null;
  var d=slotDefinition(p,active.slot),where=aim(p,active.slot,active.drag),
      total=cost(p,active.slot);
  return {slot:active.slot,name:d.name,color:d.color,shape:d.shape,range:d.range,
-   radius:d.radius,elapsed:active.time,power:clamp((active.time-ARM)/(FULL-ARM),0,1),
+   radius:active.slot==='dash'?landingRadius(p):d.radius,
+   elapsed:active.time,power:clamp((active.time-ARM)/(FULL-ARM),0,1),
    progress:clamp(active.time/FULL,0,1),ready:active.time>=ARM,
    cost:total,affordable:p.mana>=total,valid:where.valid,
    maxDistance:d.range,distance:where.range,heroClass:p.classId,
@@ -517,7 +530,7 @@ function drawPreview(c,cam){
  c.restore();
  c.restore();
 }
-SC.begin=begin;SC.drag=drag;SC.release=release;SC.cancel=cancel;SC.clear=clear;SC.update=update;SC.land=landing;
+SC.begin=begin;SC.drag=drag;SC.worldAim=worldAim;SC.release=release;SC.cancel=cancel;SC.clear=clear;SC.update=update;SC.land=landing;
 SC.isActive=isActive;SC.info=info;SC.draw=function(c,cam){drawEffects(c,cam);drawPreview(c,cam);};
 SC.definitions=DEFINITIONS;SC.chargeThreshold=ARM;SC.holdDuration=FULL;
 })(window);
