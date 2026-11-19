@@ -20,7 +20,7 @@
 
   var CC = window.CC = window.CC || {};
   CC.TILE = CC.TILE || 32;
-  CC.input = { moveX: 0, moveY: 0, aimX: 1, aimY: 0, attack: false, spell1: false, spell2: false, dash: false };
+  CC.input = { moveX: 0, moveY: 0, aimX: 1, aimY: 0, attack: false, spell1: false, spell2: false, dash: false, potion: false };
   CC.state = { mode: 'title', player: null, floor: 1, gold: 0, kills: 0, bestFloor: 1, map: null, classId: null, runGold: 0 };
 
   CC.CaveDungeon = CC.CaveDungeon || CC.Dungeon; // the realms (town, forest) swap CC.Dungeon; this keeps the cave generator
@@ -179,7 +179,20 @@
   };
 
   CC.nextFloor = function () {
-    if (CC.state.area === 'forest' && has('Plains', 'generate')) { // the forest's far edge opens onto the Rolling Plains
+    if (CC.state.area === 'forest' && has('TreeTunnel', 'generate')) {
+      CC.state.area = 'tree-tunnel';
+      CC.fx.text(cam.x + cam.w / 2, cam.y + cam.h / 2, 'INSIDE THE ANCIENT TREE', '#b9df8d', 16);
+      loadFloor();
+      return;
+    }
+    if (CC.state.area === 'tree-tunnel' && has('Plains', 'generate')) {
+      if (!call('TreeTunnel', 'canExit')) return;
+      CC.state.area = 'plains';
+      CC.fx.text(cam.x + cam.w / 2, cam.y + cam.h / 2, 'THE OPEN PLAINS', '#ffd36b', 16);
+      loadFloor();
+      return;
+    }
+    if (CC.state.area === 'forest' && has('Plains', 'generate')) {
       CC.state.area = 'plains';
       CC.fx.text(cam.x + cam.w / 2, cam.y + cam.h / 2, 'THE OPEN PLAINS', '#ffd36b', 16);
       loadFloor();
@@ -205,12 +218,14 @@
     particles.length = 0; texts.length = 0; decals.length = 0;
     if (s.area === 'forest') { map = call('Forest', 'generate'); CC.Dungeon = map; } // CC.Dungeon is whichever map the player is in
     else if (s.area === 'plains') { map = call('Plains', 'generate'); CC.Dungeon = map; }
+    else if (s.area === 'tree-tunnel') { map = call('TreeTunnel', 'generate'); CC.Dungeon = map; }
     else { CC.Dungeon = CC.CaveDungeon; map = call('Dungeon', 'generate', s.floor); }
     s.map = map || null;
     var sp = map && (map.spawn || map.start);
     if (p && sp) { p.x = sp.x; p.y = sp.y; }
     else if (p && p.stub) { p.x = 0; p.y = 0; }
     call('Enemies', 'spawnForFloor', s.floor, (map && (map.enemySpawns || map.spawns)) || []);
+    if (s.area === 'tree-tunnel') call('TreeTunnel', 'populate', s.floor);
     snapCamera();
   }
 
@@ -233,15 +248,28 @@
   /* ---------- input ---------- */
   var keys = {};
   var joy = { id: null, bx: 0, by: 0, x: 0, y: 0 };
-  var held = { attack: 0, spell1: 0, spell2: 0, dash: 0, interact: 0 };
+  var held = { attack: 0, spell1: 0, spell2: 0, dash: 0, interact: 0, potion: 0 };
   var pending = {};
   var actionKeys = { Space: 'attack', KeyQ: 'spell1', KeyE: 'spell2',
-    ShiftLeft: 'dash', ShiftRight: 'dash', KeyF: 'interact', Enter: 'interact' };
+    ShiftLeft: 'dash', ShiftRight: 'dash', KeyF: 'interact', Enter: 'interact', KeyH: 'potion' };
   var paused = false, uiWas = false;
   function playing() { return CC.state.mode === 'town' || CC.state.mode === 'dungeon'; }
   function pressAction(name) {
     if (playing() && !paused && !uiOpen() && !(CC.state.player && CC.state.player.perkOpen)) pending[name] = true;
   }
+  CC.usePotion = function () {
+    var s=CC.state,p=s&&s.player;
+    if (!p || p.hp<=0 || p.hp>=p.maxHp || !s.potions || !playing() ||
+        paused || uiOpen() || p.perkOpen || (CC.Camp && CC.Camp.isOpen && CC.Camp.isOpen())) return false;
+    s.potions--;
+    var amount=Math.max(20,Math.ceil(p.maxHp*.40));
+    p.hp=Math.min(p.maxHp,p.hp+amount);
+    if(CC.fx) {
+      CC.fx.text(p.x,p.y-25,'+'+Math.min(amount,Math.ceil(p.maxHp-p.hp+amount))+' HP','#ff8493',12);
+      CC.fx.burst(p.x,p.y,'#e74359',15,90);
+    }
+    return true;
+  };
   function togglePause() {
     if (!playing()) return;
     paused = !paused;
@@ -303,15 +331,16 @@
     btns.spell1 = { x: W - m - 118, y: H - m - 40, r: 29, label: 'S1' };
     btns.spell2 = { x: W - m - 100, y: H - m - 120, r: 29, label: 'S2' };
     btns.dash = { x: W - m - 28, y: H - m - 154, r: 24, label: 'DASH' };
+    btns.potion = { x: W - m - 174, y: H - m - 100, r: 18, label: 'POTION' };
   }
 
   function resetInputHeld() {
-    held.attack = held.spell1 = held.spell2 = held.dash = held.interact = 0;
+    held.attack = held.spell1 = held.spell2 = held.dash = held.interact = held.potion = 0;
     keys = {}; pending = {};
     joy.id = null; joy.x = joy.y = 0;
     ptrs = {};
     call('Charge', 'cancel');
-    var i = CC.input; i.moveX = i.moveY = 0; i.attack = i.spell1 = i.spell2 = i.dash = i.interact = false;
+    var i = CC.input; i.moveX = i.moveY = 0; i.attack = i.spell1 = i.spell2 = i.dash = i.interact = i.potion = false;
   }
 
   function pollInput() {
@@ -328,7 +357,7 @@
       var n = Math.sqrt(mx * mx + my * my);
       i.aimX = mx / n; i.aimY = my / n;
     }
-    ['attack', 'spell1', 'spell2', 'dash', 'interact'].forEach(function (name) {
+    ['attack', 'spell1', 'spell2', 'dash', 'interact', 'potion'].forEach(function (name) {
       i[name] = !!pending[name];
     });
     pending = {};
@@ -498,6 +527,7 @@
     if (tunnel) { updateTunnel(dt); return; }
     pollInput();
     if (CC.input.interact && playing()) { interact(); return; }
+    if (CC.input.potion) CC.usePotion();
     if (CC.Camp && CC.Camp.isInside && CC.Camp.isInside()) {
       call('Classes', 'update', dt, { noCombat: true });
       if (p && p.stub) movePlayer(p, CC.input.moveX * p.speed * dt, CC.input.moveY * p.speed * dt);
@@ -520,10 +550,14 @@
         call('Enemies', 'update', dt);
         call('Charge', 'update', dt, !!(keys.Space || held.attack > 0)); // hold attack to charge; a tap is the normal attack
         call('Loot', 'update', dt);
-        // The hollow tree and the barrow are walked into; the cave stairs and chests still use F / Enter or USE.
+        if (s.area === 'tree-tunnel') call('TreeTunnel', 'update', dt);
+        // Walk through the living tunnel and defeat its miniboss before entering the plains.
         var ex = s.map && s.map.stairs;
-        if (ex && p && !p.stub && (s.area === 'forest' || s.area === 'plains') && Math.hypot(p.x - ex.x, p.y - ex.y) <= 28 && !playerDead()) {
-          tunnel = { t: 0, swapped: false, label: s.area === 'forest' ? 'INSIDE THE HOLLOW TREE...' : 'DOWN INTO THE BARROW...' };
+        if (ex && p && !p.stub && (s.area === 'forest' || s.area === 'plains' ||
+            (s.area === 'tree-tunnel' && call('TreeTunnel', 'canExit'))) &&
+            Math.hypot(p.x - ex.x, p.y - ex.y) <= 28 && !playerDead()) {
+          tunnel = { t: 0, swapped: false, label: s.area === 'forest' ? 'INTO THE ANCIENT TREE...' :
+            s.area === 'tree-tunnel' ? 'EMERGING INTO THE PLAINS...' : 'DOWN INTO THE BARROW...' };
           resetInputHeld();
         }
         if (playerDead()) { s.mode = 'dead'; resetInputHeld(); CC.fx.shake(10); }
@@ -640,7 +674,9 @@
       // The shell already applied ctx.scale(zoom). Dungeon.draw scales by cam.zoom itself, so hand it a
       // zoom-1 view of the same camera: tiles, fog and entities then share one world-to-screen mapping.
       var dcam = { x: cam.x, y: cam.y, w: cam.w, h: cam.h, zoom: 1 };
-      if (has('Dungeon', 'draw')) call('Dungeon', 'draw', ctx, dcam); else drawFallbackFloor();
+      if (s.area === 'tree-tunnel') call('TreeTunnel', 'draw', ctx, dcam);
+      else if (has('Dungeon', 'draw')) call('Dungeon', 'draw', ctx, dcam);
+      else drawFallbackFloor();
       drawDecals();
       call('Camp', 'drawWorldMarker', ctx, cam); // grounded below the hero, not painted over them
       call('Loot', 'draw', ctx, cam);
@@ -711,7 +747,8 @@
 
     label(Math.floor(s.gold) + ' G', W - 12, top + 8, 15, '#e8c04a', 'right');
     if (s.mode === 'dungeon') {
-      label(s.area === 'forest' ? 'Giant Forest' : s.area === 'plains' ? 'Rolling Plains' : 'Floor ' + s.floor, W - 12, top + 28, 13, '#e8dcc4', 'right');
+      label(s.area === 'forest' ? 'Giant Forest' : s.area === 'tree-tunnel' ? 'Hollow Tree' :
+        s.area === 'plains' ? 'Rolling Plains' : 'Floor ' + s.floor, W - 12, top + 28, 13, '#e8dcc4', 'right');
       addButton(W - 78, top + 42, 66, 26, 'Retreat', '#5a2a22', function () { CC.returnToTown(); });
     } else {
       label('Town', W - 12, top + 28, 13, '#e8dcc4', 'right');
@@ -738,7 +775,8 @@
         if (name === 'spell1' && p.spellNames[0]) txt = p.spellNames[0];
         if (name === 'spell2' && p.spellNames[1]) txt = p.spellNames[1];
       }
-      var col = contextual ? '105,205,170' : name === 'attack' ? '255,140,70' : name === 'dash' ? '120,220,160' : '140,120,255';
+      var col = name === 'potion' ? '225,55,70' : contextual ? '105,205,170' :
+        name === 'attack' ? '255,140,70' : name === 'dash' ? '120,220,160' : '140,120,255';
       ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 6.3);
       ctx.fillStyle = 'rgba(' + col + ',' + (on ? 0.7 : 0.35) + ')'; ctx.fill();
       ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.stroke();
@@ -750,7 +788,21 @@
         ctx.closePath(); ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fill();
         label(cd.toFixed(cd < 10 ? 1 : 0), b.x, b.y - b.r - 8, 10, '#ddd');
       }
-      label(txt, b.x, b.y, b.r > 35 ? 15 : 11, '#fff');
+      if (name === 'potion') {
+        var count=(CC.state && CC.state.potions)||0;
+        ctx.save();ctx.translate(b.x,b.y-2);
+        ctx.fillStyle='#ffc9c9';ctx.fillRect(-3,-10,6,3);
+        ctx.fillStyle='#603a35';ctx.fillRect(-5,-7,10,3);
+        ctx.beginPath();ctx.moveTo(-5,-4);ctx.lineTo(-9,0);ctx.lineTo(-8,9);
+        ctx.quadraticCurveTo(0,13,8,9);ctx.lineTo(9,0);ctx.lineTo(5,-4);
+        ctx.closePath();ctx.fillStyle=count>0?'#d9233a':'#70444a';ctx.fill();
+        ctx.strokeStyle='#ffd2cc';ctx.lineWidth=1.4;ctx.stroke();
+        ctx.fillStyle='#ffb6b2';ctx.fillRect(-5,1,3,4);
+        ctx.restore();
+        ctx.fillStyle='rgba(20,7,10,0.88)';ctx.fillRect(b.x+7,b.y+7,20,16);
+        ctx.strokeStyle='#b96367';ctx.strokeRect(b.x+7,b.y+7,20,16);
+        label(String(count),b.x+17,b.y+15,11,count>0?'#fff2e6':'#ad9394');
+      } else label(txt, b.x, b.y, b.r > 35 ? 15 : 11, '#fff');
     }
   }
 
@@ -857,6 +909,7 @@
       if (m === 'town') call('Town', 'drawPanel', ctx, W, H, addHit);
       else if (CC.state.area === 'forest') call('Forest', 'drawOverlay', ctx, W, H);
       else if (CC.state.area === 'plains') call('Plains', 'drawOverlay', ctx, W, H);
+      if (CC.state.area === 'tree-tunnel') call('TreeTunnel', 'drawHud', ctx, W, H);
       call('UI', 'drawHud', ctx, W, H, addHit);   // single Pack button; K / I / M remain keyboard shortcuts
       call('UI', 'draw', ctx, W, H, addHit);
       call('Camp', 'drawUI', ctx, W, H, addHit);
