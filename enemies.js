@@ -1023,7 +1023,7 @@
 
   // Critical cutscenes reuse the SAME enemy sprites and accumulated gore/wounds as
   // regular gameplay, but never redraw unrelated enemies, corpses, HUD or scenery.
-  E.drawCriticalTargets = function (ctx, cam, participants) {
+  E.drawCriticalTargets = function (ctx, cam, participants, scene, time) {
     if(!Array.isArray(participants))return;
     var seen=[],t=this._time;
     for(var i=0;i<participants.length;i++){
@@ -1031,6 +1031,21 @@
       if(!e||seen.indexOf(e.id)>=0)continue;
       seen.push(e.id);
       var x=e.x-cam.x,y=e.y-cam.y,r=e.r||9;
+      // Distinct impact recoil: stab-in and yank-out (or the three Thief
+      // slashes) move the ACTUAL damaged enemy sprite for a handful of frames.
+      var kick=0;
+      if(scene&&scene.heroClass==='swordsman'){
+        kick=6*Math.exp(-Math.pow((time-.232)/.035,2)) -
+          5*Math.exp(-Math.pow((time-.463)/.04,2));
+      }else if(scene&&scene.heroClass==='thief'){
+        kick=3.2*Math.exp(-Math.pow((time-.205)/.034,2)) -
+          3.6*Math.exp(-Math.pow((time-.315)/.038,2)) +
+          4*Math.exp(-Math.pow((time-.415)/.038,2));
+      }else if(scene){
+        kick=5*Math.exp(-Math.pow((time-.31)/.065,2));
+      }
+      var a=scene&&Number.isFinite(scene.angle)?scene.angle:0;
+      x+=Math.cos(a)*kick;y+=Math.sin(a)*kick;
       if(x < -70||y < -70||x > cam.w+70||y > cam.h+70)continue;
       ctx.save();
       // Subtle silhouette rim light on the black cinematic stage.
