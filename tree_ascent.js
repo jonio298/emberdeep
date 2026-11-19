@@ -246,6 +246,7 @@ A.drawHud=function(c,w,h){
 A.drawEggs=function(c,cam){
  var s=CC.state,m=s&&s.map;
  if(!m||!m.treeAscent)return;
+ if(CC.TreeWeasel&&CC.TreeWeasel.drawFx)CC.TreeWeasel.drawFx(c,cam);
  var q=m.stairs,x=q.x-cam.x,y=q.y-cam.y;
  if(stage===5&&!CC.EggQuest.hasGathered()) {
   // Nest itself belongs to the y-sorted world props. Only the subtle
