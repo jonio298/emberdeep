@@ -37,7 +37,7 @@
   var SPURT = { ghoul: { n: 9, pow: 130 }, charger: { n: 7, pow: 110 }, demon: { n: 8, pow: 120 }, spitter: { n: 8, pow: 100 }, scorpion: { n: 6, pow: 100 } };
 
   /* Toughness: every base monster HP is multiplied by HP_MULT (basic enemies took ~2 hits of 10 damage before, ~4 now). */
-  var HP_MULT = 2;
+  var HP_MULT = 2.15; // modest difficulty increase: ~7.5% enemy HP
   /* Dismemberment: parts that fly off in this order as HP falls (one per equal slice of the HP bar). The enemy keeps fighting. */
   // Anatomy profiles: each detached piece is also hidden from the still-living sprite.
   var PARTS = ['armLeft', 'armRight', 'head', 'legLeft'];
@@ -45,7 +45,7 @@
     charger: ['hornLeft', 'armLeft', 'hornRight', 'legLeft'], goblin: ['hornLeft', 'armLeft', 'head', 'legLeft'],
     demon: ['hornLeft', 'armLeft', 'hornRight', 'head'], dragon: ['hornLeft', 'hornRight', 'legLeft', 'head'],
     scorpion: ['armLeft', 'armRight', 'legLeft', 'legRight'], spider: ['legLeft', 'legRight', 'armLeft', 'armRight'],
-    snake: ['tail', 'tail', 'head', 'tail'], bat: ['armLeft', 'armRight', 'head', 'legLeft'],
+    snake: ['tail', 'tail', 'head', 'tail'], bat: ['wingLeft', 'wingRight', 'head', 'legLeft'],
     slime: ['chunk', 'chunk', 'chunk', 'chunk'], spitter: ['chunk', 'chunk', 'chunk', 'chunk'],
     ghoul: ['armLeft', 'armRight', 'head', 'legLeft'], skeleton: ['armLeft', 'armRight', 'head', 'legLeft'],
     archer: ['armLeft', 'armRight', 'head', 'legLeft'],
@@ -54,8 +54,8 @@
     horror: ['armLeft', 'head', 'legLeft', 'armRight'],
     direwolf: ['legLeft', 'armRight', 'head', 'legRight'],
     mawworm: ['chunk', 'chunk', 'head', 'chunk'],
-    raven: ['armLeft', 'armRight', 'head', 'legLeft'],
-    crow: ['armLeft', 'armRight', 'head', 'legLeft']
+    raven: ['wingLeft', 'wingRight', 'head', 'legLeft'],
+    crow: ['wingLeft', 'wingRight', 'head', 'legLeft']
   };
   var ARMOR_LOOK = { skeleton: 1, archer: 1, charger: 1, demon: 1, dragon: 1, scorpion: 1 };
   /* Bone piles: every bone/skull left by a death or a torn-off part adds to the pile within PILE_R px. A pile that stays untouched for
@@ -220,8 +220,8 @@
 
   function make(type, x, y, floor, opts) {
     var d = TYPES[type], hs = 1 + 0.18 * (floor - 1), e = {
-      id: nextId++, type: type, name: d.name, x: x, y: y, r: d.r, hp: 0, maxHp: 0, dmg: Math.round(d.dmg * (1 + 0.12 * (floor - 1)) * 1.10),
-      spd: d.spd * 1.07, xp: d.xp, color: d.color, state: 'idle', t: 0, cd: 0.42 + R() * 1.25, face: 1, flash: 0, slow: 0, burn: 0,
+      id: nextId++, type: type, name: d.name, x: x, y: y, r: d.r, hp: 0, maxHp: 0, dmg: Math.round(d.dmg * (1 + 0.12 * (floor - 1)) * 1.19),
+      spd: d.spd * 1.12, xp: d.xp, color: d.color, state: 'idle', t: 0, cd: 0.42 + R() * 1.1, face: 1, flash: 0, slow: 0, burn: 0,
       asleep: true, dead: false, contact: 0, size: 0, floor: floor, ang: 0, tele: null, group: 0, anim: R() * 10, strafe: R() < 0.5 ? 1 : -1
     };
     opts = opts || {};
@@ -338,7 +338,15 @@
       if (CC.fx && CC.fx.text) CC.fx.text(e.x, e.y - e.r - 6, String(dealt), type === 'fire' ? '#ff9a3a' : type === 'frost' ? '#8ad8ff' : type === 'necro' ? '#a8ff9a' : '#ffffff', 11);
       if (e.group) for (var i = 0; i < this.list.length; i++) if (this.list[i].group === e.group) this.list[i].asleep = false;
       if (e.boss && e.phase === 1 && e.hp <= e.maxHp * 0.5 && e.hp > 0) this._phase2(e);
-      if (e.hp <= 0) this._kill(e); else this._dismember(e);
+      if (e.hp <= 0) {
+        // A strong killing blade or basic projectile can sever the head as the final piece.
+        // The detached head travels and lands as a persistent, recognizable body part.
+        if ((e.type === 'bear' || e.type === 'bat' || e.type === 'crow' || e.type === 'raven') &&
+            !(e.missing && e.missing.head) &&
+            (type === 'slash' || type === 'melee' || type === 'physical') &&
+            R() < (e.type === 'bear' ? .72 : .60)) this._detach(e,'head');
+        this._kill(e);
+      } else this._dismember(e);
       return dealt;
     },
 
@@ -946,7 +954,9 @@
         var m = this.remains[i], mx = m.x - cam.x, my = m.y - cam.y;
         if (mx < -40 || mx > vw + 40 || my < -40 || my > vh + 40) continue;
         if (D && D.isVisible && !D.isVisible(m.x, m.y)) continue;
-        drawRemain(ctx, m, Math.round(mx), Math.round(my));
+        if (!CC.WoundArt || !CC.WoundArt.ground ||
+            !CC.WoundArt.ground(ctx, m, Math.round(mx), Math.round(my)))
+          drawRemain(ctx, m, Math.round(mx), Math.round(my));
       }
       for (i = 0; i < this.list.length; i++) {
         e = this.list[i];
