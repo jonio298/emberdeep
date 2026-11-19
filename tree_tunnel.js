@@ -198,10 +198,11 @@
   B.populate=function(floor){
     if(!map||!CC.Enemies)return;
     var E=CC.Enemies;
-    for(var x=10;x<54;x+=6){
-      var cy=center(x),ty=x%4===0?'bat':x%3===0?'sporeling':x%2===0?'rootling':'mosslurker';
+    var mix=['rootling','bat','sporeling','mosslurker','rootling','sporeling','bat','mosslurker'];
+    for(var x=10,mi=0;x<54;x+=6,mi++){
+      var cy=center(x),ty=mix[mi%mix.length];
       E.spawn(ty,(x+.5)*T,(cy+.5)*T,floor||1,{awake:false});
-      if(x%3===1)E.spawn('bat',(x+1.5)*T,(cy-1.2)*T,floor||1,{awake:false});
+      if(mi%2===0)E.spawn('bat',(x+1.5)*T,(cy-1.2)*T,floor||1,{awake:false});
     }
     for(x=19;x<56;x+=12)E.spawn('mosslurker',(x+.5)*T,(center(x)+1.5)*T,floor||1,{awake:false});
     var pos=point(W-8,center(W-8));
