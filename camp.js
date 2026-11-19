@@ -5,13 +5,37 @@
 'use strict';
 var CC = window.CC = window.CC || {};
 var Camp = CC.Camp = {};
-var home = null, returnPoint = null, room = '', modal = '', page = 0, inventory = [], message = '', messageTime = 0, elapsed = 0;
+var home = null, room = '', modal = '', page = 0, inventory = [], message = '', messageTime = 0, elapsed = 0;
 var OUT = {w: 560, h: 420}, IN = {w: 360, h: 270};
 function state() { return CC.state; }
 function hero() { return state() && state().player; }
 function distance(a,b) { return Math.hypot(a.x-b.x,a.y-b.y); }
 function inCamp() { return room === 'outside' || room === 'tent'; }
 function dimensions() { return room === 'tent' ? IN : OUT; }
+// Cave layouts mutate one shared dungeon object when changing floors.
+function snapshotCave(d) {
+  if (!d || !d.generate || !d.tiles) return null;
+  var names=['tiles','floor','biome','biomeName','seed','spawn','stairs','chests','secrets','enemySpawns','boss',
+    'decor','liquid','props','lights','staticLight','dist','explored','vis','_fovKey','_mmDirty'];
+  var result={};
+  names.forEach(function(k){
+    var v=d[k];
+    if(v===undefined)return;
+    if(v && typeof v.slice==='function' && !Array.isArray(v))result[k]=v.slice();
+    else if(v && typeof v==='object')result[k]=JSON.parse(JSON.stringify(v));
+    else result[k]=v;
+  });
+  return result;
+}
+function restoreCave() {
+  if (!home || !home.caveSnapshot) return;
+  var d=home.dungeon, snapshot=home.caveSnapshot;
+  Object.keys(snapshot).forEach(function(k){
+    var v=snapshot[k];
+    d[k] = v && typeof v.slice==='function' && !Array.isArray(v) ? v.slice() :
+      v && typeof v==='object' ? JSON.parse(JSON.stringify(v)) : v;
+  });
+}
 function floorMap() {
   return { campScene: true, isSolid: function(x,y) {
     var a = dimensions();
@@ -45,6 +69,7 @@ function restoreWorld() {
   if (!home) return false;
   var p=hero(), s=state();
   room = ''; modal=''; page=0;
+  restoreCave();
   s.area=home.area; s.floor=home.floor; s.mode=home.mode;
   s.map=home.map; CC.Dungeon=home.dungeon;
   if (p) { p.x=home.x; p.y=home.y; }
@@ -52,7 +77,7 @@ function restoreWorld() {
 }
 function leave(pack) {
   if (!restoreWorld()) return;
-  if (pack) { home = null; returnPoint = null; inventory.length=0; }
+  if (pack) { home = null; inventory.length=0; }
   else note('Camp remains here. Return to the marker to enter.');
 }
 Camp.request = function() {
@@ -66,8 +91,8 @@ Camp.confirm = function(yes) {
     modal = '';
     if (!yes || !hero()) return;
     var s=state(), p=hero();
-    home = {mode:s.mode,area:s.area,floor:s.floor,map:s.map,dungeon:CC.Dungeon,x:p.x,y:p.y};
-    returnPoint={x:p.x,y:p.y};
+    home = {mode:s.mode,area:s.area,floor:s.floor,map:s.map,dungeon:CC.Dungeon,x:p.x,y:p.y,
+      caveSnapshot: s.area === 'cave' ? snapshotCave(CC.Dungeon) : null};
     enter();
   } else if (modal === 'leave') {
     if (yes) modal='pack'; else { modal=''; var p1=hero(); if(p1){p1.x=OUT.w/2;p1.y=OUT.h/2+55;} }
@@ -89,7 +114,7 @@ Camp.nearAction = function(){
   var p=hero();
   if (!p) return false;
   if (Camp.isWorldCampNear()) return true;
-  if (room === 'outside') return distance(p,{x:OUT.w/2,y:OUT.h/2-65})<57;
+  if (room === 'outside') return distance(p,{x:OUT.w/2,y:OUT.h/2-65})<57 || distance(p,{x:OUT.w/2-125,y:OUT.h/2+57})<40;
   if (room === 'tent') return distance(p,{x:IN.w/2-75,y:IN.h/2})<48 ||
     distance(p,{x:IN.w/2+80,y:IN.h/2})<50;
   return false;
@@ -101,6 +126,10 @@ Camp.interact = function() {
   if (Camp.isWorldCampNear()) { enter();return true; }
   if (room==='outside') {
     if (distance(p,{x:OUT.w/2,y:OUT.h/2-65})<57) {goTent();return true;}
+    if (distance(p,{x:OUT.w/2-125,y:OUT.h/2+57})<40) {
+      p.x=OUT.w/2-125;p.y=OUT.h/2+75;p.campSitting=true;
+      note('Resting by the fire. A quiet moment.');
+    }
     return true;
   }
   if(room==='tent'){
@@ -120,6 +149,7 @@ Camp.update = function(dt) {
   if(room==='outside' && (p.x<53 || p.x>dim.w-53 || p.y<53 || p.y>dim.h-53)) {
     modal='leave';
   }
+  if(room==='outside' && p.campSitting && CC.input && (Math.abs(CC.input.moveX)+Math.abs(CC.input.moveY)>0.2)) p.campSitting=false;
   if(room==='tent' && p.y>dim.h-51 && p.x>dim.w/2-65 && p.x<dim.w/2+65) {
     goOutside();
   }
@@ -141,6 +171,7 @@ Camp.respawn = function() {
   // The generated source map is intentionally retained, so the exact checkpoint still exists.
   room='';modal='';
   var p=hero(),s=state();
+  restoreCave();
   s.area=home.area;s.floor=home.floor;s.map=home.map;s.mode=home.mode;
   CC.Dungeon=home.dungeon;
   p.x=home.x;p.y=home.y;p.hp=p.maxHp;p.mana=p.maxMana;p.invuln=2;
