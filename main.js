@@ -362,6 +362,9 @@
     var s = CC.state, p = s.player;
     if (!p) return;
     if (CC.Waypoints && CC.Waypoints.interact && CC.Waypoints.interact()) return;
+    if(s.area==='tree-ascent'&&call('TreeAscent','interact'))return;
+    if(s.area==='forest'&&s.map&&s.map.stairs&&
+        Math.hypot(p.x-s.map.stairs.x,p.y-s.map.stairs.y)<58){CC.nextFloor();return;}
     if (CC.Camp && CC.Camp.interact && CC.Camp.interact()) return;
     if (s.mode === 'town') {
       if (has('Town', 'interact')) call('Town', 'interact');
@@ -388,6 +391,7 @@
     var s = CC.state, p = s.player, map = s.map;
     if (!p || !playing()) return false;
     if (CC.Waypoints && CC.Waypoints.isNear && CC.Waypoints.isNear()) return true;
+    if(s.area==='tree-ascent'&&call('TreeAscent','nearAction'))return true;
     if (CC.Camp && CC.Camp.nearAction && CC.Camp.nearAction()) return true;
     function near(o, radius) { return o && Math.hypot(p.x - o.x, p.y - o.y) <= radius; }
     var npcs, j;
@@ -402,6 +406,7 @@
       for (j = 0; j < npcs.length; j++) if (near(npcs[j], 48)) return true;
     }
     // Forest/plains transitions happen by walking into them, not by using F.
+    if (s.area==='forest'&&map&&near(map.stairs,58))return true;
     if (s.area !== 'forest' && s.area !== 'plains' && map && near(map.stairs, 26)) return true;
     var chests = map && map.chests || [];
     for (j = 0; j < chests.length; j++) if (!chests[j].opened && near(chests[j], 32)) return true;
@@ -611,11 +616,14 @@
     call('UI', 'update', dt);
     updatePresentationFx(dt);
     call('Waypoints','update',dt);
+    call('EggQuest','update',dt);
+    call('SaveGame','auto',dt);
     if (uiOpen() !== uiWas) { uiWas = uiOpen(); resetInputHeld(); }
     if (paused || uiWas || (p && p.perkOpen) ||
         (CC.Waypoints && CC.Waypoints.isOpen && CC.Waypoints.isOpen()) ||
         (CC.Camp && CC.Camp.isOpen && CC.Camp.isOpen())) return;
     if (tunnel) { updateTunnel(dt); return; }
+    var beforeX=p&&p.x,beforeY=p&&p.y;
     pollInput();
     if (CC.input.interact && playing()) { interact(); return; }
     if (CC.input.potion) CC.usePotion();
@@ -623,6 +631,7 @@
       call('Classes', 'update', dt, { noCombat: true });
       if (p && p.stub) movePlayer(p, CC.input.moveX * p.speed * dt, CC.input.moveY * p.speed * dt);
       call('Camp', 'update', dt);
+      if(p)call('EggQuest','onMovement',p.x-beforeX,p.y-beforeY);
       if (p) {
         var txc = p.x - cam.w / 2, tyc = p.y - cam.h / 2;
         cam.x += (txc - cam.x) * Math.min(1, dt * 12);
@@ -643,12 +652,17 @@
         call('Loot', 'update', dt);
         call('Breakables','update',dt);
         if (s.area === 'tree-tunnel') call('TreeTunnel', 'update', dt);
+        if (s.area === 'tree-ascent') call('TreeAscent','update',dt);
         // Walk through the living tunnel and defeat its miniboss before entering the plains.
         var ex = s.map && s.map.stairs;
-        if (ex && p && !p.stub && (s.area === 'forest' || s.area === 'plains' ||
+        if (ex && p && !p.stub && (
+            (s.area === 'forest' && CC.EggQuest &&
+              (CC.EggQuest.stage()==='climbing'||CC.EggQuest.tunnelUnlocked())) ||
+            s.area === 'plains' ||
             (s.area === 'tree-tunnel' && call('TreeTunnel', 'canExit'))) &&
             Math.hypot(p.x - ex.x, p.y - ex.y) <= 28 && !playerDead()) {
-          tunnel = { t: 0, swapped: false, label: s.area === 'forest' ? 'INTO THE ANCIENT TREE...' :
+          tunnel = { t: 0, swapped: false, label: s.area === 'forest' ?
+            (CC.EggQuest.stage()==='climbing'?'CLIMB THE ANCIENT TREE...':'INTO THE ANCIENT TREE...') :
             s.area === 'tree-tunnel' ? 'EMERGING INTO THE PLAINS...' : 'DOWN INTO THE BARROW...' };
           resetInputHeld();
         }
@@ -657,6 +671,7 @@
       if (s.mode !== 'town' && s.mode !== 'dungeon') return;
     }
 
+    if(p&&s.mode!=='dead')call('EggQuest','onMovement',p.x-beforeX,p.y-beforeY);
     // camera follows with light smoothing
     if (p && (s.mode === 'town' || s.mode === 'dungeon')) {
       var tx = p.x - cam.w / 2, ty = p.y - cam.h / 2, k = 1 - Math.pow(0.0005, dt);
@@ -783,6 +798,8 @@
       call('Loot', 'draw', ctx, cam);
       call('Enemies', 'draw', ctx, cam);
       call('Classes', 'draw', ctx, cam);
+      call('EggQuest','drawCompanion',ctx,cam);
+      if(s.area==='tree-ascent')call('TreeAscent','drawEggs',ctx,cam);
       call('Charge', 'draw', ctx, cam);
       if (CC.Dungeon && typeof CC.Dungeon.drawFront === 'function') CC.Dungeon.drawFront(ctx, dcam); // trees and props in front of the hero redraw over the entities
       if (CC.Dungeon && CC.Dungeon.realm) CC.Dungeon.drawLighting(ctx, dcam); // open-air maps light the whole scene after the entities
@@ -1001,12 +1018,16 @@
     if (tunnel && m === 'dungeon') drawTunnel();
     if (m === 'town' || m === 'dungeon') {
       drawHud(); drawControls();
+      call('EggQuest','drawHud',ctx,W,H);
       if (m === 'town') drawFallbackTownPanel();
       var skillPts = CC.SkillTree && CC.state.player ? CC.SkillTree.points(CC.state.player) : 0;
       if (skillPts > 0) {
         addButton(W - 154, 78, 142, 28, skillPts + ' skill point' + (skillPts === 1 ? '' : 's'),
           '#603b83', function () { call('UI', 'open', 'skills'); });
       }
+      addButton(W-167,112,68,28,'Save','#466b53',function(){
+        if(call('SaveGame','save'))CC.fx.text(CC.state.player.x,CC.state.player.y-18,'GAME SAVED','#b5efb6',12);
+      });
       addButton(W - 94, 112, 82, 28, paused ? 'Resume' : 'Pause', '#4a3a6a', togglePause);
       if (CC.Camp && !(CC.Camp.isInside && CC.Camp.isInside())) {
         if (CC.Camp.isWorldCampNear && CC.Camp.isWorldCampNear())
@@ -1023,6 +1044,7 @@
       else if (CC.state.area === 'forest') call('Forest', 'drawOverlay', ctx, W, H);
       else if (CC.state.area === 'plains') call('Plains', 'drawOverlay', ctx, W, H);
       if (CC.state.area === 'tree-tunnel') call('TreeTunnel', 'drawHud', ctx, W, H);
+      if (CC.state.area === 'tree-ascent') call('TreeAscent','drawHud',ctx,W,H);
       call('MonsterMelee', 'drawStatus', ctx, W, H);
       call('UI', 'drawHud', ctx, W, H, addHit);   // single Pack button; K / I / M remain keyboard shortcuts
       call('UI', 'draw', ctx, W, H, addHit);
