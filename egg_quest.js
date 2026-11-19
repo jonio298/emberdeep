@@ -169,7 +169,7 @@ Q.dialog=function(d){
    d.text='You found them! Come to the woven nest here by the fire. I can keep two warm and fed if you will carry the third.';
    d.actions.push({label:'Place the three eggs in Alder’s care',run:function(){
      Q.deliver();d.text='Two eggs are safe in their warm nest. The third is still yours to carry, if you accept it.';d.actions=[{label:'Keep one warm in your sack',run:function(){
-       Q.keepEgg();d.text='Keep it near your heart. Take a thousand careful steps and listen for a tiny beak.';d.actions=[];
+       Q.keepEgg();d.text='Keep it near your heart. Walk eight hundred careful steps and listen for a tiny beak.';d.actions=[];
      }}];
    }});
  }else if(stage==='nest'){
