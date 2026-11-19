@@ -727,7 +727,7 @@
         // walk the tile path around walls; equals the direct angle when the line is clear
         if (e.boss) this._boss(e, dt, p, d, ang, f); else this._think(e, dt * (e.frenzy ? 1.25 : 1), p, d, ang, f);
         if (!e.boss && d < 420) this._spurtAI(e, dt, ang);
-        if (!e.boss) this._special(e, dt, p, d, ang);
+        if (!e.boss && !e.stitched) this._special(e, dt, p, d, ang); // Patchwork uses dedicated boss attacks
         // contact damage while dangerous
         if (e.dangerous && e.contact <= 0 && d < e.r + (p.r || 10)) {
           if (hurtPlayer(p, e.dmg, e, e.poison ? 'poison' : e.fireproof ? 'fire' : null)) e.contact = 0.7;
