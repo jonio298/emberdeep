@@ -794,6 +794,25 @@
     label(text, x + w / 2, y + h / 2, 16, '#e8dcc4');
   }
 
+  // Compact framed tent shortcut sits between Save and Pause. The drawing
+  // uses canvas primitives, avoiding emoji/font differences on Android and iOS.
+  function drawTentButton(x,y,w,h,cb,existing){
+    addButton(x,y,w,h,'',existing?'#384d44':'#635037',cb);
+    ctx.save();
+    var cx=x+w/2,cy=y+h/2;
+    ctx.lineJoin='round';ctx.lineCap='round';
+    ctx.fillStyle=existing?'#bfd8bc':'#e1c99b';
+    ctx.strokeStyle='#221b1e';ctx.lineWidth=1.6;
+    ctx.beginPath();ctx.moveTo(cx,cy-10);ctx.lineTo(cx+11,cy+8);
+    ctx.lineTo(cx-11,cy+8);ctx.closePath();ctx.fill();ctx.stroke();
+    ctx.fillStyle='#4a3532';
+    ctx.beginPath();ctx.moveTo(cx,cy-6);ctx.lineTo(cx+4.6,cy+8);
+    ctx.lineTo(cx-4.6,cy+8);ctx.closePath();ctx.fill();
+    ctx.strokeStyle='#f9dfb1';ctx.lineWidth=1.2;
+    ctx.beginPath();ctx.moveTo(cx,cy-10);ctx.lineTo(cx,cy+8);ctx.stroke();
+    ctx.fillStyle='#d5ac75';ctx.fillRect(cx-13,cy+8,26,2);
+    ctx.restore();
+  }
   function drawFallbackFloor() {
     var T = CC.TILE, x0 = Math.floor(cam.x / T), y0 = Math.floor(cam.y / T);
     var cols = Math.ceil(cam.w / T) + 2, rows = Math.ceil(cam.h / T) + 2;
@@ -1113,16 +1132,25 @@
         addButton(W - 154, 78, 142, 28, skillPts + ' skill point' + (skillPts === 1 ? '' : 's'),
           '#603b83', function () { call('UI', 'open', 'skills'); });
       }
-      addButton(W-167,112,68,28,'Save','#466b53',function(){
-        if(call('SaveGame','save'))CC.fx.text(CC.state.player.x,CC.state.player.y-18,'GAME SAVED','#b5efb6',12);
+      // Consistent single row beneath the character HUD:
+      // [ SAVE ] [tent icon] [ PAUSE ] — no floating Set Camp rectangle.
+      addButton(W-198,116,58,32,'Save','#466b53',function(){
+        if(call('SaveGame','save')&&CC.state.player)
+          CC.fx.text(CC.state.player.x,CC.state.player.y-18,'GAME SAVED','#b5efb6',12);
       });
-      addButton(W - 94, 112, 82, 28, paused ? 'Resume' : 'Pause', '#4a3a6a', togglePause);
-      if (CC.Camp && !(CC.Camp.isInside && CC.Camp.isInside())) {
-        if (CC.Camp.isWorldCampNear && CC.Camp.isWorldCampNear())
-          addButton(W - 160, 184, 148, 30, 'Enter Camp', '#6b5437', function () { call('Camp', 'interact'); });
-        else if (!(CC.Camp.hasCamp && CC.Camp.hasCamp()))
-          addButton(W - 160, 184, 148, 30, 'Set Camp', '#6b5437', function () { call('Camp', 'request'); });
-      }
+      if(CC.Camp)drawTentButton(W-134,116,38,32,function(){
+        if(CC.Camp.isInside&&CC.Camp.isInside()){
+          call('Camp','interact');
+        }else if(CC.Camp.isWorldCampNear&&CC.Camp.isWorldCampNear()){
+          call('Camp','interact');
+        }else if(!(CC.Camp.hasCamp&&CC.Camp.hasCamp())){
+          call('Camp','request');
+        }else if(CC.state.player&&CC.fx&&CC.fx.text){
+          CC.fx.text(CC.state.player.x,CC.state.player.y-26,
+            'CAMP ALREADY SET','#ddc7a0',12);
+        }
+      },CC.Camp.hasCamp&&CC.Camp.hasCamp());
+      addButton(W-90,116,76,32,paused?'Resume':'Pause','#4a3a6a',togglePause);
       if (paused && !uiOpen()) {
         ctx.fillStyle = 'rgba(8,4,16,0.65)'; ctx.fillRect(0, H * 0.4, W, 80);
         label('PAUSED', W / 2, H * 0.4 + 40, 28, '#ffe08a');
@@ -1134,7 +1162,7 @@
       if (CC.state.area === 'tree-tunnel') call('TreeTunnel', 'drawHud', ctx, W, H);
       if (CC.state.area === 'tree-ascent') call('TreeAscent','drawHud',ctx,W,H);
       call('MonsterMelee', 'drawStatus', ctx, W, H);
-      call('UI', 'drawHud', ctx, W, H, addHit);   // single Pack button; K / I / M remain keyboard shortcuts
+      call('UI', 'drawHud', ctx, W, H, addHit);   // CHAR and QUEST open the same tabbed journal
       call('UI', 'draw', ctx, W, H, addHit);
       call('Camp', 'drawUI', ctx, W, H, addHit);
       call('Waypoints','drawUI',ctx,W,H,addHit);
