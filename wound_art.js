@@ -11,7 +11,9 @@ function outline(c,pts){
 function profile(e,slot,r){
   // Bounds are intentionally asymmetrical, irregular and anatomy-relative.
   var bear=e.type==='bear',x=0,y=0,sx=1,sy=1,base=slot;
-  if(slot==='legLeft'){x=bear?-.76*r:-.43*r;y=bear?.64*r:.76*r;sx=bear?.61: .42;sy=bear?.8:.72;}
+  if(slot==='wingLeft'){x=-r*1.08;y=-r*.28;sx=.88;sy=.67;}
+  else if(slot==='wingRight'){x=r*1.08;y=-r*.28;sx=.88;sy=.67;}
+  else if(slot==='legLeft'){x=bear?-.76*r:-.43*r;y=bear?.64*r:.76*r;sx=bear?.61: .42;sy=bear?.8:.72;}
   else if(slot==='legRight'){x=bear?.66*r:.45*r;y=bear?.57*r:.7*r;sx=bear?.57:.42;sy=bear?.81:.62;}
   else if(slot==='armLeft'){x=bear?-.99*r:-.83*r;y=bear?-.04*r:.1*r;sx=bear?.60:.55;sy=bear?.65:.7;}
   else if(slot==='armRight'){x=bear?1.05*r:.83*r;y=bear?.03*r:.1*r;sx=bear?.62:.55;sy=bear?.65:.7;}
@@ -193,6 +195,25 @@ function paint(c,e,look,r,t){
   if(!e||e.dead||e.collapsed)return;
   if(e.hitWounds)for(var hi=0;hi<e.hitWounds.length;hi++)
     chipPaint(c,e.hitWounds[hi],e,t);
+  // Fire chars fur, feathers, flesh and cloth. Black singes and ember fissures
+  // linger for several seconds, distinct from the regular cut-and-blood wounds.
+  if(e.singeTime>0){
+    var fade=Math.min(1,e.singeTime/1.8),count=Math.min(7,e.singeMarks||1);
+    c.save();c.globalAlpha=.8*fade;
+    for(var si=0;si<count;si++){
+      var px=Math.sin(si*2.63+e.id*.21)*r*.58,
+          py=Math.cos(si*3.12+e.id*.17)*r*.53,
+          sc=r*(.13+(si%3)*.04);
+      dot(c,px,py,sc,sc*.73,'#1b1411');
+      dot(c,px+sc*.18,py-sc*.2,sc*.54,sc*.26,'#3c2420');
+      c.strokeStyle=si%2?'#e66c25':'#b94824';c.lineWidth=.9;
+      c.beginPath();c.moveTo(px-sc*.27,py-sc*.15);
+      c.lineTo(px+.6*Math.sin(t*4+si)*sc,py+.2*sc);
+      c.lineTo(px+sc*.33,py+sc*.4);c.stroke();
+      if(si%2===0)dot(c,px+sc*.27,py+sc*.22,1.15,1.15,'#ff9a39');
+    }
+    c.restore();
+  }
   if(!e.nubs)return;
   var saw={};
   for(var i=0;i<e.nubs.length;i++){
@@ -220,6 +241,36 @@ function flying(c,q,x,y){
   if(!q||!['limb','head','horn','hoof','chunk'].includes(q.kind))return false;
   var s=q.s||1;
   c.save();c.translate(x,y);c.rotate(q.rot||0);
+  if(q.kind==='head'&&q.source==='bear'){
+    // A complete recognizable bear head tumbles through the air: ears, brow, snout.
+    dot(c,-5*s,-5*s,4*s,4*s,'#301f1a');dot(c,5*s,-5*s,4*s,4*s,'#301f1a');
+    dot(c,0,0,9*s,7*s,'#4a3026');dot(c,4*s,2*s,5.3*s,3.3*s,'#9e7863');
+    dot(c,8*s,0,2.7*s,2*s,'#1b1113');
+    dot(c,2*s,-2.2*s,1.5*s,1.5*s,'#f03b3d');
+    dot(c,-6*s,4*s,3*s,2*s,'#82172b');
+    stroke(c,-8*s,5*s,-11*s,8*s,'#c32841',1.8*s);
+    c.restore();return true;
+  }
+  if(q.kind==='head'&&['bat','crow','raven'].includes(q.source)){
+    dot(c,0,0,4.3*s,3.8*s,q.col||'#26232b');
+    c.fillStyle='#d5a15a';c.beginPath();c.moveTo(2*s,-1*s);
+    c.lineTo(8*s,1*s);c.lineTo(2*s,2*s);c.fill();
+    dot(c,1.2*s,-1.2*s,1.1*s,1*s,'#ed4047');
+    c.restore();return true;
+  }
+  if(q.kind==='limb'&&q.partSlot&&q.partSlot.indexOf('wing')===0){
+    c.fillStyle=q.col||'#392f46';c.beginPath();
+    c.moveTo(-9*s,0);c.lineTo(-3*s,-5*s);c.lineTo(3*s,-7*s);
+    c.lineTo(13*s,-3*s);c.lineTo(6*s,1*s);c.lineTo(-3*s,5*s);c.closePath();c.fill();
+    for(var feather=0;feather<5;feather++){
+      c.fillStyle=feather%2?'#302638':'#5e5268';
+      c.beginPath();c.moveTo(-6*s+feather*3*s,0);
+      c.lineTo(-3*s+feather*3*s,6*s+(feather%3)*2*s);
+      c.lineTo(feather*3*s,1*s);c.fill();
+    }
+    dot(c,-7*s,1*s,2.2*s,1.6*s,'#9c1530');
+    c.restore();return true;
+  }
   var length=q.kind==='limb'?6.7*s:4.3*s,wide=q.kind==='head'?3.8*s:2.8*s;
   if(q.kind==='head'){
     dot(c,0,0,4*s,3.6*s,q.col);
@@ -241,6 +292,46 @@ function flying(c,q,x,y){
   }
   c.restore();return true;
 }
+function ground(c,q,x,y){
+  if(!q||!q.partSlot)return false;
+  var s=Math.max(.72,q.s||1),bird=['bat','crow','raven'].includes(q.source);
+  if(q.kind==='head'&&q.source==='bear'){
+    c.save();c.translate(x,y);
+    dot(c,2,5,15*s,6*s,'rgba(0,0,0,.33)');
+    dot(c,-7*s,-6*s,4.5*s,4*s,'#33211c');
+    dot(c,6*s,-6*s,4.5*s,4*s,'#33211c');
+    dot(c,0,0,10*s,8*s,'#4e3027');
+    dot(c,5*s,2*s,6*s,4*s,'#96735c');
+    dot(c,10*s,0,3*s,2.2*s,'#1c0c11');
+    dot(c,3*s,-2*s,1.6*s,1.4*s,'#b81e33');
+    c.strokeStyle='#b5263e';c.lineWidth=1.6;c.beginPath();
+    c.moveTo(-7*s,5*s);c.lineTo(-9*s,10*s);c.stroke();
+    c.restore();return true;
+  }
+  if(q.kind==='head'&&bird){
+    c.save();c.translate(x,y);
+    dot(c,1,3,8*s,3.5*s,'rgba(0,0,0,.3)');
+    dot(c,0,0,4.9*s,4*s,q.col||'#34313e');
+    c.fillStyle='#c6a16a';c.beginPath();c.moveTo(1*s,0);
+    c.lineTo(8*s,1*s);c.lineTo(1*s,2*s);c.fill();
+    dot(c,-1*s,-1*s,1.1*s,1*s,'#b42b37');
+    c.restore();return true;
+  }
+  if(q.kind==='limb'&&bird&&q.partSlot.indexOf('wing')===0){
+    c.save();c.translate(x,y);
+    c.rotate(q.partSlot==='wingLeft'?.2:-.4);
+    c.fillStyle=q.col||'#383342';c.beginPath();
+    c.moveTo(-10*s,0);c.lineTo(-5*s,-3*s);c.lineTo(9*s,-5*s);
+    c.lineTo(12*s,-1*s);c.lineTo(1*s,5*s);c.closePath();c.fill();
+    for(var k=0;k<4;k++){
+      c.fillStyle=k%2?'#4c4457':'#26252f';c.beginPath();
+      c.moveTo(-8*s+k*4*s,0);c.lineTo(-5*s+k*4*s,6*s+(k%3)*1.5*s);
+      c.lineTo(-2*s+k*4*s,1*s);c.fill();
+    }
+    c.restore();return true;
+  }
+  return false;
+}
 function drawMonster(c,e,r){
   if(e.type!=='horrorHead')return false;
   c.save();c.translate(0,-3+Math.sin(e.anim*6)*2);
@@ -258,7 +349,13 @@ function drawMonster(c,e,r){
 if(E){
   var origDetach=E._detach,origLand=E._land,origThink=E._think;
   E._detach=function(e,slot){
+    var had=e.missing&&e.missing[slot];
     var start=this.gore.length,result=origDetach.apply(this,arguments);
+    if(!had&&(slot==='wingLeft'||slot==='wingRight')){
+      // One clipped wing makes flight erratic, losing both makes birds easy to catch.
+      e.spd*=e.missing&&e.missing.wingLeft&&e.missing.wingRight?.60:.78;
+      e.wingTorn=true;
+    }
     for(var i=start;i<this.gore.length;i++){
       var q=this.gore[i];if(q.kind==='blood')continue;
       q.source=e.type;q.partSlot=slot;q.floor=e.floor;
@@ -283,7 +380,11 @@ if(E){
   E.TYPES.horrorHead={name:'Reanimated Horror Head',hp:16,spd:73,dmg:7,
     r:6,xp:12,color:'#8a67a8',w:0,blood:'#64265a'};
   E._land=function(q){
-    var result=origLand.apply(this,arguments);
+    var prior=this.remains.length,result=origLand.apply(this,arguments);
+    for(var idx=prior;idx<this.remains.length;idx++){
+      if(q.source)this.remains[idx].source=q.source;
+      if(q.partSlot)this.remains[idx].partSlot=q.partSlot;
+    }
     if(q.reanimateHead){
       var alive=this.list.filter(function(v){return !v.dead&&v.type==='horrorHead';}).length;
       if(alive<3){
@@ -293,6 +394,24 @@ if(E){
           if(CC.fx&&CC.fx.text)CC.fx.text(e.x,e.y-22,'THE HEAD AWAKENS','#d18aff',10);
         }
       }
+    }
+    return result;
+  };
+  // Damage-based scorch marks, including DoT fire ticks.
+  var originalDamage=E.damage;
+  E.damage=function(e,amount,type){
+    if(e&&!e.dead&&type==='fire'&&amount>0){
+      e.singeTime=8;
+      e.singeMarks=Math.min(7,(e.singeMarks||0)+1);
+    }
+    return originalDamage.apply(this,arguments);
+  };
+  var originalUpdate=E.update;
+  E.update=function(dt){
+    var result=originalUpdate.apply(this,arguments);
+    for(var ci=0;ci<this.list.length;ci++){
+      var enemy=this.list[ci];
+      if(enemy.singeTime>0)enemy.singeTime=Math.max(0,enemy.singeTime-dt);
     }
     return result;
   };
@@ -324,5 +443,5 @@ if(E){
     }
   };
 }
-CC.WoundArt={clip:clip,paint:paint,impact:impact,flying:flying,drawMonster:drawMonster};
+CC.WoundArt={clip:clip,paint:paint,impact:impact,flying:flying,ground:ground,drawMonster:drawMonster};
 })(window);
