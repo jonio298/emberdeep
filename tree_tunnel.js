@@ -142,6 +142,29 @@
         if(!isFinite(x)||!isFinite(y))return true;
         return this.isSolidTile(Math.floor(x/T),Math.floor(y/T));
       },
+      moveWithCollision:function(entity,dx,dy){
+        // Class movement, enemy lunges and boss charges must all respect the roots.
+        if(entity===CC.state.player && CC.movePlayer)
+          return CC.movePlayer(entity,dx,dy);
+        var r=Math.min(15,entity.r||8),hitX=false,hitY=false,self=this;
+        function blocked(x,y){
+          return self.isSolid(x-r,y-r)||self.isSolid(x+r,y-r)||
+            self.isSolid(x-r,y+r)||self.isSolid(x+r,y+r);
+        }
+        function stepAxis(axis,d){
+          if(!d)return false;
+          var n=Math.max(1,Math.ceil(Math.abs(d)/5)),step=d/n,hit=false;
+          for(var i=0;i<n;i++){
+            var x=axis==='x'?entity.x+step:entity.x,
+                y=axis==='y'?entity.y+step:entity.y;
+            if(blocked(x,y)){hit=true;break;}
+            entity[axis]+=step;
+          }
+          return hit;
+        }
+        hitX=stepAxis('x',dx);hitY=stepAxis('y',dy);
+        return {x:entity.x,y:entity.y,hitX:hitX,hitY:hitY};
+      },
       isVisible:function(x,y){
         var p=CC.state&&CC.state.player;
         return !p||Math.hypot(x-p.x,y-p.y)<365;
