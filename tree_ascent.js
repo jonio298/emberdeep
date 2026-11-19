@@ -217,30 +217,28 @@ A.nearAction=function(){
  return !!(s.area==='tree-ascent'&&p&&m&&Math.hypot(p.x-m.stairs.x,p.y-m.stairs.y)<60);
 };
 A.drawHud=function(c,w,h){
+ // The character HUD already says "Tree Bough N". No permanent oversized
+ // "ANCIENT TREE" title should cover the minimap, hero or health meters.
+ // Only show a compact health strip when the unique summit miniboss is alive.
  var m=CC.state&&CC.state.map;
- if(!m||!m.treeAscent)return;
+ if(!m||!m.treeAscent||stage!==5)return;
+ var boss=CC.TreeWeasel&&CC.TreeWeasel.status&&CC.TreeWeasel.status();
+ if(!boss)return;
+ var bw=Math.min(196,w*.53),bx=w-12-bw;
+ var by=w<360?201:163;
  c.save();
- c.textAlign='center';c.fillStyle='rgba(12,15,14,.87)';
- c.fillRect(w/2-140,42,280,38);
- c.strokeStyle='#937d53';c.lineWidth=1;c.strokeRect(w/2-140,42,280,38);
- c.fillStyle='#f2d7a1';c.font='bold 12px Georgia';
- c.fillText('ANCIENT TREE — FLOOR '+stage+' / 5',w/2,57);
- c.fillStyle='#b6c99d';c.font='11px Georgia';
- var veyr=CC.TreeWeasel&&CC.TreeWeasel.status&&CC.TreeWeasel.status();
- var caption=veyr?'VEYR, THE HOLLOW MAW — '+(
-   veyr.phase===3?'DESPERATE RAGE':veyr.phase===2?'RAGING':'GUARDING THE NEST'):
-   !A.canAdvance()?'Guardians remain':
-   stage===5?(CC.EggQuest&&CC.EggQuest.hasGathered()?'Eggs secured · descend [F]':'Collect the orphaned eggs [F]'):
-   'Climb to the next bough [F]';
- c.fillText(caption,w/2,72);
- if(veyr){
-   var pct=Math.max(0,veyr.hp/Math.max(1,veyr.maxHp));
-   var width=Math.min(235,w-84),left=(w-width)/2;
-   c.fillStyle='rgba(22,8,19,.83)';c.fillRect(left,82,width,11);
-   c.fillStyle=veyr.phase===3?'#d82a46':veyr.phase===2?'#b34274':'#85567e';
-   c.fillRect(left+1,83,(width-2)*pct,9);
-   c.strokeStyle='#d7a7b7';c.strokeRect(left,82,width,11);
- }
+ c.fillStyle='rgba(18,11,20,.81)';c.fillRect(bx-6,by-17,bw+12,34);
+ c.strokeStyle='rgba(162,107,134,.74)';c.lineWidth=1;
+ c.strokeRect(bx-6,by-17,bw+12,34);
+ c.textAlign='center';c.font='bold 10px Georgia';
+ c.fillStyle=boss.phase===3?'#ff637b':boss.phase===2?'#ef9ab9':'#dfc0d5';
+ c.fillText(boss.phase===3?'VEY R — DESPERATE RAGE'.replace('VEY R','VEYR'):
+   boss.phase===2?'VEYR — RAGE':'VEYR, THE HOLLOW MAW',bx+bw/2,by-5);
+ var pct=Math.max(0,Math.min(1,boss.hp/Math.max(1,boss.maxHp)));
+ c.fillStyle='#1d1020';c.fillRect(bx,by+1,bw,8);
+ c.fillStyle=boss.phase===3?'#e63c5b':boss.phase===2?'#ac487e':'#82557d';
+ c.fillRect(bx+1,by+2,(bw-2)*pct,6);
+ c.strokeStyle='#a67486';c.lineWidth=.8;c.strokeRect(bx,by+1,bw,8);
  c.restore();
 };
 A.drawEggs=function(c,cam){
