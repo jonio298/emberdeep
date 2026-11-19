@@ -233,6 +233,20 @@
     resetInputHeld();loadFloor();
     return true;
   };
+  CC.enterTreeAscent=function(){
+    var s=CC.state,p=s.player,m=s.map;
+    if(s.area!=='forest'||!p||!m||!m.ascentEntrance)return false;
+    if(Math.hypot(p.x-m.ascentEntrance.x,p.y-m.ascentEntrance.y)>67)return false;
+    if(!CC.EggQuest||CC.EggQuest.stage()!=='climbing'){
+      if(CC.fx&&CC.fx.text)CC.fx.text(p.x,p.y-27,
+        CC.EggQuest&&CC.EggQuest.stage()==='unstarted'?'SPEAK TO SISTER ALDER':
+          'THE EAGLE NEST HAS BEEN RESCUED','#ebc894',12);
+      return true;
+    }
+    rememberWorld();s.area='tree-ascent';s.treeFloor=1;
+    if(CC.fx&&CC.fx.text)CC.fx.text(p.x,p.y-24,'CLIMB TO THE EAGLE NEST','#d5e7b2',14);
+    loadFloor();call('SaveGame','save');return true;
+  };
   CC.nextFloor = function () {
     call('CriticalScene', 'reset');
     if(CC.state.area==='tree-ascent'){
@@ -243,14 +257,13 @@
       }
       return;
     }
-    if(CC.state.area==='forest'&&CC.EggQuest&&CC.EggQuest.stage()==='climbing'){
-      rememberWorld();CC.state.area='tree-ascent';CC.state.treeFloor=1;
-      loadFloor();call('SaveGame','save');return;
-    }
+    // Main hollow ALWAYS leads toward the Plains (via the original tunnel).
+    // The egg ascent is a separate entrance, only reached from its side trail.
     if(CC.state.area==='forest'&&CC.EggQuest&&!CC.EggQuest.tunnelUnlocked()){
-      var hero=CC.state.player;
+      var hero=CC.state.player,stage=CC.EggQuest.stage();
       if(hero)CC.fx.text(hero.x,hero.y-28,
-        CC.EggQuest.stage()==='unstarted'?'SPEAK TO SISTER ALDER':'TAKE THE EGGS TO TOWN',
+        stage==='unstarted'?'SPEAK TO SISTER ALDER':
+          stage==='climbing'?'FOLLOW THE EAGLE NEST SIDE PATH':'DELIVER EGGS TO ALDER',
         '#ecae7d',12);
       return;
     }
@@ -340,7 +353,10 @@
     var s=CC.state;
     if(s.area!=='tree-ascent'||!CC.EggQuest||!CC.EggQuest.hasGathered())return false;
     rememberWorld();s.area='forest';s.floor=1;loadFloor();
-    if(s.map&&s.map.stairs&&s.player){s.player.x=s.map.stairs.x;s.player.y=s.map.stairs.y+55;}
+    // Leave via the quest tree at the end of its side trail, NOT the hollow tunnel.
+    if(s.map&&s.map.ascentEntrance&&s.player){
+      s.player.x=s.map.ascentEntrance.x;s.player.y=s.map.ascentEntrance.y;
+    }
     call('SaveGame','save');return true;
   };
   // Continue retains RPG/quest progress; level geometry may regenerate after a
@@ -425,6 +441,7 @@
     if (!p) return;
     if (CC.Waypoints && CC.Waypoints.interact && CC.Waypoints.interact()) return;
     if(s.area==='tree-ascent'&&call('TreeAscent','interact'))return;
+    if(s.area==='forest'&&CC.enterTreeAscent&&CC.enterTreeAscent())return;
     if(s.area==='forest'&&s.map&&s.map.stairs&&
         Math.hypot(p.x-s.map.stairs.x,p.y-s.map.stairs.y)<58){CC.nextFloor();return;}
     if (CC.Camp && CC.Camp.interact && CC.Camp.interact()) return;
@@ -468,6 +485,7 @@
       for (j = 0; j < npcs.length; j++) if (near(npcs[j], 48)) return true;
     }
     // Forest/plains transitions happen by walking into them, not by using F.
+    if (s.area==='forest'&&map&&near(map.ascentEntrance,67))return true;
     if (s.area==='forest'&&map&&near(map.stairs,58))return true;
     if (s.area !== 'forest' && s.area !== 'plains' && map && near(map.stairs, 26)) return true;
     var chests = map && map.chests || [];
@@ -719,12 +737,12 @@
         var ex = s.map && s.map.stairs;
         if (ex && p && !p.stub && (
             (s.area === 'forest' && CC.EggQuest &&
-              (CC.EggQuest.stage()==='climbing'||CC.EggQuest.tunnelUnlocked())) ||
+              CC.EggQuest.tunnelUnlocked()) ||
             s.area === 'plains' ||
             (s.area === 'tree-tunnel' && call('TreeTunnel', 'canExit'))) &&
             Math.hypot(p.x - ex.x, p.y - ex.y) <= 28 && !playerDead()) {
           tunnel = { t: 0, swapped: false, label: s.area === 'forest' ?
-            (CC.EggQuest.stage()==='climbing'?'CLIMB THE ANCIENT TREE...':'INTO THE ANCIENT TREE...') :
+            'ENTERING THE HOLLOW TREE TUNNEL...' :
             s.area === 'tree-tunnel' ? 'EMERGING INTO THE PLAINS...' : 'DOWN INTO THE BARROW...' };
           resetInputHeld();
         }
