@@ -171,13 +171,16 @@ Camp.respawn = function() {
   // The generated source map is intentionally retained, so the exact checkpoint still exists.
   room='';modal='';
   var p=hero(),s=state();
+  var sameWorld = s.area === home.area && s.floor === home.floor &&
+    s.map === home.map && (!home.caveSnapshot || home.dungeon.floor === home.floor);
   restoreCave();
   s.area=home.area;s.floor=home.floor;s.map=home.map;s.mode=home.mode;
   CC.Dungeon=home.dungeon;
   p.x=home.x;p.y=home.y;p.hp=p.maxHp;p.mana=p.maxMana;p.invuln=2;
   if(CC.Enemies){ // reset hostile encounters near the checkpoint, not the entire map
     var E=CC.Enemies;
-    if(E.list) E.list=E.list.filter(function(e){return !e.dead && distance(e,home)>160;});
+    if(E.list) E.list = sameWorld ?
+      E.list.filter(function(e){return !e.dead && distance(e,home)>160;}) : [];
     if(E.projectiles)E.projectiles.length=0;
   }
   note('You awaken at your camp.');
