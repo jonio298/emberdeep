@@ -235,6 +235,50 @@
     }
   }
 
+  // The eagle-egg quest belongs to a different tree off a genuine side trail.
+  // The original giant hollow sequoia remains the tunnel towards the Plains.
+  function drawEagleTree(ctx,sx,sy,t){
+    ctx.save();
+    ctx.fillStyle='rgba(0,0,0,.5)';ctx.beginPath();ctx.ellipse(sx,sy+3,52,15,0,0,PI2);ctx.fill();
+    paintTrunk(ctx,sx,sy-8,66,175,18,1,seeded(6204),6);
+    // Carved staircase beneath an ancient spread of branches, not a hollow tunnel.
+    ctx.fillStyle='#251b18';ctx.beginPath();ctx.ellipse(sx,sy-24,29,44,0,0,PI2);ctx.fill();
+    ctx.strokeStyle='#967252';ctx.lineWidth=2.3;
+    for(var k=0;k<7;k++){
+      var h=sy-8-k*8,width=25-k*2.2;
+      ctx.beginPath();ctx.moveTo(sx-width,h);ctx.quadraticCurveTo(sx,h-2,sx+width,h-4);ctx.stroke();
+    }
+    ctx.strokeStyle='#638d64';ctx.lineWidth=3.2;
+    for(k=0;k<3;k++){
+      ctx.beginPath();ctx.moveTo(sx-34-k*5,sy+4);
+      ctx.quadraticCurveTo(sx-43-k*3,sy-42,sx-31+k*7,sy-102);ctx.stroke();
+    }
+    // Sanctuary icon: little eggs in a crescent nest. Readable on mobile.
+    ctx.fillStyle='#e3c788';ctx.beginPath();ctx.ellipse(sx,sy-49,10,3.6,0,0,Math.PI*2);ctx.fill();
+    for(k=-1;k<=1;k++){
+      ctx.fillStyle=k===0?'#fff1d0':'#e6d4b2';
+      ctx.beginPath();ctx.ellipse(sx+k*5,sy-53,2.7,4.2,0,0,Math.PI*2);ctx.fill();
+    }
+    var g=ctx.createRadialGradient(sx,sy-42,0,sx,sy-42,49);
+    g.addColorStop(0,'rgba(139,241,174,.38)');g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=g;ctx.fillRect(sx-49,sy-91,98,100);
+    var p=CC.state&&CC.state.player;
+    if(p&&F.map&&F.map.ascentEntrance&&
+       Math.hypot(p.x-F.map.ascentEntrance.x,p.y-F.map.ascentEntrance.y)<90){
+      ctx.fillStyle='#f2e2b4';ctx.font='bold 10px Georgia,serif';
+      ctx.textAlign='center';ctx.fillText('[F] Climb to the eagle nest',sx,sy+25);
+      ctx.textAlign='left';
+    }
+    ctx.restore();
+  }
+  function drawEagleSign(ctx,sx,sy){
+    ctx.fillStyle='#523922';ctx.fillRect(sx-2,sy-26,4,30);
+    ctx.fillStyle='#ba9362';ctx.beginPath();
+    ctx.moveTo(sx-20,sy-37);ctx.lineTo(sx+10,sy-37);ctx.lineTo(sx+21,sy-31);
+    ctx.lineTo(sx+10,sy-25);ctx.lineTo(sx-20,sy-25);ctx.closePath();ctx.fill();
+    ctx.fillStyle='#281a11';ctx.textAlign='center';ctx.font='bold 7px Georgia,serif';
+    ctx.fillText('EAGLE NEST',sx-1,sy-28.5);ctx.textAlign='left';
+  }
   function drawPerson(ctx, sx, sy, t, c, pr) {
     var bob = Math.sin(t * 2 + pr.seed) * 0.8;
     ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.ellipse(sx, sy + 8, 8, 3.5, 0, 0, PI2); ctx.fill();
@@ -493,6 +537,28 @@
     var stairs = ctr(stx, sty - 1);
     props.push({ x: stairs.x, y: (sty - 2) * T + T, sortY: 0, front: true, draw: function (ctx, sx, sy, t) { drawHollow(ctx, sx, sy, t); } });
     lights.push({ x: stairs.x, y: stairs.y - 10, r: 130, color: '255,130,70', inten: 0.55, flicker: 0.1 });
+    // A separately signposted side path leads to the Ancient Tree ascent.
+    // Nothing moves the main hollow or changes its tunnel destination.
+    var side = trails.filter(function(a){return a.length >= 10;})
+      .sort(function(a,b){
+        var aa=a[a.length-1],bb=b[b.length-1];
+        return Math.hypot(bb.x-stx,bb.y-sty)-Math.hypot(aa.x-stx,aa.y-sty);
+      })[0];
+    if(!side)return null;
+    var tip=side[side.length-1],sx0=Math.round(tip.x),sy0=Math.round(tip.y);
+    // Small walkable platform at the end of the spur, protected from tree walls.
+    disc(sx0,sy0,1.7,function(xx,yy){
+      if(xx>=3&&yy>=3&&xx<W-3&&yy<H-3){
+        tiles[at(xx,yy)]=0;kind[at(xx,yy)]=6;res[at(xx,yy)]=1;
+      }
+    });
+    var ascentEntrance=ctr(sx0,sy0);
+    props.push({x:ascentEntrance.x,y:ascentEntrance.y-4,sortY:1,
+      draw:function(ctx,sx,sy,tm){drawEagleTree(ctx,sx,sy,tm);}});
+    var first=side[0];
+    props.push({x:first.x*T+16,y:first.y*T+16,draw:drawEagleSign});
+    lights.push({x:ascentEntrance.x,y:ascentEntrance.y-36,r:130,
+      color:'137,221,157',inten:.65,flicker:.08});
 
     props.push({ x: spawn.x + 40, y: spawn.y + 30, draw: drawSign });
     lights.push({ x: spawn.x, y: spawn.y, r: 150, color: '255,190,110', inten: 0.6, flicker: 0.06 });
@@ -508,7 +574,8 @@
       var c0 = q[qi++], cx0 = c0 % W, cy0 = (c0 / W) | 0, nb = [[1, 0], [-1, 0], [0, 1], [0, -1]];
       for (var m = 0; m < 4; m++) { var nx = cx0 + nb[m][0], ny = cy0 + nb[m][1]; if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue; var ni = at(nx, ny); if (seen[ni] || tiles[ni]) continue; seen[ni] = 1; q.push(ni); }
     }
-    var ok = seen[at(stairs.tx, stairs.ty)] === 1, ci;
+    var ok = seen[at(stairs.tx, stairs.ty)] === 1 &&
+      seen[at(ascentEntrance.tx,ascentEntrance.ty)] === 1, ci;
     for (ci = 0; ci < chests.length; ci++) if (!seen[at(chests[ci].tx, chests[ci].ty)]) ok = false;
     cabins.forEach(function (c) { if (c.lit && !seen[at(c.door, c.y0 + c.h)]) ok = false; });
     if (!ok) return null;
@@ -534,7 +601,8 @@
       name: 'Giant Forest', w: W, h: H, kind: kind, tiles: tiles, spawn: spawn, stairs: stairs, chests: chests, enemySpawns: spawns, props: props, lights: lights,
       ambient: '5,9,14,0.6', playerLight: 190, viewR: 230, fog: 0.15, ground: ground, detail: detail, drawSolid: drawSolid
     });
-    map.npcs = npcs; map.cabins = cabins; map.floor = 1; map.trails = trails; map.mainPath = samples; map.bats = nbats; map.webs = nwebs;
+    map.npcs=npcs;map.cabins=cabins;map.floor=1;map.trails=trails;
+    map.ascentEntrance=ascentEntrance;map.mainPath=samples;map.bats=nbats;map.webs=nwebs;
     return map;
   }
 
