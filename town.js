@@ -511,6 +511,16 @@
     if(CC.EggQuest&&CC.EggQuest.drawTownNest)CC.EggQuest.drawTownNest(ctx,cam);
     if (CC.Classes && CC.Classes.drawPlayer) CC.Classes.drawPlayer(ctx, cam);
     if(CC.EggQuest&&CC.EggQuest.drawCompanion)CC.EggQuest.drawCompanion(ctx,cam);
+    if(CC.EggQuest&&CC.EggQuest.stage()==='unstarted'){
+      var elder=m.npcs&&m.npcs.find(function(n){return n.folk==='healer';});
+      if(elder){
+        var qx=elder.x-cam.x,qy=elder.y-cam.y-37-Math.sin(Date.now()/370)*3;
+        ctx.save();ctx.shadowColor='#efca73';ctx.shadowBlur=7;
+        ctx.fillStyle='#b68d4e';ctx.beginPath();ctx.arc(qx,qy,10,0,Math.PI*2);ctx.fill();
+        ctx.shadowBlur=0;ctx.fillStyle='#16130f';ctx.font='bold 16px Georgia';
+        ctx.textAlign='center';ctx.fillText('!',qx,qy+5);ctx.restore();
+      }
+    }
     if (m.drawFront) m.drawFront(ctx, cam); // trees and buildings the hero is standing behind redraw over them
     m.drawLighting(ctx, cam);
   };
@@ -528,7 +538,9 @@
     ctx.save();
     if (Town.hintT > 0 && !d) {
       ctx.globalAlpha = Math.min(1, Town.hintT / 2); ctx.fillStyle = 'rgba(14,10,8,0.7)'; ctx.fillRect(Wd / 2 - 150, Hd * 0.17, 300, 26);
-      ctx.fillStyle = '#ffe0a0'; ctx.font = 'bold 12px Georgia, serif'; ctx.textAlign = 'center'; ctx.fillText('Speak to the guard at the south gate [F]', Wd / 2, Hd * 0.17 + 17); ctx.globalAlpha = 1;
+      ctx.fillStyle = '#ffe0a0'; ctx.font = 'bold 12px Georgia, serif'; ctx.textAlign = 'center'; ctx.fillText(CC.EggQuest&&CC.EggQuest.stage()==='unstarted'?
+       'Speak to Sister Alder at the fire [F]' : 'Speak to the guard at the south gate [F]',
+       Wd/2,Hd*.17+17); ctx.globalAlpha = 1;
     }
     if (Town.note) { ctx.fillStyle = 'rgba(14,10,8,0.8)'; ctx.fillRect(Wd / 2 - 150, Hd * 0.25, 300, 24); ctx.fillStyle = '#f0e6d0'; ctx.font = '11px Georgia, serif'; ctx.textAlign = 'center'; ctx.fillText(Town.note.text, Wd / 2, Hd * 0.25 + 16); }
     if (d) {
