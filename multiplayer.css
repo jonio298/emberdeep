@@ -1,0 +1,70 @@
+/* Dark-fantasy mobile multiplayer overlay. Does not alter the game's canvas styling. */
+#emberdeep-mp{position:fixed;inset:0;pointer-events:none;font-family:Georgia,serif;color:#f3e3c8;z-index:15}
+#emberdeep-mp *{box-sizing:border-box}
+#emberdeep-mp button,#emberdeep-mp input,#emberdeep-mp select{font:inherit}
+#emberdeep-mp button{cursor:pointer;min-height:36px;padding:9px 13px;border:1px solid #ad794e;
+ background:linear-gradient(#5a3141,#2c192d);border-radius:7px;color:#ffeac1;font-size:12px;
+ font-weight:bold;letter-spacing:.04em;touch-action:manipulation}
+#emberdeep-mp button:active{filter:brightness(1.35)}
+#emberdeep-mp button:focus-visible,#emberdeep-mp input:focus-visible,#emberdeep-mp select:focus-visible{
+ outline:2px solid #f7b96c;outline-offset:2px}
+#emberdeep-mp .mp-hidden{display:none!important}
+#mp-lobby{pointer-events:auto;position:absolute;inset:0;display:flex;justify-content:center;
+ align-items:center;overflow:auto;padding:env(safe-area-inset-top) 12px env(safe-area-inset-bottom);
+ background:radial-gradient(circle at 50% 18%,rgba(67,40,67,.93),rgba(8,5,17,.99) 74%)}
+.mp-panel{width:min(100%,480px);max-height:95dvh;overflow:auto;padding:16px;
+ border:1px solid #9e654c;border-radius:13px;
+ box-shadow:0 0 0 4px #0d0816,0 14px 54px #050309, inset 0 0 38px #46233366;
+ background:linear-gradient(150deg,#291928,#110d1b)}
+.mp-title{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.mp-title small{font:10px Georgia;letter-spacing:.3em;color:#e0a266}
+.mp-title h2{font-size:clamp(20px,5vw,29px);font-weight:bold;color:#ffc77f;margin:5px 0 0}
+.mp-panel>p{font-size:12px;color:#cbb8c5;line-height:1.5;margin:9px 0 15px}
+.mp-panel label{display:flex;flex-direction:column;gap:5px;flex:1;font-size:11px;color:#e8ceaa}
+.mp-line{display:flex;gap:8px}
+#emberdeep-mp input,#emberdeep-mp select{width:100%;height:40px;border:1px solid #74506d;
+ border-radius:6px;background:#120f1f;color:#f4e6d4;padding:8px 10px;
+ font-size:14px;outline:0;touch-action:manipulation;-webkit-user-select:text;user-select:text}
+.mp-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:13px 0}
+.mp-join{display:flex;gap:8px}
+.mp-join input{min-width:0;text-transform:uppercase;letter-spacing:2px}
+.mp-join button{flex-shrink:0}
+.mp-section{margin-top:18px;border-top:1px solid #58404a;padding-top:12px}
+.mp-between{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;font-size:12px;color:#f1be82}
+.mp-quiet{background:transparent!important;border-color:#746070!important;color:#c8bbc6!important;min-height:28px!important}
+.mp-room{display:flex;align-items:center;justify-content:space-between;padding:9px 10px;gap:10px;
+ border:1px solid #604554;border-radius:7px;background:#151020;margin-bottom:7px}
+.mp-room strong{display:block;font-size:13px;margin-bottom:4px}
+.mp-room small{display:block;font-size:11px;color:#b8a6b5}
+.mp-empty{font-size:12px;color:#b4a8b4;padding:16px;text-align:center;border:1px dashed #4f3c4c}
+#mp-status{font-size:12px;min-height:20px;color:#b0f0cb;margin-top:14px}
+#mp-server{font-size:10px;color:#897989;line-height:1.4}
+#mp-hud{position:absolute;pointer-events:auto;left:50%;transform:translateX(-50%);
+ bottom:calc(188px + env(safe-area-inset-bottom));padding:6px 8px;background:#100d1de9;
+ border:1px solid #6e4f6b;border-radius:9px;box-shadow:0 4px 18px #050309aa;
+ width:min(258px,calc(100vw - 28px));text-align:center;backdrop-filter:blur(6px)}
+.mp-hud-top{display:flex;justify-content:space-between;font-size:11px;color:#f8c88e}
+#mp-code{letter-spacing:.16em}#mp-online{color:#81daaa;font-size:10px}
+#mp-peer{font-size:11px;color:#b9b1c9;margin:3px 0 7px}
+.mp-hud-actions{display:flex;gap:7px;justify-content:center}
+.mp-hud-actions button{flex:1;padding:6px 6px;min-height:31px}
+.mp-popup{pointer-events:auto;position:absolute;bottom:calc(260px + env(safe-area-inset-bottom));
+ left:50%;transform:translateX(-50%);width:min(380px,calc(100vw - 22px));padding:12px;
+ background:linear-gradient(#25182d,#0c0b17);border:1px solid #a37858;border-radius:11px;
+ box-shadow:0 10px 36px #08050bee;font-size:12px}
+.mp-popup header{display:flex;align-items:center;justify-content:space-between;color:#ffce87;
+ font-weight:bold;margin-bottom:8px}
+.mp-popup header button{min-height:28px!important;padding:4px 11px!important;font-size:18px!important}
+.mp-popup p{margin:7px 0;color:#cab6c6}
+#mp-chat-lines{height:min(200px,33vh);overflow:auto;background:#090914;border:1px solid #493c55;
+ border-radius:6px;padding:8px;line-height:1.5}
+#mp-chat-lines div{margin-bottom:4px;overflow-wrap:anywhere}
+#mp-chat-form{display:flex;gap:7px;margin-top:8px}
+#mp-chat-form button{min-width:65px}
+#mp-trade-items{margin:5px 0 8px}
+#mp-trade-status{padding:10px 0;color:#b6d2dd}
+#mp-trade-answer{display:flex;gap:8px}
+@media(max-width:390px){.mp-panel{padding:12px}.mp-title h2{font-size:21px}
+ .mp-join button{font-size:10px}.mp-line{flex-direction:column}.mp-panel>p{margin:6px 0 10px}}
+@media(max-height:560px){#mp-lobby{align-items:flex-start}.mp-panel{max-height:none}
+ #mp-hud{bottom:112px}#mp-trade,#mp-chat{bottom:172px}}

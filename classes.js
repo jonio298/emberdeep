@@ -245,6 +245,13 @@
 
   function damage(p, amount, src) {
     p = p || hero();
+    // Some custom miniboss AI calls Classes.damage directly. Forward guest
+    // damage to their device rather than altering the host's proxy object.
+    if(CC.Multiplayer&&CC.Multiplayer.isHost&&CC.Multiplayer.isHost()&&
+       p===CC.Multiplayer.remote&&amount>0){
+      if(p.invuln>0)return 0;
+      p.invuln=.35;CC.Multiplayer.onGuestDamage(amount);return amount;
+    }
     if (!p || p.hp <= 0 || p.invuln > 0 || p.iframes > 0 || !(amount > 0)) return 0;
     if (p.flags && p.flags.evade && Math.random() < 0.15) {
       p.invuln = 0.2;

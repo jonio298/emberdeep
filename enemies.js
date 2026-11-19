@@ -113,6 +113,12 @@
   function playerOf() { return CC.state && CC.state.player; }
   function hurtPlayer(p, amt, e, kind) {
     if (!p || p.hp <= 0 || (p.invuln > 0)) return 0;
+    if(CC.Multiplayer&&CC.Multiplayer.isHost&&CC.Multiplayer.isHost()&&
+       p===CC.Multiplayer.remote){
+      p.invuln=.45;
+      CC.Multiplayer.onGuestDamage(amt);
+      return amt;
+    }
     if (p.cursed > 0) amt *= 1.25; // Hex: cursed players take 25% more damage
     var defense=(p.armor || (p.stats && p.stats.armor) || 0) * (p.bearRoarT>0?.7:1);
     var dmg = Math.max(1, Math.round(amt * 100 / (100 + defense)));
@@ -320,6 +326,10 @@
 
     damage: function (e, amount, type) {
       if (!e || e.dead || amount <= 0) return 0;
+      if(CC.Multiplayer&&CC.Multiplayer.isGuest&&CC.Multiplayer.isGuest()){
+        CC.Multiplayer.sendHit(e.id,amount,type);
+        return amount; // Host decides enemy death, loot and XP.
+      }
       if (e.boss && e.invuln > 0) return 0;
       if (e.collapsed) return 0; // a collapsed skeleton is just a pile of bones until it reassembles
       type = type || 'melee';
@@ -370,6 +380,8 @@
       if (CC.fx && CC.fx.burst) CC.fx.burst(e.x, e.y, (TYPES[e.type] && TYPES[e.type].blood) || BLOOD, e.boss ? 30 : 8, e.boss ? 180 : 80);
       if (CC.fx && CC.fx.burst) CC.fx.burst(e.x, e.y, e.color, e.boss ? 40 : 10, e.boss ? 200 : 100);
       if (CC.addKill) CC.addKill(e);
+      if(CC.Multiplayer&&CC.Multiplayer.isHost&&CC.Multiplayer.isHost())
+        CC.Multiplayer.broadcastKill(Math.round(e.xp*(1+.1*(e.floor-1))));
       var p = playerOf();
       if (p && CC.Classes && CC.Classes.gainXp) CC.Classes.gainXp(Math.round(e.xp * (1 + 0.1 * (e.floor - 1))));
       if (p && CC.Classes && CC.Classes.onKill) CC.Classes.onKill(e);
@@ -679,7 +691,10 @@
     _blast: function (x, y, rad, dmg) {
       var p = playerOf();
       this.projectiles.push({ x: x, y: y, vx: 0, vy: 0, r: 0, life: 0.35, ring: rad, color: '#ff9a2a', fx: true });
-      if (dmg > 0 && p && Math.hypot(p.x - x, p.y - y) < rad + (p.r || 10) && clearLine(x, y, p.x, p.y, 1)) hurtPlayer(p, dmg, null); // blasts don't pass walls
+      if (dmg > 0 && p && Math.hypot(p.x - x, p.y - y) < rad + (p.r || 10) && clearLine(x, y, p.x, p.y, 1)) hurtPlayer(p, dmg, null);
+      var guest=CC.Multiplayer&&CC.Multiplayer.remotePlayerForAI&&CC.Multiplayer.remotePlayerForAI();
+      if(dmg>0&&guest&&guest.hp>0&&Math.hypot(guest.x-x,guest.y-y)<rad+(guest.r||10)&&
+         clearLine(x,y,guest.x,guest.y,1))hurtPlayer(guest,dmg,null);
     },
     _shoot: function (e, ang, spd, dmg, color, kind, life) {
       this.projectiles.push({ x: e.x, y: e.y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, r: kind === 'arrow' ? 4 : 5, dmg: dmg, life: life || 2.5, color: color, kind: kind || 'orb', hostile: true });
@@ -719,8 +734,12 @@
         if (e.invuln > 0) e.invuln -= dt;
         if (e.burn > 0) { e.burn -= dt; e.hp -= (e.burnDps || 1) * dt; if (e.hp <= 0) { this._kill(e); continue; } this._dismember(e); }
         var slowF = e.slow > 0 ? 0.5 : 1; if (e.slow > 0) e.slow -= dt;
-        if (!p || p.hp <= 0) continue;
-        var dx = p.x - e.x, dy = p.y - e.y, d = Math.hypot(dx, dy) || 1, ang = Math.atan2(dy, dx);
+        var guest=CC.Multiplayer&&CC.Multiplayer.remotePlayerForAI&&CC.Multiplayer.remotePlayerForAI();
+        if ((!p || p.hp<=0)&&(!guest||guest.hp<=0))continue;
+        var focus=p;
+        if(guest&&guest.hp>0&&(!p||p.hp<=0||
+           Math.hypot(guest.x-e.x,guest.y-e.y)<Math.hypot(p.x-e.x,p.y-e.y)))focus=guest;
+        var dx=focus.x-e.x,dy=focus.y-e.y,d=Math.hypot(dx,dy)||1,ang=Math.atan2(dy,dx);
         if (e.asleep) { if (d < WAKE) { e.asleep = false; if (e.group) for (var g = 0; g < this.list.length; g++) if (this.list[g].group === e.group) this.list[g].asleep = false; } else continue; }
         if (e.boss && !e.introDone) { // intro when the boss wakes: name banner, shake, brief invulnerable pause
           e.introDone = true; e.bar.intro = 2.2; e.invuln = 1.0; e.state = 'idle'; e.cd = 1.6;
@@ -730,14 +749,14 @@
         e.face = dx >= 0 ? 1 : -1;
         if (e.rage > 0) e.rage -= dt;
         var f = slowF * (e.frenzy ? 1.25 : 1) * (e.rage > 0 ? 1.3 : 1); // rage: from War Cry / Pack Howl
-        if (!e.ghost) ang = steer(e, p, ang); // ghosts float straight through walls, no pathing
+        if (!e.ghost) ang = steer(e, focus, ang); // ghosts float straight through walls, no pathing
         // walk the tile path around walls; equals the direct angle when the line is clear
-        if (e.boss) this._boss(e, dt, p, d, ang, f); else this._think(e, dt * (e.frenzy ? 1.25 : 1), p, d, ang, f);
+        if (e.boss) this._boss(e, dt, focus, d, ang, f); else this._think(e, dt * (e.frenzy ? 1.25 : 1), focus, d, ang, f);
         if (!e.boss && !e.miniBoss && d < 420) this._spurtAI(e, dt, ang);
-        if (!e.boss && !e.miniBoss && !e.stitched) this._special(e, dt, p, d, ang); // Patchwork uses dedicated boss attacks
+        if (!e.boss && !e.miniBoss && !e.stitched) this._special(e, dt, focus, d, ang); // Patchwork uses dedicated boss attacks
         // contact damage while dangerous
-        if (e.dangerous && e.contact <= 0 && d < e.r + (p.r || 10)) {
-          if (hurtPlayer(p, e.dmg, e, e.poison ? 'poison' : e.fireproof ? 'fire' : null)) e.contact = 0.7;
+        if (e.dangerous && e.contact <= 0 && d < e.r + (focus.r || 10)) {
+          if (hurtPlayer(focus, e.dmg, e, e.poison ? 'poison' : e.fireproof ? 'fire' : null)) e.contact = 0.7;
         }
       }
       // projectiles
@@ -757,6 +776,12 @@
             if (CC.fx && CC.fx.burst) CC.fx.burst(q.x, q.y, q.color, 3, 40);
           }
           else if (p && q.hostile && Math.hypot(p.x - q.x, p.y - q.y) < q.r + (p.r || 10)) { hurtPlayer(p, q.dmg, null, PROJ_KIND[q.kind] || null); q.life = 0; }
+          else {
+            var gp=CC.Multiplayer&&CC.Multiplayer.remotePlayerForAI&&CC.Multiplayer.remotePlayerForAI();
+            if(gp&&q.hostile&&Math.hypot(gp.x-q.x,gp.y-q.y)<q.r+(gp.r||10)){
+              hurtPlayer(gp,q.dmg,null,PROJ_KIND[q.kind]||null);q.life=0;
+            }
+          }
         }
         if (q.life <= 0) this.projectiles.splice(i, 1);
       }

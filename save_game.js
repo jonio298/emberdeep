@@ -42,7 +42,7 @@ S.clear=function(){
 };
 S.save=function(){
  var st=storage(),s=CC.state,p=s&&s.player;
- if(!st||!p||p.hp<=0||!(s.mode==='town'||s.mode==='dungeon'))return false;
+ if(!st||!p||s.coop||p.hp<=0||!(s.mode==='town'||s.mode==='dungeon'))return false;
  try{
   var campMeta=CC.Camp&&CC.Camp.exportState?CC.Camp.exportState():null;
   var inside=!!(campMeta&&CC.Camp&&CC.Camp.isInside&&CC.Camp.isInside());

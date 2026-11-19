@@ -27,7 +27,7 @@
 
   var canvas = document.getElementById('game');
   var ctx = canvas.getContext('2d');
-  var W = 360, H = 640, dpr = 1, zoom = 1.5;
+  var W = 360, H = 640, dpr = 1, zoom = 1.5, titlePage = 'mode';
   var cam = { x: 0, y: 0, w: 240, h: 420, zoom: 1.5 };
   var STEP = 1 / 60;
   var time = 0;
@@ -321,7 +321,7 @@
     else if (s.area === 'plains') { map = call('Plains', 'generate',s.resumeSeed); CC.Dungeon = map; }
     else if (s.area === 'tree-ascent') { map = call('TreeAscent','generate',s.treeFloor||1); CC.Dungeon=map; }
     else if (s.area === 'tree-tunnel') { map = call('TreeTunnel', 'generate'); CC.Dungeon = map; }
-    else { CC.Dungeon = CC.CaveDungeon; map = call('Dungeon', 'generate', s.floor); }
+    else { CC.Dungeon = CC.CaveDungeon; map = call('Dungeon', 'generate', s.floor, s.coop && Number.isFinite(s.resumeSeed) ? s.resumeSeed : undefined); }
     s.map = map || null;
     s.resumeSeed=null;
     if(s.area==='plains')call('Waypoints','discover','plains',map);
@@ -338,6 +338,7 @@
 
   function startGame(classId) {
     var s = CC.state;
+    s.coop = false;
     clearWorldCache();call('SaveGame','clear');call('EggQuest','reset');
     s.gold=0;s.inventory=[];s.potions=2;s.bridgeDown=false;s.treeFloor=1;
     call('Camp', 'clear'); // a fresh hero must not inherit a previous run's fence or checkpoint
@@ -349,6 +350,25 @@
     CC.setMode('town');
   }
 
+  // A fresh, isolated multiplayer character. Never clear/overwrite solo saves.
+  CC.beginCoop=function(classId,scene){
+    clearWorldCache();
+    var s=CC.state;
+    s.coop=true;s.inventory=[];s.potions=2;s.gold=0;s.kills=0;s.runGold=0;
+    s.classId=classId;s.bestFloor=1;s.treeFloor=1;
+    s.player=call('Classes','create',classId);
+    if(!s.player)s.player=stubPlayer(classId);
+    s.resumeSeed=scene&&Number.isFinite(scene.seed)?scene.seed:null;
+    CC.startRun(scene&&scene.floor||1,'cave');
+    return true;
+  };
+  CC.syncCoopScene=function(scene){
+    if(!scene||scene.area!=='cave'||!CC.Multiplayer||!CC.Multiplayer.isGuest())return false;
+    clearWorldCache();
+    CC.state.resumeSeed=scene.seed;
+    CC.startRun(scene.floor,'cave');
+    return true;
+  };
   CC.leaveTreeAscent=function(){
     var s=CC.state;
     if(s.area!=='tree-ascent'||!CC.EggQuest||!CC.EggQuest.hasGathered())return false;
@@ -745,7 +765,7 @@
     updatePresentationFx(dt);
     call('Waypoints','update',dt);
     call('EggQuest','update',dt);
-    call('SaveGame','auto',dt);
+    if(!s.coop)call('SaveGame','auto',dt);
     if (uiOpen() !== uiWas) { uiWas = uiOpen(); resetInputHeld(); }
     if (call('Eagle', 'sceneActive')) return; // the egg is hatching: the game waits
     if (paused || uiWas || (p && p.perkOpen) ||
@@ -776,11 +796,12 @@
         if (!has('Town', 'update') && p && !p.stub) call('Classes', 'update', dt, { noCombat: true });
       } else {
         call('Classes', 'update', dt);
-        call('Enemies', 'update', dt);
+        if(!(CC.Multiplayer&&CC.Multiplayer.isGuest()))call('Enemies', 'update', dt);
         call('SpellCharge','update',dt);
         call('Charge', 'update', dt, !!(keys.Space || held.attack > 0)); // hold attack to charge; a tap is the normal attack
-        call('Loot', 'update', dt);
-        call('Breakables','update',dt);
+        if(!(CC.Multiplayer&&CC.Multiplayer.isGuest()))call('Loot', 'update', dt);
+        if(!(CC.Multiplayer&&CC.Multiplayer.isGuest()))call('Breakables','update',dt);
+        call('Multiplayer','tick',dt);
         if (s.area === 'tree-tunnel') call('TreeTunnel', 'update', dt);
         if (s.area === 'tree-ascent') call('TreeAscent','update',dt);
         // Walk through the living tunnel and defeat its miniboss before entering the plains.
@@ -947,7 +968,8 @@
       call('Loot', 'draw', ctx, cam);
       call('Enemies', 'draw', ctx, cam);
       call('Classes', 'draw', ctx, cam);
-      call('EggQuest','drawCompanion',ctx,cam);
+      call('Multiplayer','drawWorld',ctx,cam);
+      if(!s.coop)call('EggQuest','drawCompanion',ctx,cam);
       if(s.area==='tree-ascent')call('TreeAscent','drawEggs',ctx,cam);
       call('Charge', 'draw', ctx, cam);
       if (CC.Dungeon && typeof CC.Dungeon.drawFront === 'function') CC.Dungeon.drawFront(ctx, dcam); // trees and props in front of the hero redraw over the entities
@@ -1126,6 +1148,19 @@
     ctx.save(); ctx.translate(W / 2, Math.max(50, H * 0.12)); ctx.scale(pulse, pulse);
     label('EMBERDEEP', 0, 0, Math.min(44, W / 8.5), '#ffb347');
     ctx.restore();
+    if(titlePage==='mode'){
+      label('CHOOSE YOUR ADVENTURE', W/2, H*.25, 14, '#cfc5ff');
+      addButton(W/2-125,H*.37,250,58,'SINGLE PLAYER','#645035',function(){titlePage='single';});
+      addButton(W/2-125,H*.37+72,250,58,'MULTIPLAYER','#47356d',function(){
+        if(CC.Multiplayer)CC.Multiplayer.openLobby();
+      });
+      label('Co-op dungeon adventures for two',W/2,H*.37+151,11,'#baa7c3');
+      if(call('SaveGame','exists'))addButton(W/2-125,H*.37+181,250,44,'CONTINUE SOLO SAVE','#365848',function(){
+        CC.state.coop=false;call('SaveGame','load');
+      });
+      return;
+    }
+    addButton(W-86,14,76,27,'Back','#463645',function(){titlePage='mode';});
     label('Pick your hero', W / 2, Math.max(50, H * 0.12) + 34, 14, '#cfc5ff');
 
     var cw = Math.min(W - 32, 380),
@@ -1224,7 +1259,7 @@
       var tentWidth = Math.round((quickWidth-quickGap*2)*.21);
       var pauseWidth = quickWidth-saveWidth-tentWidth-quickGap*2;
       addButton(quickX,quickY,saveWidth,30,'Save','#466b53',function(){
-        if(call('SaveGame','save')&&CC.state.player)
+        if(!CC.state.coop&&call('SaveGame','save')&&CC.state.player)
           CC.fx.text(CC.state.player.x,CC.state.player.y-18,'GAME SAVED','#b5efb6',12);
       });
       if(CC.Camp)drawTentButton(quickX+saveWidth+quickGap,quickY,
