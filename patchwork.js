@@ -62,9 +62,9 @@
   function build(group, x, y) {
     var floor = CC.state.floor || 1, e = monster('ghoul', x, y, floor);
     e.stitched = true; e.name = 'The Patchwork Horror';
-    e.maxHp = e.hp = Math.round(e.hp * 3);
+    e.maxHp = e.hp = Math.round(e.hp * 9); // +200% HP over the previous x3 Patchwork version
     e.dmg = Math.round(e.dmg * 3); e.spd *= 1.55; e.xp *= 5; e.r = 15;
-    e.stitchTimer = 3; e.stitchColors = group.map(function(q){return q.col || '#84394d';}).slice(0, 7);
+    e.stitchTimer = 3; e.specialCd = 1.8; e.attackCycle = 0; e.stitchColors = group.map(function(q){return q.col || '#84394d';}).slice(0, 7);
     e.miniBoss = true; e.boss = false; e.stitchBlood = 0;
     E.list.push(e);
     for (var i = 0; i < group.length; i++) {
@@ -227,6 +227,183 @@
     if (CC.fx && CC.fx.text)
       CC.fx.text(e.x, e.y - 29, 'BONE REANIMATION!', '#d39cff', 12);
   }
+
+  // Full combat AI for the assembled mini-boss. The normal Ghoul brain does not run
+  // for stitched monsters: each of these three attacks has a fair warning window.
+  function move(e, dx, dy) {
+    var d = CC.Dungeon;
+    if (d && d.moveWithCollision) return d.moveWithCollision(e,dx,dy);
+    var x=e.x+dx,y=e.y+dy;
+    if(!d||!d.isSolid||!d.isSolid(x,y)){e.x=x;e.y=y;}
+  }
+  function pushHero(p,e,power,angle) {
+    if(!p||p.hp<=0)return;
+    angle=isFinite(angle)?angle:Math.atan2(p.y-e.y,p.x-e.x);
+    var dx=Math.cos(angle)*power,dy=Math.sin(angle)*power;
+    if(CC.movePlayer)CC.movePlayer(p,dx,dy);
+    else if(CC.Dungeon&&CC.Dungeon.moveWithCollision)CC.Dungeon.moveWithCollision(p,dx,dy);
+    else {p.x+=dx;p.y+=dy;}
+  }
+  function hitHero(p,e,scale) {
+    if(CC.Classes&&CC.Classes.damage)return CC.Classes.damage(p,e.dmg*scale,e);
+    return 0;
+  }
+  function availableBones(e) {
+    return (E.piles||[]).some(function(q){return q.bones>0&&dist(e,q)<155;}) ||
+      (E.remains||[]).some(function(q){return (q.kind==='bone'||q.kind==='skull')&&dist(e,q)<155;});
+  }
+  function collectBones(e,limit) {
+    var out=[],piles=(E.piles||[]).slice().filter(function(q){return q.bones>0&&dist(e,q)<155;});
+    piles.sort(function(a,b){return dist(a,e)-dist(b,e);});
+    for(var i=0;i<piles.length&&out.length<limit;i++){
+      var pile=piles[i],amount=Math.min(limit-out.length,pile.bones);
+      for(var k=0;k<amount;k++)out.push({x:pile.x+(k-1)*3,y:pile.y-2});
+      pile.bones-=amount;
+      if(pile.bones<=0){var ix=E.piles.indexOf(pile);if(ix!==-1)E.piles.splice(ix,1);}
+    }
+    var bones=(E.remains||[]).filter(function(q){return (q.kind==='bone'||q.kind==='skull')&&dist(e,q)<155;});
+    bones.sort(function(a,b){return dist(a,e)-dist(b,e);});
+    for(i=0;i<bones.length&&out.length<limit;i++){
+      var b=bones[i],at=E.remains.indexOf(b);if(at===-1)continue;
+      out.push({x:b.x,y:b.y});E.remains.splice(at,1);
+    }
+    return out;
+  }
+  function beginAttack(e,kind,ang) {
+    var duration=kind==='knockback'?.63:kind==='grab'?.52:.92;
+    e.patchAttack=kind;e.patchAngle=ang;e.state='telegraph';
+    e.t=duration;e.specialCd=2.1;e.dangerous=false;
+    e.tele=kind==='knockback'?{kind:'circle',rad:89,max:duration}:
+      {kind:'line',ang:ang,len:kind==='grab'?65:270,max:duration};
+    if(kind==='bone'){e.heldBones=collectBones(e,3);if(!e.heldBones.length){e.state='idle';e.tele=null;return;}}
+    if(CC.fx&&CC.fx.text)CC.fx.text(e.x,e.y-35,
+      kind==='knockback'?'SHATTER WAVE!':kind==='grab'?'GRASP!':'BONE VOLLEY!',
+      '#d18df4',11);
+  }
+  var ordinaryThink=E._think;
+  E._think=function(e,dt,p,d,ang,f){
+    if(!e.stitched)return ordinaryThink.apply(this,arguments);
+    e.cd=Math.max(0,(e.cd||0)-dt);
+    e.specialCd=Math.max(0,(e.specialCd||0)-dt);
+    e.dangerous=false;
+    var pulse=Math.sin(e.anim*7), dirX=Math.cos(ang),dirY=Math.sin(ang);
+    if(e.state==='idle'){
+      if(d>42)move(e,dirX*e.spd*f*dt,dirY*e.spd*f*dt);
+      if(e.specialCd<=0&&p.hp>0){
+        var seq=e.attackCycle||0;
+        // Alternate the special even if the hero circles or bones run out.
+        var attack;
+        if(seq%3===0&&d<97)attack='knockback';
+        else if(seq%3===1&&d<72)attack='grab';
+        else if(availableBones(e)&&d<280)attack='bone';
+        else if(d<73)attack=seq%2?'grab':'knockback';
+        if(attack){e.attackCycle=seq+1;beginAttack(e,attack,ang);}
+      }
+    }else if(e.state==='telegraph'){
+      e.t-=dt;
+      if(e.t<=0){
+        e.tele=null;
+        if(e.patchAttack==='knockback'){
+          if(dist(p,e)<90){
+            hitHero(p,e,.82);pushHero(p,e,95,ang);p.slowT=Math.max(p.slowT||0,.35);
+          }
+          emit(e.x,e.y,'#c484e8',18);
+          e.patchFx= {kind:'shock',t:.4,max:.4};
+          e.state='recover';e.t=.56;
+        }else if(e.patchAttack==='grab'){
+          if(dist(p,e)<e.r+(p.r||10)+28&&p.hp>0){
+            e.state='act';e.t=.46;
+            e.holding=true;e.throwDir=Math.atan2(p.y-e.y,p.x-e.x);
+            p.grabbedBy=e.id;p.grabT=.46;
+            e.patchFx={kind:'grab',t:.48,max:.48};
+            if(CC.fx&&CC.fx.burst)CC.fx.burst(p.x,p.y,'#b668cf',10,55);
+          }else{e.state='recover';e.t=.55;}
+        }else if(e.patchAttack==='bone'){
+          var held=e.heldBones||[],base= Math.atan2(p.y-e.y,p.x-e.x);
+          for(var i=0;i<held.length;i++){
+            var angle=base+(i-(held.length-1)/2)*.20;
+            E._shoot(e,angle,190,e.dmg*.63,'#e9d6b4','bone',2.2);
+            var shot=E.projectiles[E.projectiles.length-1];
+            if(shot){shot.x=e.x+Math.cos(angle)*13;shot.y=e.y+Math.sin(angle)*13-8;shot.r=4;}
+          }
+          e.heldBones=null;
+          e.state='recover';e.t=.74;
+          emit(e.x,e.y,'#cfbdd0',10);
+        }
+        e.cd=1.2;
+      }
+    }else if(e.state==='act'&&e.holding){
+      e.t-=dt;
+      if(p.hp>0&&p.grabbedBy===e.id) {
+        // Position held player without clipping through the boss or dungeon walls.
+        var targetX=e.x+Math.cos(e.throwDir)*24,targetY=e.y+Math.sin(e.throwDir)*24-6;
+        if(CC.movePlayer)CC.movePlayer(p,(targetX-p.x)*Math.min(1,dt*15),(targetY-p.y)*Math.min(1,dt*15));
+        p.grabT=Math.max(0,e.t);p.slowT=Math.max(p.slowT||0,.15);
+      }else e.t=0;
+      if(e.t<=0){
+        if(p.grabbedBy===e.id){
+          p.grabbedBy=null;p.grabT=0;
+          hitHero(p,e,.95);
+          pushHero(p,e,127,e.throwDir);
+          p.slowT=Math.max(p.slowT||0,.6);
+          if(CC.fx&&CC.fx.shake)CC.fx.shake(6);
+          if(CC.fx&&CC.fx.burst)CC.fx.burst(p.x,p.y,'#b969cc',13,95);
+          e.patchFx={kind:'throw',t:.38,max:.38};
+        }
+        e.holding=false;e.state='recover';e.t=.85;
+      }
+    }else if(e.state==='recover'){
+      e.t-=dt;
+      if(e.t<=0){e.state='idle';e.cd=.75;}
+    }else{
+      e.state='idle';
+    }
+  };
+  // Safely release a grabbed hero when the monster dies mid-animation.
+  var oldKill=E._kill;
+  E._kill=function(e){
+    if(e&&e.stitched&&e.holding){
+      var p=CC.state&&CC.state.player;
+      if(p&&p.grabbedBy===e.id){p.grabbedBy=null;p.grabT=0;}
+      e.holding=false;
+    }
+    return oldKill.apply(this,arguments);
+  };
+  function drawAttacks(ctx,cam,e){
+    var x=e.x-cam.x,y=e.y-cam.y,r=e.r,t=e.anim;
+    ctx.save();ctx.translate(x,y);
+    if(e.patchFx&&e.patchFx.t>0){
+      var fx=e.patchFx,prog=1-fx.t/fx.max;
+      ctx.globalAlpha=.65*(1-prog);ctx.strokeStyle='#d28aff';ctx.lineWidth=3*(1-prog)+1;
+      ctx.beginPath();ctx.arc(0,0,fx.kind==='shock'?22+prog*78:15+prog*38,0,Math.PI*2);ctx.stroke();
+    }
+    if(e.state==='telegraph'&&e.patchAttack==='bone'){
+      var bones=e.heldBones||[];
+      for(var i=0;i<bones.length;i++){
+        var bx=bones[i].x-e.x,by=bones[i].y-e.y-7;
+        var tt=Math.max(0,Math.min(1,1-e.t/.92)),a=tt*tt*(3-2*tt);
+        var px=bx*(1-a)+Math.cos(t*7+i*2)*17*a;
+        var py=by*(1-a)+(-r-12+Math.sin(t*8+i)*8)*a;
+        ctx.save();ctx.translate(px,py);ctx.rotate(t*4+i);
+        ctx.strokeStyle='#f2dfc1';ctx.lineWidth=4;ctx.lineCap='round';
+        ctx.beginPath();ctx.moveTo(-8,0);ctx.lineTo(8,0);ctx.stroke();
+        ctx.fillStyle='#d9c6a8';ctx.beginPath();ctx.arc(-8,0,3,0,Math.PI*2);
+        ctx.arc(8,0,3,0,Math.PI*2);ctx.fill();ctx.restore();
+        ctx.strokeStyle='rgba(180,100,218,.4)';ctx.lineWidth=1;
+        ctx.beginPath();ctx.moveTo(0,-r*.35);ctx.lineTo(px,py);ctx.stroke();
+      }
+    }
+    if(e.holding){
+      var p=CC.state&&CC.state.player;
+      if(p&&p.grabbedBy===e.id){
+        ctx.strokeStyle='#ce6de9';ctx.shadowColor='#d675f4';ctx.shadowBlur=8;
+        ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(0,-r*.3);
+        ctx.quadraticCurveTo((p.x-e.x)*.65,-19,p.x-e.x,p.y-e.y);ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
   var oldUpdate = E.update;
   E.update = function (dt) {
     // Seed the effects before the normal update so they share its clipping and cleanup.
@@ -237,6 +414,7 @@
     for (var i = 0; i < E.list.length; i++) {
       var e = E.list[i];
       if (!e.stitched || e.dead) continue;
+      if(e.patchFx) e.patchFx.t=Math.max(0,e.patchFx.t-dt);
       e.stitchTimer -= dt;
       if (e.stitchTimer <= 0) {
         e.stitchTimer = 4.5 + random() * 2.5;
@@ -261,6 +439,7 @@
       var x = e.x - cam.x, y = e.y - cam.y, r = e.r;
       if (x < -30 || y < -30 || x > cam.w + 30 || y > cam.h + 30) continue;
       if (CC.Dungeon && CC.Dungeon.isVisible && !CC.Dungeon.isVisible(e.x,e.y)) continue;
+      drawAttacks(ctx,cam,e);
       ctx.save();
       ctx.translate(x, y + Math.abs(Math.sin(e.anim * 9)) * 2);
       ctx.scale(e.face || 1, 1);
@@ -289,5 +468,6 @@
     return result;
   };
   CC.Patchwork = { attempt: attempt, summon: summon,
-    status: function(){return {ritual:!!ritual,elapsed:ritual?ritual.time:0,cooldown:cooldown,chance:SPAWN_CHANCE};} };
+    status: function(){return {ritual:!!ritual,elapsed:ritual?ritual.time:0,cooldown:cooldown,chance:SPAWN_CHANCE,
+      horrorHealthMultiplier:3,abilities:['knockback','grab and throw','bone thrower']};} };
 })();
