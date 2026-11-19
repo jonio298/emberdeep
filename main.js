@@ -234,6 +234,7 @@
     else { CC.Dungeon = CC.CaveDungeon; map = call('Dungeon', 'generate', s.floor); }
     s.map = map || null;
     if(s.area==='plains')call('Waypoints','discover','plains',map);
+    call('Breakables','populate',s.area,map);
     var sp = map && (map.spawn || map.start);
     if (p && sp) { p.x = sp.x; p.y = sp.y; }
     else if (p && p.stub) { p.x = 0; p.y = 0; }
@@ -572,6 +573,7 @@
         call('Enemies', 'update', dt);
         call('Charge', 'update', dt, !!(keys.Space || held.attack > 0)); // hold attack to charge; a tap is the normal attack
         call('Loot', 'update', dt);
+        call('Breakables','update',dt);
         if (s.area === 'tree-tunnel') call('TreeTunnel', 'update', dt);
         // Walk through the living tunnel and defeat its miniboss before entering the plains.
         var ex = s.map && s.map.stairs;
@@ -707,6 +709,7 @@
       else if (has('Dungeon', 'draw')) call('Dungeon', 'draw', ctx, dcam);
       else drawFallbackFloor();
       drawDecals();
+      call('Breakables','draw',ctx,cam);
       call('Waypoints','draw',ctx,cam);
       call('Camp', 'drawWorldMarker', ctx, cam); // grounded below the hero, not painted over them
       call('Loot', 'draw', ctx, cam);
