@@ -414,7 +414,7 @@
     E.TYPES.rootling={name:'Rootling',hp:23,spd:88,dmg:7,r:9,xp:13,color:'#866244',w:0,blood:'#6a5735'};
     E.TYPES.sporeling={name:'Sporecap Shambler',hp:20,spd:65,dmg:7,r:9,xp:14,color:'#94bd71',w:0,poison:true,blood:'#69814d'};
     E.TYPES.mosslurker={name:'Moss Lurker',hp:43,spd:66,dmg:11,r:11,xp:20,color:'#5a7c48',w:0,blood:'#425c36'};
-    E.TYPES.heartroot={name:'Heartroot Guardian',hp:154,spd:44,dmg:13,r:16,xp:90,color:'#8b6b46',w:0,bone:true,blood:'#42502d'};
+    E.TYPES.heartroot={name:'Heartroot Guardian',hp:102,spd:44,dmg:13,r:16,xp:90,color:'#8b6b46',w:0,bone:true,blood:'#42502d'};
     var oldThink=E._think;
     E._think=function(e,dt,p,d,a,f){
       if(e.type==='heartroot')return bossAI(e,dt,p,d,a,f);
