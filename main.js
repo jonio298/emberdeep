@@ -268,6 +268,29 @@
     }
     call('Loot', 'pickupNear', p);
   }
+  // The mobile primary button switches to F/Enter only when an actionable target is close.
+  // Keep the original keyboard actions unchanged, including Space for attack.
+  function nearbyAction() {
+    var s = CC.state, p = s.player, map = s.map;
+    if (!p || !playing()) return false;
+    function near(o, radius) { return o && Math.hypot(p.x - o.x, p.y - o.y) <= radius; }
+    var npcs, j;
+    if (s.mode === 'town') {
+      if (CC.Town && CC.Town.dialog) return true;
+      npcs = CC.Town && CC.Town.map && CC.Town.map.npcs || [];
+      for (j = 0; j < npcs.length; j++) if (near(npcs[j], 48)) return true;
+      return false;
+    }
+    if ((s.area === 'forest' || s.area === 'plains') && map) {
+      npcs = map.npcs || [];
+      for (j = 0; j < npcs.length; j++) if (near(npcs[j], 48)) return true;
+    }
+    // Forest/plains transitions happen by walking into them, not by using F.
+    if (s.area !== 'forest' && s.area !== 'plains' && map && near(map.stairs, 26)) return true;
+    var chests = map && map.chests || [];
+    for (j = 0; j < chests.length; j++) if (!chests[j].opened && near(chests[j], 32)) return true;
+    return false;
+  }
   var ptrs = {};
   var btns = {};                      // layout, recomputed on resize
 
@@ -333,9 +356,10 @@
     for (var name in btns) {
       var b = btns[name], dx = p.x - b.x, dy = p.y - b.y;
       if (dx * dx + dy * dy <= (b.r + 10) * (b.r + 10)) {
-        ptrs[e.pointerId] = { kind: 'btn', name: name };
-        if (!held[name]) pressAction(name);
-        held[name]++;
+        var action = name === 'attack' && nearbyAction() ? 'interact' : name;
+        ptrs[e.pointerId] = { kind: 'btn', name: action };
+        if (!held[action]) pressAction(action);
+        held[action]++;
         return;
       }
     }
@@ -679,17 +703,18 @@
 
     var p = CC.state.player;
     for (var name in btns) {
-      var b = btns[name], on = held[name] > 0 || (name === 'attack' && keys.Space);
-      var txt = b.label;
+      var b = btns[name], contextual = name === 'attack' && nearbyAction();
+      var on = held[contextual ? 'interact' : name] > 0 || (name === 'attack' && keys.Space);
+      var txt = contextual ? 'ACTION' : b.label;
       if (p && p.spellNames) {
         if (name === 'spell1' && p.spellNames[0]) txt = p.spellNames[0];
         if (name === 'spell2' && p.spellNames[1]) txt = p.spellNames[1];
       }
-      var col = name === 'attack' ? '255,140,70' : name === 'dash' ? '120,220,160' : '140,120,255';
+      var col = contextual ? '105,205,170' : name === 'attack' ? '255,140,70' : name === 'dash' ? '120,220,160' : '140,120,255';
       ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 6.3);
       ctx.fillStyle = 'rgba(' + col + ',' + (on ? 0.7 : 0.35) + ')'; ctx.fill();
       ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.stroke();
-      var cd = p && p.cd ? p.cd[name] : 0, cdMax = p && p.cdMax ? p.cdMax[name] : 0;
+      var cd = !contextual && p && p.cd ? p.cd[name] : 0, cdMax = !contextual && p && p.cdMax ? p.cdMax[name] : 0;
       if (cd > 0 && cdMax > 0) {
         var f = Math.min(1, cd / cdMax);
         ctx.beginPath(); ctx.moveTo(b.x, b.y);
@@ -779,7 +804,6 @@
     if (m === 'town' || m === 'dungeon') {
       drawHud(); drawControls();
       if (m === 'town') drawFallbackTownPanel();
-      addButton(W - 154, 78, 142, 28, 'USE [F / Enter]', '#3a546a', function () { pressAction('interact'); });
       addButton(W - 94, 112, 82, 28, paused ? 'Resume' : 'Pause', '#4a3a6a', togglePause);
       if (paused) {
         ctx.fillStyle = 'rgba(8,4,16,0.65)'; ctx.fillRect(0, H * 0.4, W, 80);
@@ -789,7 +813,7 @@
       if (m === 'town') call('Town', 'drawPanel', ctx, W, H, addHit);
       else if (CC.state.area === 'forest') call('Forest', 'drawOverlay', ctx, W, H);
       else if (CC.state.area === 'plains') call('Plains', 'drawOverlay', ctx, W, H);
-      call('UI', 'drawHud', ctx, W, H, addHit);   // K / I / M buttons
+      call('UI', 'drawHud', ctx, W, H, addHit);   // single Pack button; K / I / M remain keyboard shortcuts
       call('UI', 'draw', ctx, W, H, addHit);      // overlays (registered last, so they win taps) and the boss bar
     } else if (m === 'dead') {
       drawHud(); drawDead();
