@@ -95,7 +95,22 @@ function build(floor){
       py=(nd[1]+.5)*T+(nrand(i*3,floor)-.5)*94;
    if(px<60||py<60||px>W*T-50||py>H*T-50)continue;
    props.push({x:px,y:py,draw:function(c,sx,sy,tt){
-     grass(c,sx,sy,Math.floor(sx+sy));}});
+     if(floor===3){
+       oval(c,sx,sy,8,4,'rgba(70,103,57,.5)');
+       c.fillStyle='#d6ceb0';c.fillRect(sx-2,sy-8,4,9);
+       oval(c,sx,sy-8,9,5,'#6fb79c');
+       oval(c,sx-2,sy-9,2,1.4,'#d1fff1');
+       c.shadowColor='#6feac1';c.shadowBlur=7;
+       oval(c,sx,sy-8,3,2,'rgba(170,250,220,.6)');c.shadowBlur=0;
+     }else if(floor===4){
+       c.strokeStyle='#cbbf9c';c.lineWidth=1.4;c.beginPath();
+       c.moveTo(sx-7,sy-3);c.quadraticCurveTo(sx,sy-12,sx+11,sy-4);c.stroke();
+       line(c,sx-4,sy-5,sx+7,sy-5,'#eee3c8',1.1);
+     }else if(floor===5){
+       oval(c,sx,sy,9,4,'rgba(198,151,89,.27)');
+       grass(c,sx,sy,Math.floor(sx+sy));
+       oval(c,sx+3,sy-8,2.3,1.4,'#e8cf80');
+     }else grass(c,sx,sy,Math.floor(sx+sy));}});
  }
  props.push({x:goal.x,y:goal.y,draw:function(c,sx,sy,tt){
    if(floor===5)nest(c,sx,sy,tt);else ladder(c,sx,sy,tt);
@@ -103,8 +118,15 @@ function build(floor){
  lights.push({x:goal.x,y:goal.y,r:150,color:floor===5?'247,192,107':'170,221,163',inten:.9,flicker:.08});
  // Keep a custom artistic terrain palette and layers for every level of ascent.
  function ground(k,hv,tx,ty){
-   // Realm.ground returns a COLOR; the detail callback paints texture after it.
-   return k===2?'#72573c':k===1?'#493523':'#272522';
+   // Different height strata have their own wood, moss, sky and warm crown tones.
+   var tones=[
+     ['#493523','#72573c','#272522'],
+     ['#45402e','#6e6343','#20272b'],
+     ['#354934','#536a45','#1d3029'],
+     ['#514037','#85634b','#2b2529'],
+     ['#6d6048','#a08b60','#30312b']
+   ][floor-1];
+   return k===2?tones[1]:k===1?tones[0]:tones[2];
  }
  function detail(c,k,sx,sy,hv,tt,tx,ty){
    for(var z=0;z<4;z++){
@@ -112,11 +134,23 @@ function build(floor){
      line(c,rx,ry,rx+8,ry+Math.sin(z+tx)*2,z%2?'#876246':'#372a22',1.1);
    }
    if((tx*31+ty*7+floor)%6===0)
-     oval(c,sx+19,sy+11,8,4,'rgba(83,117,57,.5)');
+     oval(c,sx+19,sy+11,8,4,floor===3?'rgba(77,169,126,.48)':
+       floor===5?'rgba(205,173,110,.31)':'rgba(83,117,57,.5)');
+   if(floor===3&&(tx*7+ty*13)%11===0) {
+     oval(c,sx+7,sy+15,6,3,'#6ac1ab');oval(c,sx+5,sy+14,2,1,'#d7fff0');
+   }else if(floor===4&&(tx*19+ty*7)%8===0){
+     line(c,sx+7,sy+19,sx+23,sy+12,'#c7b49a',1.2);
+     line(c,sx+14,sy+14,sx+20,sy+22,'#ede1c7',.8);
+   }else if(floor===5&&(tx*13+ty*11)%10===0) {
+     oval(c,sx+14,sy+19,1.7,1,'#edce7f');
+   }
  }
  function solidArt(c,k,sx,sy,hv,tt,tx,ty){
    // Gnarled living bark wall with hanging vines and visible void between branches.
-   c.fillStyle=hv>.5?'#2d241f':'#241e22';c.fillRect(sx,sy,T,T);
+   c.fillStyle=floor===3?(hv>.5?'#294034':'#203029'):
+     floor===5?(hv>.5?'#544734':'#3b372f'):
+     hv>.5?'#2d241f':'#241e22';
+   c.fillRect(sx,sy,T,T);
    for(var z=0;z<3;z++){
      var x=sx+4+z*11;
      line(c,x,sy-1,x+Math.sin(tx*.8+z)*4,sy+T+1,z%2?'#715139':'#4e382d',2.5);
@@ -193,7 +227,11 @@ A.drawEggs=function(c,cam){
  if(!m||!m.treeAscent)return;
  var q=m.stairs,x=q.x-cam.x,y=q.y-cam.y;
  if(stage===5&&!CC.EggQuest.hasGathered()) {
-  c.save();c.shadowColor='#e7ca87';c.shadowBlur=14;nest(c,x,y,t);c.restore();
+  // Nest itself belongs to the y-sorted world props. Only the subtle
+  // summit egg-glint is overlaid here, avoiding two stacked nest sprites.
+  c.save();c.globalAlpha=.45+.25*Math.sin(t*3);
+  c.shadowColor='#ffe0a0';c.shadowBlur=13;
+  oval(c,x,y-4,12,6,'rgba(255,229,162,.27)');c.restore();
  }
 };
 A.update=function(dt){t+=dt;};
