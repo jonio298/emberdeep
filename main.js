@@ -844,14 +844,17 @@
       gr.addColorStop(0, 'rgba(255,255,255,0.12)'); gr.addColorStop(1, 'rgba(255,255,255,0.03)');
       ctx.fillStyle = gr; ctx.fill();
       ctx.lineWidth = 2; ctx.strokeStyle = c.color; ctx.stroke();
-      // emblem
-      var ex2 = x + 38, ey = yy + ch / 2, bob = Math.sin(time * 3 + n) * 2;
-      ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.ellipse(ex2, ey + 20, 15, 5, 0, 0, 6.3); ctx.fill();
-      ctx.fillStyle = c.color; ctx.beginPath(); ctx.arc(ex2, ey + bob, 16, 0, 6.3); ctx.fill();
-      ctx.fillStyle = '#0b0812'; ctx.fillRect(ex2 - 8, ey - 4 + bob, 4, 4); ctx.fillRect(ex2 + 4, ey - 4 + bob, 4, 4);
-      label(c.name, x + 72, yy + 22, 18, c.color, 'left');
-      font(11, 'normal'); ctx.textAlign = 'left'; ctx.fillStyle = '#d8d0ee';
-      wrap(c.desc, x + 72, yy + 44, cw - 84, 14);
+      // Four individually illustrated heroes, sized to fit the original selection cards.
+      var portraitWidth=Math.max(58,Math.min(83,ch*.66));
+      if(CC.HeroPortraits&&CC.HeroPortraits.draw)
+        CC.HeroPortraits.draw(ctx,c.id,x+6,yy+5,portraitWidth,ch-10);
+      else {
+        ctx.fillStyle=c.color;ctx.beginPath();ctx.arc(x+36,yy+ch/2,19,0,6.283);ctx.fill();
+      }
+      var textX=x+portraitWidth+20;
+      label(c.name,textX,yy+23,17,c.color,'left');
+      font(11,'normal');ctx.textAlign='left';ctx.fillStyle='#d8d0ee';
+      wrap(c.desc,textX,yy+44,cw-portraitWidth-31,14);
     });
     label('Tap a hero to begin', W / 2, H - 22, 12, '#8a80a8');
   }
