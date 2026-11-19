@@ -167,6 +167,25 @@
     }
   }
   function clearWorldCache(){worldCache={};}
+  CC.rememberSessionWorld=rememberWorld;
+  CC.restoreSessionWorld=function(area,floor,treeFloor){
+    var cache=worldCache[key(area,floor,treeFloor)],E=CC.Enemies,L=CC.Loot;
+    if(!cache)return false;
+    if(E){E.list=cache.enemies;E.remains=cache.remains;E.gore=cache.gore;
+      E.piles=cache.piles;E.projectiles.length=0;E.zones=[];}
+    if(L)L.drops=cache.loot;
+    return true;
+  };
+  CC.reenterSavedCamp=function(meta){
+    if(!meta||!['forest','plains','tree-ascent','tree-tunnel','cave'].includes(meta.area))return false;
+    var s=CC.state;
+    rememberWorld();
+    s.area=meta.area;s.floor=Math.max(1,meta.floor||1);
+    s.treeFloor=Math.max(1,meta.treeFloor||1);s.mode='dungeon';
+    s.resumeSeed=meta.seed;
+    loadFloor();return !!s.map;
+  };
+
   CC.sessionStatus=function(){return {visited:Object.keys(worldCache)};};
   CC.respawnHere=function(){
     var s=CC.state,p=s.player,E=CC.Enemies;
@@ -282,6 +301,7 @@
         E.piles=cached.piles;E.zones=[];E.projectiles.length=0;}
       if(L)L.drops=cached.loot;
       if(p&&map.spawn){p.x=map.spawn.x;p.y=map.spawn.y;}
+      if(CC.Camp&&CC.Camp.bindToMap)CC.Camp.bindToMap(s.area,map);
       snapCamera();return;
     }
     if (s.area === 'forest') { map = call('Forest', 'generate',s.resumeSeed); CC.Dungeon = map; } // CC.Dungeon is whichever map the player is in
@@ -299,6 +319,7 @@
     if(s.area==='tree-ascent')call('TreeAscent','populate',s.treeFloor||1);
     else call('Enemies', 'spawnForFloor', s.floor, (map && (map.enemySpawns || map.spawns)) || []);
     if (s.area === 'tree-tunnel') call('TreeTunnel', 'populate', s.floor);
+    if(CC.Camp&&CC.Camp.bindToMap)CC.Camp.bindToMap(s.area,map);
     snapCamera();
   }
 
