@@ -249,6 +249,7 @@
   function interact() {
     var s = CC.state, p = s.player;
     if (!p) return;
+    if (CC.Camp && CC.Camp.interact && CC.Camp.interact()) return;
     if (s.mode === 'town') {
       if (has('Town', 'interact')) call('Town', 'interact');
       else CC.startRun(1);
@@ -273,6 +274,7 @@
   function nearbyAction() {
     var s = CC.state, p = s.player, map = s.map;
     if (!p || !playing()) return false;
+    if (CC.Camp && CC.Camp.nearAction && CC.Camp.nearAction()) return true;
     function near(o, radius) { return o && Math.hypot(p.x - o.x, p.y - o.y) <= radius; }
     var npcs, j;
     if (s.mode === 'town') {
@@ -401,6 +403,7 @@
     if (actionKeys[e.code] || e.code === 'Escape' || e.code === 'KeyP' || e.code.indexOf('Arrow') === 0) e.preventDefault();
     if (e.repeat || keys[e.code]) return;
     keys[e.code] = true;
+    if (CC.Camp && CC.Camp.isOpen && CC.Camp.isOpen() && CC.Camp.key(e.code)) return;
     // K / I / M open the skill tree, pack and map; Escape closes whichever is open before it would pause
     if (playing() && call('UI', 'key', e.code)) { resetInputHeld(); return; }
     if (e.code === 'Escape' || e.code === 'KeyP') { togglePause(); return; }
@@ -465,10 +468,21 @@
     time += dt;
     call('UI', 'update', dt);
     if (uiOpen() !== uiWas) { uiWas = uiOpen(); resetInputHeld(); }
-    if (paused || uiWas || (p && p.perkOpen)) return;
+    if (paused || uiWas || (p && p.perkOpen) || (CC.Camp && CC.Camp.isOpen && CC.Camp.isOpen())) return;
     if (tunnel) { updateTunnel(dt); return; }
     pollInput();
     if (CC.input.interact && playing()) { interact(); return; }
+    if (CC.Camp && CC.Camp.isInside && CC.Camp.isInside()) {
+      call('Classes', 'update', dt, { noCombat: true });
+      if (p && p.stub) movePlayer(p, CC.input.moveX * p.speed * dt, CC.input.moveY * p.speed * dt);
+      call('Camp', 'update', dt);
+      if (p) {
+        var txc = p.x - cam.w / 2, tyc = p.y - cam.h / 2;
+        cam.x += (txc - cam.x) * Math.min(1, dt * 12);
+        cam.y += (tyc - cam.y) * Math.min(1, dt * 12);
+      }
+      return;
+    }
 
     if (s.mode === 'town' || s.mode === 'dungeon') {
       updateStub(dt);
@@ -610,7 +624,10 @@
     ctx.save();
     ctx.scale(zoom, zoom);
     ctx.fillStyle = '#0b0812'; ctx.fillRect(0, 0, cam.w, cam.h);
-    if (s.mode === 'dungeon') {
+    if (CC.Camp && CC.Camp.isInside && CC.Camp.isInside()) {
+      call('Camp', 'drawScene', ctx, cam);
+      call('Classes', 'drawPlayer', ctx, cam);
+    } else if (s.mode === 'dungeon') {
       // The shell already applied ctx.scale(zoom). Dungeon.draw scales by cam.zoom itself, so hand it a
       // zoom-1 view of the same camera: tiles, fog and entities then share one world-to-screen mapping.
       var dcam = { x: cam.x, y: cam.y, w: cam.w, h: cam.h, zoom: 1 };
@@ -626,6 +643,7 @@
       if (has('Town', 'draw')) call('Town', 'draw', ctx, cam);
       else { drawFallbackFloor(); call('Classes', 'drawPlayer', ctx, cam); }
     }
+    if (CC.Camp && CC.Camp.drawWorldMarker) call('Camp', 'drawWorldMarker', ctx, cam);
     drawFallbackPlayer();
     for (var a = 0; a < particles.length; a++) {
       var q = particles[a], qa = Math.max(0, q.life / q.max);
@@ -784,7 +802,12 @@
       label(l[0], W / 2 - 10, y + n * 30, 15, '#cfc5ff', 'right');
       label(String(l[1]), W / 2 + 10, y + n * 30, 17, '#ffe08a', 'left');
     });
-    addButton(W / 2 - 100, H * 0.62, 200, 52, 'Return to Town', '#3a6a3a', function () { CC.returnToTown(); });
+    if (CC.Camp && CC.Camp.hasCamp && CC.Camp.hasCamp()) {
+      addButton(W / 2 - 110, H * 0.59, 220, 48, 'Respawn at Camp', '#5b6341', function () {
+        if (call('Camp', 'respawn')) { resetInputHeld(); snapCamera(); }
+      });
+      addButton(W / 2 - 110, H * 0.69, 220, 44, 'Return to Town', '#3a6a3a', function () { CC.returnToTown(); });
+    } else addButton(W / 2 - 100, H * 0.62, 200, 52, 'Return to Town', '#3a6a3a', function () { CC.returnToTown(); });
   }
 
   function drawFallbackTownPanel() {
@@ -810,6 +833,12 @@
           '#603b83', function () { call('UI', 'open', 'skills'); });
       }
       addButton(W - 94, 112, 82, 28, paused ? 'Resume' : 'Pause', '#4a3a6a', togglePause);
+      if (CC.Camp && !(CC.Camp.isInside && CC.Camp.isInside())) {
+        if (CC.Camp.isWorldCampNear && CC.Camp.isWorldCampNear())
+          addButton(W - 160, 184, 148, 30, 'Enter Camp', '#6b5437', function () { call('Camp', 'interact'); });
+        else if (!(CC.Camp.hasCamp && CC.Camp.hasCamp()))
+          addButton(W - 160, 184, 148, 30, 'Set Camp', '#6b5437', function () { call('Camp', 'request'); });
+      }
       if (paused && !uiOpen()) {
         ctx.fillStyle = 'rgba(8,4,16,0.65)'; ctx.fillRect(0, H * 0.4, W, 80);
         label('PAUSED', W / 2, H * 0.4 + 40, 28, '#ffe08a');
@@ -819,7 +848,8 @@
       else if (CC.state.area === 'forest') call('Forest', 'drawOverlay', ctx, W, H);
       else if (CC.state.area === 'plains') call('Plains', 'drawOverlay', ctx, W, H);
       call('UI', 'drawHud', ctx, W, H, addHit);   // single Pack button; K / I / M remain keyboard shortcuts
-      call('UI', 'draw', ctx, W, H, addHit);      // overlays (registered last, so they win taps) and the boss bar
+      call('UI', 'draw', ctx, W, H, addHit);
+      call('Camp', 'drawUI', ctx, W, H, addHit);
     } else if (m === 'dead') {
       drawHud(); drawDead();
     }
