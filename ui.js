@@ -342,6 +342,14 @@
     }
     yy += 3 * (cs + gap) + (nCharm ? cs + gap + 2 : 0) + 6;
     tx(c, 'Pack ' + bag.length + '/' + BAG_MAX, x + 6, yy + 7, 12, bag.length >= BAG_MAX ? COL.bad : COL.dim);
+    if(CC.EggQuest){
+      var egg=CC.EggQuest.status(),labelEgg='';
+      if(egg.stage==='gathered')labelEgg='3 RESCUED EGGS';
+      else if(egg.stage==='nest')labelEgg='WARM EAGLE EGG';
+      else if(egg.stage==='complete')labelEgg=egg.hatched?'EAGLET COMPANION':
+        'WARM EGG '+egg.steps+'/'+egg.required;
+      if(labelEgg)tx(c,labelEgg,x+w*.51,yy+7,10,'#eed39c','center');
+    }
     button(c, addHit, x + w - 104, yy - 1, 100, 17, 'Sort by value', bag.length > 1, sortBag, '#4a3a22');
     yy += 18;
     satchel(c, gx - 5, yy - 4, cs * COLS + gap * (COLS - 1) + 10, Math.ceil(BAG_MAX / COLS) * (cs + gap) + 4, bag.length);
