@@ -21,7 +21,11 @@
     return result;
   };
   E._land = function (q) {
-    var count = this.remains.length, value = originalLand.apply(this, arguments);
+    var count = this.remains.length, value;
+    if (q.kind === 'horn' || q.kind === 'hoof') {
+      // Preserve recognizable detached parts, rather than converting them to ordinary splats.
+      value = this._addRemain(q.kind, q.x, q.y, q.s, q.col);
+    } else value = originalLand.apply(this, arguments);
     for (var i = count; i < this.remains.length; i++) sourcePart(this.remains[i], q.source);
     return value;
   };
