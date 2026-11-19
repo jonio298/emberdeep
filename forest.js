@@ -835,7 +835,13 @@
         ctx.quadraticCurveTo(mx,my+open+r*.18,mx+r*.38,my+open*.85);ctx.stroke();
         // Angry red eye, brow ridge, scar, directional growl flecks.
         ctx.fillStyle='#120b0b';ctx.fillRect(r*.62+headPush,-r*.35,8,4);
-        ctx.fillStyle='#e44840';ctx.fillRect(r*.82+headPush,-r*.30,3,3);
+        // Wicked red eyes with a breathing ember glow, brighter when roaring or lunging.
+        ctx.save();
+        ctx.shadowColor='#ff171f';ctx.shadowBlur=9+3*Math.sin(an*4)+(roaring?8:0);
+        ctx.fillStyle='#ff1725';
+        ctx.beginPath();ctx.ellipse(r*.80+headPush,-r*.30,2.8,2.2,0,0,PI2);ctx.fill();
+        ctx.shadowBlur=0;ctx.fillStyle='#fff2c4';
+        ctx.fillRect(r*.81+headPush,-r*.31,1.0,1.0);ctx.restore();
         ctx.strokeStyle='#b39374';ctx.lineWidth=1.5;ctx.beginPath();
         ctx.moveTo(r*.48+headPush,-r*.5);ctx.lineTo(r*.82+headPush,-r*.45);ctx.stroke();
         ctx.strokeStyle='#7b3130';ctx.lineWidth=1.7;
