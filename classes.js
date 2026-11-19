@@ -349,12 +349,16 @@
     if (crit && opts.basicAttack && !opts.minion && !opts.splash) {
       var attackGroup = opts.attackGroup;
       var participants = criticalGroup(p,e,dmg,type,opts);
-      if ((!attackGroup || !attackGroup.cinematicStarted) && CC.CriticalScene) {
-        CC.CriticalScene.trigger({ kind: opts.attackKind === 'projectile' ? 'projectile' : 'slash',
-          heroClass: p.classId, x: e.x, y: e.y, r: e.r || 9, angle: opts.angle || 0,
-          color: opts.color || '#e5c5b3', damage: dmg, sourceX: p.x, sourceY: p.y,
-          targets:participants, radius:critRadius(p.classId) });
-        if (attackGroup) attackGroup.cinematicStarted = true;
+      if (CC.CriticalScene) {
+        if (attackGroup && attackGroup.cinematicStarted && CC.CriticalScene.addTargets)
+          CC.CriticalScene.addTargets(participants);
+        else {
+          CC.CriticalScene.trigger({ kind: opts.attackKind === 'projectile' ? 'projectile' : 'slash',
+            heroClass: p.classId, x: e.x, y: e.y, r: e.r || 9, angle: opts.angle || 0,
+            color: opts.color || '#e5c5b3', damage: dmg, sourceX: p.x, sourceY: p.y,
+            targets:participants, radius:critRadius(p.classId) });
+          if (attackGroup) attackGroup.cinematicStarted = true;
+        }
       }
     }
     if (crit) {
@@ -474,6 +478,10 @@
       if(stunT)status(e,'stun',stunT);
       hits++;
     }
+    // Refresh the cutscene with every fully damaged sprite in this swipe,
+    // including injuries that happened after the first critical registered.
+    if(attackGroup.cinematicStarted && CC.CriticalScene && CC.CriticalScene.addTargets)
+      CC.CriticalScene.addTargets(direct.concat(attackGroup.splashed));
     if ((type==='slash'||type==='melee')&&CC.Breakables)
       CC.Breakables.hitCone(p,dir,range,half);
     return hits;
