@@ -444,30 +444,54 @@
     var cls = p.classId, dir, i;
     p.atkAnim = 0.2;
     if (cls === 'swordsman') {
-      var step = (p.combo % 3) + 1, third = step === 3;
-      p.combo++; p.comboT = 0.9;
+      var step = (p.combo % 3) + 1, fin = step === 3;
+      p.combo = fin ? 0 : step; p.comboT = 1.25; p.comboDisplay = step; p.comboDisplayT = 0.75;
       dir = aimDir(p, 56);
-      var mult = third ? 1.6 * (1 + 0.5 * (p.flags.heavy || 0)) : 1;
-      var range = third ? 38 : 31, half = third ? 1.25 : 0.9;
-      var hits = cone(p, dir, range, half, mult, 'slash', third ? 10 : 3, 0);
+      var mult = fin ? 1.75 * (1 + 0.5 * (p.flags.heavy || 0)) : 0.9 + step * 0.13;
+      var range = fin ? 43 : 31, half = fin ? 1.4 : 0.9;
+      var hits = cone(p, dir, range, half, mult, 'slash', fin ? 12 : 3, 0);
       p.swingAng = dir.a; p.swingSign = step === 2 ? -1 : 1;
-      addFx({ kind: 'arc', x: p.x, y: p.y, a: dir.a, half: half, r: range, t: 0.18, max: 0.18, col: third ? '#ffd36b' : '#ffffff' });
-      p.cd.attack = p.cdMax.attack * (third ? 1.4 : 1);
-      fxShake(third ? 3 : 1);
-      if (hits) fxStop(third ? 0.06 : 0.03);
+      addFx({ kind: 'arc', x: p.x, y: p.y, a: dir.a, half: half, r: range, t: 0.19, max: 0.19,
+        col: fin ? '#c26aff' : step === 2 ? '#c4a0ff' : '#ffffff' });
+      if (fin) {
+        var cx = p.x + dir.x * 24, cy = p.y + dir.y * 24;
+        radial(p, cx, cy, 62, 1.45, 'slash');
+        addFx({ kind: 'ring', x: cx, y: cy, r: 62, t: 0.34, max: 0.34, col: '#ba65ff' });
+        fxBurst(cx, cy, '#d89aff', 30, 175);
+        fxText(p.x, p.y - 31, '3 HIT - RIFT CLEAVE!', '#c379ff', 15);
+        fxShake(7); fxStop(0.08);
+      } else fxText(p.x, p.y - 27, step + ' HIT COMBO', '#bb72ff', 12);
+      p.cd.attack = p.cdMax.attack * (fin ? 1.35 : 0.8);
+      if (hits) fxStop(fin ? 0.055 : 0.025);
     } else if (cls === 'wizard') {
       dir = aimDir(p, 170);
       var twin = p.flags.twin ? [-0.1, 0.1] : [0];
       for (i = 0; i < twin.length; i++) shoot(p, dir.a + twin[i], 230, 0.8, p.flags.twin ? 0.75 : 1, 4, 'bolt', 'arcane', '#c9a8ff');
       p.cd.attack = p.cdMax.attack; p.castFlash = 0.15;
-    } else if (cls === 'thief') { // fast dagger stab; back/ambush hits handled in hitEnemy
+    } else if (cls === 'thief') {
       dir = aimDir(p, 40);
-      p.combo++; p.comboT = 0.7;
-      var tsign = p.combo % 2 ? 1 : -1;
-      cone(p, dir, 26, 0.7, 1, 'stab', 2, 0);
-      p.swingAng = dir.a; p.swingSign = tsign;
-      addFx({ kind: 'arc', x: p.x, y: p.y, a: dir.a, half: 0.5, r: 24, t: 0.12, max: 0.12, col: '#bff5e0' });
-      p.cd.attack = p.cdMax.attack;
+      var hit = (p.combo % 5) + 1, finish = hit === 5;
+      p.combo = finish ? 0 : hit; p.comboT = 1.1; p.comboDisplay = hit; p.comboDisplayT = 0.72;
+      p.swingAng = dir.a; p.swingSign = hit % 2 ? 1 : -1;
+      cone(p, dir, finish ? 37 : 27, finish ? 1.05 : 0.7,
+        finish ? 1.5 : 0.8 + hit * 0.1, 'slash', finish ? 7 : 2, 0);
+      addFx({ kind: 'arc', x: p.x, y: p.y, a: dir.a + (hit % 2 ? -0.16 : 0.16),
+        half: finish ? 1.4 : 0.55, r: finish ? 48 : 27,
+        t: finish ? 0.27 : 0.12, max: finish ? 0.27 : 0.12,
+        col: finish ? '#ee7aff' : '#b995ff' });
+      if (finish) {
+        // Five stabbing afterimages burst in a shadow nova.
+        var nx = p.x + dir.x * 19, ny = p.y + dir.y * 19;
+        radial(p, nx, ny, 68, 1.65, 'slash');
+        addFx({ kind: 'ring', x: nx, y: ny, r: 68, t: 0.37, max: 0.37, col: '#a447ef' });
+        for (i = 0; i < 5; i++) addFx({ kind: 'arc', x: nx, y: ny,
+          a: dir.a + (i - 2) * 0.43, half: 0.22, r: 38 + i * 5,
+          t: 0.28, max: 0.28, col: i % 2 ? '#eeaaff' : '#7943e8' });
+        fxBurst(nx, ny, '#bc60fa', 36, 185);
+        fxText(p.x, p.y - 31, '5 HIT - SHADOW BLOOM!', '#d37aff', 15);
+        fxShake(8); fxStop(0.09);
+      } else fxText(p.x, p.y - 27, hit + ' HIT COMBO', '#bb72ff', 12);
+      p.cd.attack = p.cdMax.attack * (finish ? 1.5 : 0.72);
     } else {
       dir = aimDir(p, 170);
       var fan = p.flags.volley ? [-0.2, 0, 0.2] : [0];
@@ -684,6 +708,7 @@
     if (p.ambushT > 0) p.ambushT = Math.max(0, p.ambushT - dt);
     if (noManaT > 0) noManaT -= dt;
     if (p.comboT > 0) { p.comboT -= dt; if (p.comboT <= 0) p.combo = 0; }
+    if (p.comboDisplayT > 0) p.comboDisplayT -= dt;
     if (p.hp <= 0) { updateFx(dt); return; }
     if (p.perkOpen) { p.invuln = Math.max(p.invuln, 0.1); p.moving = false; updateFx(dt); return; }
 
