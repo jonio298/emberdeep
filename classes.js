@@ -414,6 +414,9 @@
       if (stunT) status(e, 'stun', stunT);
       hits++;
     }
+    if ((type === 'slash' || type === 'melee') && CC.TreeTunnel &&
+        CC.state && CC.state.area === 'tree-tunnel')
+      CC.TreeTunnel.hitBreakables(p, dir, range, half);
     return hits;
   }
 
