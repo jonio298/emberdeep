@@ -37,7 +37,7 @@
   var SPURT = { ghoul: { n: 9, pow: 130 }, charger: { n: 7, pow: 110 }, demon: { n: 8, pow: 120 }, spitter: { n: 8, pow: 100 }, scorpion: { n: 6, pow: 100 } };
 
   /* Toughness: every base monster HP is multiplied by HP_MULT (basic enemies took ~2 hits of 10 damage before, ~4 now). */
-  var HP_MULT = 2.15; // modest difficulty increase: ~7.5% enemy HP
+  var HP_MULT = 2.90; // +34.9% baseline HP vs the previous 2.15 multiplier
   /* Dismemberment: parts that fly off in this order as HP falls (one per equal slice of the HP bar). The enemy keeps fighting. */
   // Anatomy profiles: each detached piece is also hidden from the still-living sprite.
   var PARTS = ['armLeft', 'armRight', 'head', 'legLeft'];
@@ -696,6 +696,13 @@
         bs.bar.pct = clamp(bs.hp / bs.maxHp, 0, 1); bs.bar.phase = bs.phase; bs.bar.intro = Math.max(0, (bs.bar.intro || 0) - dt);
         this.bossBar = bs.asleep ? null : bs.bar;
       } else this.bossBar = null;
+      // A stitched mini-boss gets a single violet boss HUD in place of its local bars.
+      if(!this.bossBar){
+        var stitched=this.list.find(function(e){return e.stitched&&!e.dead&&e.hp>0&&!e.asleep;});
+        if(stitched)this.bossBar={name:'The Patchwork Horror',
+          pct:clamp(stitched.hp/stitched.maxHp,0,1),phase:1,
+          kind:'patchwork',color:'#b465e4',intro:0};
+      }
       if (p) {
         if (p.invuln > 0) p.invuln -= dt;
         if (p.cursed > 0) p.cursed -= dt;
@@ -1295,7 +1302,7 @@
     if (e.shield > 0) { ctx.strokeStyle = 'rgba(120,160,255,0.8)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(sx, sy, e.r + 2, 0, PI2); ctx.stroke(); }
     if (e.state === 'telegraph' && !e.boss) { ctx.fillStyle = '#ff4a3a'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('!', sx, sy - e.r - 6); ctx.textAlign = 'left'; }
     if (e.state === 'stunned') { ctx.fillStyle = '#ffe04a'; ctx.fillRect(sx - 4 + Math.sin(t * 8) * 4, sy - e.r - 8, 3, 3); }
-    if (!e.boss && e.hp < e.maxHp) { // hp bar
+    if (!e.boss && !e.stitched && e.hp < e.maxHp) { // hp bar
       var w = Math.max(14, e.r * 2);
       ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(sx - w / 2 - 1, sy - e.r - 11, w + 2, 4);
       ctx.fillStyle = e.elite ? '#ffb02a' : '#d84a4a'; ctx.fillRect(sx - w / 2, sy - e.r - 10, w * clamp(e.hp / e.maxHp, 0, 1), 2);

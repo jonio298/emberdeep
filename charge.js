@@ -131,23 +131,23 @@
           if (!alive(f)) return;
           var px = f.x - p.x, py = f.y - p.y, along = px * a.x + py * a.y, off = Math.abs(px * -a.y + py * a.x);
           if (along > 0 && along < reach && off < 18 + (f.r || 8)) {
-            hit(f, dmg * 3.2 * scale, 'drain');
-            if (healed < 5) { healed++; if (CC.Classes.heal) CC.Classes.heal(p, p.maxHp * 0.03); }
+            hit(f, dmg * 2.65 * scale, 'drain');
+            if (healed < 5) { healed++; if (CC.Classes.heal) CC.Classes.heal(p, p.maxHp * 0.025); }
             burst(f.x, f.y, '#7dff9a', 8, 100);
           }
         });
         shake(4);
       } else if (idx === 2) { // Plague Nova
         var pr = 120 + 30 * pow; ring(p.x, p.y, pr, '#9acd32', 0.7);
-        within(p, pr).forEach(function (f) { hit(f, dmg * 2.6 * scale, 'poison'); status(f, 'slow', 3.5, 0.55); burst(f.x, f.y, '#9acd32', 8, 90); });
+        within(p, pr).forEach(function (f) { hit(f, dmg * 2.15 * scale, 'poison'); status(f, 'slow', 3.5, 0.55); burst(f.x, f.y, '#9acd32', 8, 90); });
         shake(5);
       } else { // Army of the Dead
-        var mm = CC.Classes.minions, cap = 12;
-        for (i = 0; i < 6 && mm && mm.length < cap; i++) {
+        var mm = CC.Classes.minions, cap = 9;
+        for (i = 0; i < 4 && mm && mm.length < cap; i++) {
           var ang = rnd(0, 6.28), hp = 40 + p.level * 4;
-          mm.push({ x: p.x + Math.cos(ang) * 24, y: p.y + Math.sin(ang) * 24, r: 6, hp: hp, maxHp: hp, life: 22, dmg: 6 + dmg * 0.7, atkCd: 0, anim: rnd(0, 6), face: 1, spawn: 0.35 });
+          mm.push({ x: p.x + Math.cos(ang) * 24, y: p.y + Math.sin(ang) * 24, r: 6, hp: hp, maxHp: hp, life: 18, dmg: 5 + dmg * 0.54, atkCd: 0, anim: rnd(0, 6), face: 1, spawn: 0.35 });
         }
-        within(p, 90).forEach(function (f) { hit(f, dmg * 2.4 * scale, 'drain'); status(f, 'stun', 0.8); });
+        within(p, 90).forEach(function (f) { hit(f, dmg * 2.0 * scale, 'drain'); status(f, 'stun', 0.8); });
         ring(p.x, p.y, 90, '#7dff9a', 0.6); shake(8); burst(p.x, p.y, '#7dff9a', 30, 150);
       }
     } else { // thief
@@ -200,14 +200,14 @@
         e = l[i]; if (!alive(e)) continue;
         var dx = e.x - p.x, dy = e.y - p.y;
         if (dx * dx + dy * dy > (rad + (e.r || 8)) * (rad + (e.r || 8))) continue;
-        hit(e, dmg * 2.2 * scale, 'drain');
-        if (healed < 4) { healed++; if (CC.Classes.heal) CC.Classes.heal(p, p.maxHp * 0.03); }
+        hit(e, dmg * 1.85 * scale, 'drain');
+        if (healed < 4) { healed++; if (CC.Classes.heal) CC.Classes.heal(p, p.maxHp * 0.025); }
       }
       var n = 1 + Math.round(2 * pow), mm = CC.Classes.minions;
       for (i = 0; i < n && mm && mm.length < 8; i++) {
         var ang = rnd(0, 6.28), hp = 30 + p.level * 3;
         mm.push({ x: p.x + Math.cos(ang) * 20, y: p.y + Math.sin(ang) * 20, r: 6, hp: hp, maxHp: hp, life: 18,
-          dmg: 5 + dmg * 0.6, atkCd: 0, anim: rnd(0, 6), face: 1, spawn: 0.35 });
+          dmg: 5 + dmg * 0.44, atkCd: 0, anim: rnd(0, 6), face: 1, spawn: 0.35 });
       }
       effects.push({ kind: 'nova', x: p.x, y: p.y, t: 0.55, max: 0.55, rad: rad });
       shake(4); burst(p.x, p.y, '#7dff9a', 22, 130);

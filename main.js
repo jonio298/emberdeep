@@ -566,7 +566,7 @@
         // Track this pointer independently so dragging aims without moving.
         if(mode==='dungeon' && (action==='spell1'||action==='spell2'||action==='dash') &&
            CC.SpellCharge){
-          if(CC.SpellCharge.begin(action,b.x,b.y)){
+          if(CC.SpellCharge.begin(action,b.x,b.y,W,H)){
             ptrs[e.pointerId]={kind:'charge',name:action};
             held[action]++;
           }
@@ -590,7 +590,7 @@
     if(pressed&&pressed.kind==='charge'){
       e.preventDefault();
       var thumb=pos(e);
-      call('SpellCharge','drag',thumb.x,thumb.y);
+      call('SpellCharge','drag',thumb.x,thumb.y,W,H);
       return;
     }
     // PC: select an exact world-space destination under the mouse while
@@ -1044,11 +1044,8 @@
     for (var name in btns) {
       var b = btns[name], contextual = name === 'attack' && nearbyAction();
       var on = held[contextual ? 'interact' : name] > 0 || (name === 'attack' && keys.Space);
-      var txt = contextual ? 'ACTION' : b.label;
-      if (p && p.spellNames) {
-        if (name === 'spell1' && p.spellNames[0]) txt = p.spellNames[0];
-        if (name === 'spell2' && p.spellNames[1]) txt = p.spellNames[1];
-      }
+      // Compact ability labels: the spell name appears only after release.
+      var txt = contextual ? 'ACTION' : name==='spell1'?'I':name==='spell2'?'II':b.label;
       var col = name === 'potion' ? '225,55,70' : contextual ? '105,205,170' :
         name === 'attack' ? '255,140,70' : name === 'dash' ? '120,220,160' : '140,120,255';
       ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 6.3);
@@ -1076,16 +1073,39 @@
         ctx.fillStyle='rgba(20,7,10,0.88)';ctx.fillRect(b.x+7,b.y+7,20,16);
         ctx.strokeStyle='#b96367';ctx.strokeRect(b.x+7,b.y+7,20,16);
         label(String(count),b.x+17,b.y+15,11,count>0?'#fff2e6':'#ad9394');
-      } else label(txt, b.x, b.y, b.r > 35 ? 15 : 11, '#fff');
-      // Charge ring grows under the thumb, independent of ordinary cooldown.
-      var charge=chargeHUD;
-      if(charge&&charge.slot===name){
-        var a=-Math.PI/2,part=charge.progress;
-        ctx.save();ctx.beginPath();
-        ctx.arc(b.x,b.y,b.r+5,a,a+6.2832*Math.max(.01,part));
-        ctx.strokeStyle=charge.affordable?charge.color:'#f06b75';
-        ctx.lineWidth=3.6;ctx.shadowColor=charge.color;ctx.shadowBlur=charge.ready?10:3;
-        ctx.stroke();ctx.restore();
+      } else label(txt, b.x, b.y, name==='spell1'||name==='spell2'?15:b.r>35?15:11, '#fff');
+      var charge=chargeHUD&&chargeHUD.slot===name?chargeHUD:null;
+      if(name==='spell1'||name==='spell2'||name==='dash'){
+        var manaCost=charge?charge.cost:(name==='dash'?null:p&&p.cost&&p.cost[name]);
+        if(manaCost!=null)label(manaCost+' MP',b.x,b.y+b.r+11,9,
+          charge&&!charge.affordable?'#ed9095':'#b3c0ca');
+      }
+      if(charge&&charge.aiming){
+        // Enlarged floating joystick remains within reachable screen bounds.
+        var radius=b.r*(1.48+.10*charge.power),margin=14;
+        var cx=Math.max(radius+margin,Math.min(W-radius-margin,b.x));
+        var cy=Math.max(radius+margin,Math.min(H-radius-margin,b.y));
+        var stickRadius=radius*.45,amount=charge.stickAmount;
+        ctx.save();
+        ctx.beginPath();ctx.arc(cx,cy,radius,0,Math.PI*2);
+        ctx.fillStyle='rgba(10,19,30,.76)';ctx.fill();
+        ctx.lineWidth=2;ctx.strokeStyle=charge.affordable?charge.color:'#e26c76';
+        ctx.shadowColor=charge.color;ctx.shadowBlur=charge.ready?12:4;ctx.stroke();ctx.shadowBlur=0;
+        ctx.beginPath();ctx.arc(cx,cy,radius*.65,0,Math.PI*2);
+        ctx.strokeStyle='rgba(210,237,249,.24)';ctx.lineWidth=1;ctx.stroke();
+        ctx.beginPath();ctx.arc(cx,cy,radius+4,-Math.PI/2,
+          -Math.PI/2+Math.PI*2*Math.max(.005,charge.progress));
+        ctx.lineWidth=3.3;ctx.strokeStyle=charge.color;ctx.stroke();
+        var knobX=cx+charge.stickX*stickRadius*amount;
+        var knobY=cy+charge.stickY*stickRadius*amount;
+        ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(knobX,knobY);
+        ctx.strokeStyle='rgba(220,244,253,.32)';ctx.lineWidth=2;ctx.stroke();
+        ctx.beginPath();ctx.arc(knobX,knobY,Math.max(8,radius*.19),0,Math.PI*2);
+        ctx.fillStyle='rgba(169,217,235,.46)';ctx.fill();
+        ctx.strokeStyle='#d8f2ff';ctx.lineWidth=1.4;ctx.stroke();
+        ctx.restore();
+        label(charge.cost+' MP',cx,cy+radius+11,9,
+          charge.affordable?'#c8d9e0':'#ff9399');
       }
     }
   }

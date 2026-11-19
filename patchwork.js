@@ -459,11 +459,7 @@
       ctx.moveTo(r * 0.4, r * 0.4); ctx.lineTo(r * 0.8 - Math.sin(e.anim * 7) * 4, r * 1.1); ctx.stroke();
       ctx.fillStyle = '#a5162c'; ctx.fillRect(-r * 0.53, r * 0.15, 3, 5);
       ctx.restore();
-      // Unique mini-boss title and violet HP bar.
-      ctx.fillStyle = 'rgba(5,2,12,0.8)'; ctx.fillRect(x - 34, y - r - 21, 68, 7);
-      ctx.fillStyle = '#b465e4'; ctx.fillRect(x - 33, y - r - 20, 66 * Math.max(0, e.hp / e.maxHp), 5);
-      ctx.fillStyle = '#e6aaff'; ctx.font = 'bold 9px Georgia,serif'; ctx.textAlign = 'center';
-      ctx.fillText('PATCHWORK HORROR', x, y - r - 27); ctx.textAlign = 'left';
+      // One purple boss HUD bar is rendered by CC.UI, not at world position.
     }
     return result;
   };

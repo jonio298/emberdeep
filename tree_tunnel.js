@@ -207,8 +207,8 @@
     for(x=19;x<56;x+=12)E.spawn('mosslurker',(x+.5)*T,(center(x)+1.5)*T,floor||1,{awake:false});
     var pos=point(W-8,center(W-8));
     boss=E.spawn('heartroot',pos.x,pos.y,floor||1,{awake:false});
-    boss.miniboss=true;boss.maxHp=Math.round(boss.maxHp*1.7);boss.hp=boss.maxHp;
-    boss.dmg=Math.round(boss.dmg*1.2);boss.xp=90;boss.r=19;
+    boss.miniboss=true;boss.maxHp=Math.round(boss.maxHp*1.9);boss.hp=boss.maxHp;
+    boss.dmg=Math.round(boss.dmg*1.3);boss.spd*=1.15;boss.xp=90;boss.r=19;
     boss.asleep=true;boss.heartTimer=2;boss.heartPhase=1;
   };
   B.canExit=function(){return !!(boss&&boss.dead);};
@@ -270,32 +270,52 @@
   };
   function bossAI(e,dt,p,d,a,f){
     e.cd-=dt;e.dangerous=false;
-    var phase=e.hp<e.maxHp*.47?2:1,s=e.spd*f*dt;
+    var phase=e.hp<e.maxHp*.55?2:1,s=e.spd*f*dt;
     if(phase!==e.heartPhase){
       e.heartPhase=phase;
       if(CC.fx&&CC.fx.shake)CC.fx.shake(5);
       if(CC.fx&&CC.fx.text)CC.fx.text(e.x,e.y-35,'THE HEART AWAKENS','#d6e396',12);
+      CC.Enemies._zone(p.x,p.y,43,.92,e.dmg*.88,null,'blast');
     }
     if(e.state==='idle'){
-      if(d>44)CC.Dungeon.moveWithCollision?CC.Dungeon.moveWithCollision(e,Math.cos(a)*s,Math.sin(a)*s):
+      if(d>38)CC.Dungeon.moveWithCollision?CC.Dungeon.moveWithCollision(e,Math.cos(a)*s,Math.sin(a)*s):
         (e.x+=Math.cos(a)*s,e.y+=Math.sin(a)*s);
-      if(e.cd<=0&&d<280){
-        e.state='telegraph';e.t=phase===2?.6:.85;
-        e.atk=e.heartTimer++%3===0?'spores':'slam';
-        e.tele={kind:'circle',rad:e.atk==='slam'?68:42,max:e.t};
+      if(e.cd<=0&&d<315){
+        var next=e.heartTimer++%4;
+        e.atk=next===0?'spores':next===2?'roots':'slam';
+        if(e.atk==='roots'){
+          // Warnings on the floor force repositioning, without undodgeable hits.
+          var tx=p.x,ty=p.y;
+          CC.Enemies._zone(tx,ty,phase===2?51:44,phase===2?.68:.92,e.dmg*.94,null,'blast');
+          if(phase===2){
+            var offset=(e.heartTimer%2?1:-1)*62;
+            CC.Enemies._zone(tx+offset,ty-34,38,.97,e.dmg*.72,null,'blast');
+          }
+          e.state='recover';e.t=.43;e.cd=phase===2?.54:.8;
+        }else{
+          e.state='telegraph';e.t=phase===2?.54:.72;
+          e.tele={kind:'circle',rad:e.atk==='slam'?76:48,max:e.t};
+        }
       }
     }else if(e.state==='telegraph'){
       e.t-=dt;
       if(e.t<=0){
-        if(e.atk==='slam'){if(CC.Enemies._blast)CC.Enemies._blast(e.x,e.y,69,e.dmg*1.05);}
-        else for(var i=-2;i<=2;i++)CC.Enemies._shoot(e,a+i*.26,115,e.dmg*.65,'#b6ca73','spore',2.4);
-        if(phase===2&&Math.random()<.26&&CC.Enemies.list.filter(function(v){return v.type==='rootling'&&!v.dead;}).length<7){
+        if(e.atk==='slam'){
+          if(CC.Enemies._blast)CC.Enemies._blast(e.x,e.y,78,e.dmg*1.13);
+        }else{
+          for(var i=-2;i<=2;i++)CC.Enemies._shoot(e,a+i*.25,145,e.dmg*.72,'#b6ca73','spore',2.4);
+        }
+        if(phase===2&&Math.random()<.42&&
+          CC.Enemies.list.filter(function(v){return v.type==='rootling'&&!v.dead;}).length<6){
           CC.Enemies.spawn('rootling',e.x+28,e.y+14,e.floor,{awake:true});
         }
         if(CC.fx&&CC.fx.shake)CC.fx.shake(4);
-        e.tele=null;e.state='recover';e.t=.6;
+        e.tele=null;e.state='recover';e.t=phase===2?.43:.52;
       }
-    }else if(e.state==='recover'){e.t-=dt;if(e.t<=0){e.state='idle';e.cd=phase===2?.7:1.2;}}
+    }else if(e.state==='recover'){
+      e.t-=dt;
+      if(e.t<=0){e.state='idle';e.cd=phase===2?.58:.86;}
+    }
   }
   function smallAI(e,dt,p,d,a,f){
     e.cd-=dt;e.dangerous=false;

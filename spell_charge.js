@@ -1,5 +1,5 @@
 /* Emberdeep charged spellcasting: tap Q/E/Dash for the original ability,
- * hold >= 0.36s to aim and release a class-specific, higher-mana spell.
+ * hold >= 0.25s to aim and release a class-specific, higher-mana spell.
  * Mobile thumb drag aims relative to its spell button (MOBA-style). The game
  * remains fully playable with keyboard/mouse. Existing hold-ATK charges remain
  * a separate system.
@@ -7,7 +7,7 @@
 (function(root){
 'use strict';
 var CC=root.CC=root.CC||{}, SC=CC.SpellCharge={}, TAU=Math.PI*2;
-var ARM=.36,FULL=.9, MAX_AIM=110,frameTime=0,active=null,effects=[],lastArea=null;
+var ARM=.25,FULL=.9, MAX_AIM=92,frameTime=0,active=null,effects=[],lastArea=null;
 var DEFINITIONS={
   swordsman:{
     spell1:{name:'EARTHBREAKER',shape:'cone',range:92,radius:58,color:'#f2b264',mult:1.8},
@@ -138,19 +138,28 @@ function aim(p,slot,drag){
  }
  return {x:x,y:y,dx:n.x,dy:n.y,rad:d.radius,range:reach,valid:valid};
 }
-function begin(slot,sx,sy){
+function begin(slot,sx,sy,viewW,viewH){
  var p=hero();
  if(!p||!DEFINITIONS[p.classId]||!unlocked(p,slot))return false;
  if(active)return false;
  if(lastArea===null)lastArea=CC.state.area;
  active={slot:slot,hero:p,time:0,originX:sx||0,originY:sy||0,
-   drag:null,charged:false};
+   viewW:viewW||0,viewH:viewH||0,drag:null,charged:false};
  return true;
 }
-function drag(x,y){
+function drag(x,y,viewW,viewH){
  if(!active)return;
+ if(viewW)active.viewW=viewW;
+ if(viewH)active.viewH=viewH;
  var dx=x-active.originX,dy=y-active.originY,dd=Math.hypot(dx,dy);
- active.drag=dd<9?null:{x:dx,y:dy,distance:dd};
+ // Amplify only travel towards a nearby screen edge (notably southeast).
+ var edge=14,w=active.viewW||0,h=active.viewH||0;
+ var spaceX=dx>=0?(w?Math.max(22,w-active.originX-edge):MAX_AIM):Math.max(22,active.originX-edge);
+ var spaceY=dy>=0?(h?Math.max(22,h-active.originY-edge):MAX_AIM):Math.max(22,active.originY-edge);
+ var sx=Math.min(3.5,Math.max(1,MAX_AIM/spaceX));
+ var sy=Math.min(3.5,Math.max(1,MAX_AIM/spaceY));
+ var ax=dx*sx,ay=dy*sy;
+ active.drag=dd<8?null:{x:ax,y:ay,distance:Math.hypot(ax,ay)};
 }
 function cancel(){active=null;}
 function clear(){active=null;effects.length=0;}
@@ -168,11 +177,15 @@ function info(){
  if(!active)return null;
  var p=hero();if(!p||p!==active.hero)return null;
  var d=slotDefinition(p,active.slot),where=aim(p,active.slot,active.drag),
-     total=cost(p,active.slot);
+     total=cost(p,active.slot),power=clamp((active.time-ARM)/(FULL-ARM),0,1);
+ var motion=active.drag,rawX=motion&&!motion.world?motion.x:0,rawY=motion&&!motion.world?motion.y:0;
+ var length=Math.hypot(rawX,rawY);
  return {slot:active.slot,name:d.name,color:d.color,shape:d.shape,range:d.range,
    radius:active.slot==='dash'?landingRadius(p):d.radius,
-   elapsed:active.time,power:clamp((active.time-ARM)/(FULL-ARM),0,1),
-   progress:clamp(active.time/FULL,0,1),ready:active.time>=ARM,
+   elapsed:active.time,power:power,progress:power,
+   aiming:active.time>=ARM,ready:active.time>=FULL,
+   stickX:length?rawX/length:0,stickY:length?rawY/length:0,
+   stickAmount:clamp(length/MAX_AIM,0,1),
    cost:total,affordable:p.mana>=total,valid:where.valid,
    maxDistance:d.range,distance:where.range,heroClass:p.classId,
    x:where.x,y:where.y,dx:where.dx,dy:where.dy,originX:p.x,originY:p.y};
@@ -312,10 +325,10 @@ function cast(p,slot,where,power){
    if(CC.Classes&&CC.Classes.summonCharged)
      CC.Classes.summonCharged(x,y,3,p);
    effect('grave',{x:x,y:y,r:where.rad,color:col,life:1.1,
-     interval:.40,damage:dmg*.55});
+     interval:.40,damage:dmg*.45});
  }else if(p.classId==='necromancer'&&slot==='spell2'){
    effect('soul',{owner:p,x:x,y:y,r:where.rad,color:col,
-     life:2.15,interval:.28,damage:dmg*(.56+.08*power)});
+     life:2.15,interval:.28,damage:dmg*(.48+.06*power)});
  }
  p.cd[slot]=Math.max(p.cd[slot]||0,p.cdMax[slot]*1.34);
  p.castFlash=.28;
@@ -327,8 +340,11 @@ function release(slot){
  var p=hero(),a=active;active=null;
  if(!p||p!==a.hero||!unlocked(p,slot))return false;
  if(a.time<ARM){
-   if(CC.Classes&&CC.Classes.tapAction)return !!CC.Classes.tapAction(slot);
-   return false;
+   var tapped=!!(CC.Classes&&CC.Classes.tapAction&&CC.Classes.tapAction(slot));
+   if(tapped)fxText(p.x,p.y-29,slot==='dash'?'DASH':
+     (p.spellNames&&p.spellNames[slot==='spell1'?0:1])||slot,
+     slotDefinition(p,slot).color);
+   return tapped;
  }
  var mana=cost(p,slot);
  if(p.mana<mana){fxText(p.x,p.y-20,'NEED '+mana+' MANA','#7bbddd');return false;}
@@ -344,7 +360,7 @@ function combatTick(dt){
  if(active){
    active.time+=dt;
    if(active.time>=ARM&&!active.charged){active.charged=true;var p=active.hero,d=slotDefinition(p,active.slot);
-     fxText(p.x,p.y-18,d.name,d.color);}
+     /* Cast name is displayed only on release. */}
  }
  for(var i=effects.length-1;i>=0;i--){
    var e=effects[i];e.t+=dt;e.pulse-=dt;
@@ -383,7 +399,7 @@ function combatTick(dt){
      affected=targets(px,py,e.r);
      for(j=0;j<affected.length;j++){
        foe=affected[j];var amount=hurt(foe,e.damage,'drain');
-       if(e.owner&&CC.Classes&&CC.Classes.heal)CC.Classes.heal(e.owner,amount*.32);
+       if(e.owner&&CC.Classes&&CC.Classes.heal)CC.Classes.heal(e.owner,amount*.22);
        status(foe,'slow',.6,.68);
      }
    }
@@ -573,49 +589,36 @@ function sigil(c,cls,x,y,r,col,t){
  c.restore();
 }
 function drawPreview(c,cam){
- var inf=info();if(!inf)return;
- var x=inf.x-cam.x,y=inf.y-cam.y,
-     px=inf.originX-cam.x,py=inf.originY-cam.y,
-     r=Math.max(12,inf.radius),cls=inf.heroClass,progress=inf.progress,
+ var inf=info();if(!inf||!inf.aiming)return;
+ var x=inf.x-cam.x,y=inf.y-cam.y,px=inf.originX-cam.x,py=inf.originY-cam.y,
+     factor=.57+.43*inf.power,r=Math.max(12,inf.radius)*factor,
+     cls=inf.heroClass,progress=inf.progress,
      col=inf.valid&&inf.affordable?(
        {swordsman:'#77c7ff',wizard:'#83cbff',necromancer:'#82cca0',thief:'#dc667c'}[cls]||inf.color):
        '#e07e85';
- c.save();c.globalAlpha=.88;
+ c.save();c.globalAlpha=.23+.69*progress;
  if(inf.shape==='dash'){
-   c.strokeStyle=col;c.lineWidth=1.6;c.setLineDash([5,5]);
+   c.strokeStyle=col;c.lineWidth=1.2+progress*.8;c.setLineDash([5,5]);
    c.beginPath();c.moveTo(px,py);c.lineTo(x,y);c.stroke();c.setLineDash([]);
-   c.fillStyle='rgba(14,22,29,.13)';
+   c.fillStyle='rgba(14,22,29,.17)';
    c.beginPath();c.arc(x,y,r,0,TAU);c.fill();
-   sigil(c,cls,x,y,r,col,frameTime);
-   ring(c,x,y,5,col,1.5);
+   sigil(c,cls,x,y,r,col,frameTime);ring(c,x,y,5,col,1.5);
  }else if(inf.shape==='cone'){
    var a=Math.atan2(inf.dy,inf.dx),half=cls==='wizard'?.48:.7;
-   c.fillStyle=cls==='thief'?'rgba(125,32,52,.12)':
-     cls==='necromancer'?'rgba(39,113,71,.13)':'rgba(45,118,195,.12)';
-   c.beginPath();c.moveTo(px,py);c.arc(px,py,Math.max(12,inf.range),a-half,a+half);
-   c.closePath();c.fill();c.strokeStyle=col;c.lineWidth=1.2;c.stroke();
+   c.fillStyle=cls==='thief'?'rgba(125,32,52,.17)':
+     cls==='necromancer'?'rgba(39,113,71,.18)':'rgba(45,118,195,.17)';
+   c.beginPath();c.moveTo(px,py);
+   c.arc(px,py,Math.max(12,inf.range)*factor,a-half,a+half);
+   c.closePath();c.fill();c.strokeStyle=col;c.lineWidth=1.2+progress*.8;c.stroke();
    sigil(c,cls,x,y,Math.min(27,r*.45),col,frameTime);
  }else{
-   c.fillStyle=cls==='thief'?'rgba(116,30,51,.13)':
-     cls==='necromancer'?'rgba(40,108,75,.13)':'rgba(45,112,183,.12)';
+   c.fillStyle=cls==='thief'?'rgba(116,30,51,.18)':
+     cls==='necromancer'?'rgba(40,108,75,.18)':'rgba(45,112,183,.18)';
    c.beginPath();c.arc(x,y,r,0,TAU);c.fill();
    sigil(c,cls,x,y,r,col,frameTime);
  }
- ring(c,x,y,r+5,col,2.8,-Math.PI/2,-Math.PI/2+TAU*Math.max(.012,progress));
- if(inf.ready)ring(c,x,y,r+8,col,.8);
- // Legible little opaque tooltip that doesn't cover the battle.
- var width=inf.shape==='dash'?122:140,ty=y-r-24;
- c.fillStyle='rgba(10,14,18,.88)';c.fillRect(x-width/2,ty-11,width,28);
- c.strokeStyle='rgba(158,165,167,.52)';c.lineWidth=1;
- c.strokeRect(x-width/2,ty-11,width,28);
- c.textAlign='center';c.textBaseline='middle';
- c.font='bold 10px Georgia';c.fillStyle=col;c.fillText(inf.name,x,ty-1);
- c.font='9px Georgia';c.fillStyle=inf.valid&&inf.affordable?'#e8dfce':'#ffafb7';
- var caption=!inf.valid?'BLOCKED LANDING':inf.shape==='dash'?
-     Math.round(inf.distance)+' / '+inf.maxDistance+'  ·  '+inf.cost+' MP':
-     !inf.ready?'CHARGING '+Math.round(progress*100)+'%':
-     inf.affordable?'RELEASE  ·  '+inf.cost+' MP':'NEED '+inf.cost+' MP';
- c.fillText(caption,x,ty+10);
+ ring(c,x,y,r+4,col,2.2,-Math.PI/2,-Math.PI/2+TAU*Math.max(.012,progress));
+ if(inf.ready)ring(c,x,y,r+7+Math.sin(frameTime*6)*1.3,col,1.1);
  c.restore();
 }
 SC.begin=begin;SC.drag=drag;SC.worldAim=worldAim;SC.release=release;SC.cancel=cancel;SC.clear=clear;SC.update=update;SC.land=landing;

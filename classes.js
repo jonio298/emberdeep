@@ -50,7 +50,7 @@
       spells: ['Bash', 'Whirl'], cost: { spell1: 8, spell2: 18 }, cdMax: { attack: 0.32, spell1: 4, spell2: 7, dash: 2.2 } },
     wizard: { name: 'Wizard', color: '#5cc8ff', hp: 55, hpL: 8, mana: 120, manaL: 10, dmg: 10, dmgL: 2.2, speed: 88, armor: 0, crit: 0.08,
       spells: ['Fire', 'Frost'], cost: { spell1: 20, spell2: 25 }, cdMax: { attack: 0.42, spell1: 2.5, spell2: 7, dash: 2.5 } },
-    necromancer: { name: 'Necromancer', color: '#a46bff', hp: 65, hpL: 10, mana: 100, manaL: 8, dmg: 9, dmgL: 1.8, speed: 86, armor: 1, crit: 0.05,
+    necromancer: { name: 'Necromancer', color: '#a46bff', hp: 65, hpL: 10, mana: 100, manaL: 8, dmg: 8, dmgL: 1.65, speed: 86, armor: 1, crit: 0.05,
       spells: ['Raise', 'Drain'], cost: { spell1: 25, spell2: 15 }, cdMax: { attack: 0.45, spell1: 5, spell2: 4, dash: 2.5 } },
     thief: { name: 'Thief', color: '#7de0b8', hp: 60, hpL: 9, mana: 70, manaL: 5, dmg: 9, dmgL: 1.9, speed: 108, armor: 1, crit: 0.15,
       spells: ['Knives', 'Smoke'], cost: { spell1: 12, spell2: 20 }, cdMax: { attack: 0.24, spell1: 2.2, spell2: 8, dash: 1.6 } }
@@ -175,6 +175,7 @@
   function gainXp(n, p) {
     p = p || hero();
     if (!p || !(n > 0)) return;
+    var previousPoints=CC.SkillTree&&CC.SkillTree.points?CC.SkillTree.points(p):0;
     p.xp += n * (1 + p.mods.xpPct);
     while (p.xp >= p.xpNext && p.level < 50) {
       p.xp -= p.xpNext;
@@ -195,6 +196,12 @@
       if (p.level % 3 === 0) { p.perkQueue++; if (!p.perkOpen) openPerk(p); }
     }
     if (p.level >= 50) p.xp = Math.min(p.xp, p.xpNext - 1);
+    if(CC.SkillTree&&CC.SkillTree.points&&CC.SkillTree.points(p)>previousPoints){
+      p._pendingSkillTree=true;
+      if(!p.perkOpen&&CC.UI&&CC.UI.open){
+        CC.UI.open('skills');p._pendingSkillTree=false;
+      }
+    }
   }
 
   function openPerk(p) {
@@ -216,6 +223,10 @@
     p.perkQueue = Math.max(0, p.perkQueue - 1);
     fxText(p.x, p.y - 20, pk.name + '!', '#9be36b', 12);
     if (p.perkQueue > 0) openPerk(p);
+    // Resolve the perk queue first, then open the skill tree once.
+    if(!p.perkOpen&&p._pendingSkillTree&&CC.UI&&CC.UI.open){
+      CC.UI.open('skills');p._pendingSkillTree=false;
+    }
     return true;
   }
 
@@ -600,16 +611,16 @@
   }
 
   function raise(p, count, free) {
-    var cap = 2 + Math.floor(p.level / 3) + 2 * (p.flags.legion || 0);
+    var cap = 2 + Math.floor(p.level / 5) + 2 * (p.flags.legion || 0);
     var n = Math.min(count, cap - minions.length);
     if (n <= 0) return 0;
     for (var i = 0; i < n; i++) {
       var a = rnd(0, 6.28), d = rnd(18, 28);
-      var hp = (30 + p.level * 3) * (1 + 0.5 * (p.flags.sturdy || 0));
+      var hp = (28 + p.level * 2.7) * (1 + 0.4 * (p.flags.sturdy || 0));
       var rx = p.x + Math.cos(a) * d, ry = p.y + Math.sin(a) * d;
       if (solidAt(rx, ry)) { rx = p.x; ry = p.y; } // never raise a skeleton inside a wall
-      minions.push({ x: rx, y: ry, r: 6, hp: hp, maxHp: hp, life: 18 * (1 + 0.5 * (p.flags.linger || 0)),
-        dmg: (5 + p.stats.dmg * 0.6) * (1 + 0.5 * (p.flags.deadly || 0)) * sm(p, 1), atkCd: 0, anim: rnd(0, 6), face: 1, spawn: 0.35 });
+      minions.push({ x: rx, y: ry, r: 6, hp: hp, maxHp: hp, life: 16 * (1 + 0.5 * (p.flags.linger || 0)),
+        dmg: (5 + p.stats.dmg * 0.42) * (1 + 0.35 * (p.flags.deadly || 0)) * sm(p, 1), atkCd: 0, anim: rnd(0, 6), face: 1, spawn: 0.35 });
       addFx({ kind: 'puff', x: rx, y: ry, r: 14, t: 0.4, max: 0.4, col: '#7dff9a' });
     }
     if (!free) addFx({ kind: 'ring', x: p.x, y: p.y, r: 34, t: 0.4, max: 0.4, col: '#7dff9a' });
@@ -636,7 +647,7 @@
       for (var ki = 0; ki < spread.length; ki++) shoot(p, dir.a + spread[ki], 300, 0.6, 0.8 * sm(p, 1), 3, 'shard', 'knife', '#cfd8e6');
       p.atkAnim = 0.15; p.castFlash = 0.1;
     } else { // raise skeletons
-      var cap = 2 + Math.floor(p.level / 3) + 2 * (p.flags.legion || 0);
+      var cap = 2 + Math.floor(p.level / 5) + 2 * (p.flags.legion || 0);
       if (minions.length >= cap) { if (noManaT <= 0) { fxText(p.x, p.y - 18, 'Max minions', '#7dff9a', 10); noManaT = 0.6; } return; }
       if (!spend(p, 'spell1')) return;
       raise(p, 2, false);
@@ -668,8 +679,8 @@
       var t = nearest(p.x, p.y, 110);
       if (!t) { if (noManaT <= 0) { fxText(p.x, p.y - 18, 'No target', '#aaa', 10); noManaT = 0.6; } return; }
       if (!spend(p, 'spell2')) return;
-      var dealt = hitEnemy(t, p.stats.dmg * 2.0 * sm(p, 2), 'drain');
-      heal(p, dealt * (0.5 + 0.5 * (p.flags.vampirism || 0)));
+      var dealt = hitEnemy(t, p.stats.dmg * 1.7 * sm(p, 2), 'drain');
+      heal(p, dealt * (0.38 + 0.27 * (p.flags.vampirism || 0)));
       addFx({ kind: 'beam', x: p.x, y: p.y, x2: t.x, y2: t.y, t: 0.3, max: 0.3, col: '#7dff9a', ref: t });
       p.castFlash = 0.3; p.face = t.x >= p.x ? 1 : -1;
     }
@@ -741,16 +752,16 @@
   }
   function summonCharged(x,y,count,p) {
     p=p||hero();if(!p||p.classId!=='necromancer')return 0;
-    var cap=4+Math.floor(p.level/3)+2*(p.flags.legion||0);
+    var cap=3+Math.floor(p.level/5)+2*(p.flags.legion||0);
     var n=Math.min(count,Math.max(0,cap-minions.length)),made=0;
     for(var i=0;i<n;i++){
       var a=i*6.2831853/Math.max(1,n)+.6,r=18+i%2*9,
           tx=x+Math.cos(a)*r,ty=y+Math.sin(a)*r;
       if(solidAt(tx,ty)){tx=p.x+Math.cos(a)*20;ty=p.y+Math.sin(a)*20;}
       if(solidAt(tx,ty))continue;
-      var health=(37+p.level*3.8)*(1+.45*(p.flags.sturdy||0));
-      minions.push({x:tx,y:ty,r:7,hp:health,maxHp:health,life:16,
-        dmg:(6+p.stats.dmg*.92)*sm(p,1),atkCd:0,
+      var health=(33+p.level*3.4)*(1+.4*(p.flags.sturdy||0));
+      minions.push({x:tx,y:ty,r:7,hp:health,maxHp:health,life:14,
+        dmg:(5+p.stats.dmg*.62)*sm(p,1),atkCd:0,
         anim:rnd(0,6),face:1,spawn:.48,charged:true});
       addFx({kind:'puff',x:tx,y:ty,r:19,t:.53,max:.53,col:'#a7e3b0'});
       made++;

@@ -1,6 +1,6 @@
 /* Emberdeep — Veyr, the Hollow Maw.
  * Unique demonic weasel guarding the eagle nest at Ancient Tree floor 5.
- * Explicit, choreographed attacks. At 65% HP he enters Rage, at 25%
+ * Explicit, choreographed attacks. At 72% HP he enters Rage, at 32%
  * Desperate Rage. Every attack has a readable windup and recovery.
  */
 (function(root){
@@ -8,7 +8,7 @@
 var CC=root.CC=root.CC||{},E=CC.Enemies;if(!E)return;
 var TAU=Math.PI*2,PI=Math.PI;
 E.TYPES.weaselDemon={
- name:'Veyr, the Hollow Maw',hp:154,spd:67,dmg:13,r:17,xp:135,
+ name:'Veyr, the Hollow Maw',hp:154,spd:74,dmg:15,r:17,xp:135,
  color:'#4d3449',blood:'#8d1c37',bone:true,w:0,min:99
 };
 function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
@@ -56,8 +56,8 @@ function launch(e,attack,ang,p){
  e.weaselElapsed=0;e.weaselStep=0;e.dangerous=false;
  e.state='telegraph';
  e.weaselTarget={x:p.x,y:p.y};
- var dur=attack==='needlePounce'?.61:attack==='tailScythe'?.68:
-   attack==='hexSpit'?.85:.95;
+ var dur=attack==='needlePounce'?.55:attack==='tailScythe'?.61:
+   attack==='hexSpit'?.76:.80;
  e.t=dur*fast;
  var length=attack==='needlePounce'?165:attack==='hexSpit'?275:116;
  var radius=attack==='tailScythe'?(phase===3?99:phase===2?84:72):52;
@@ -72,7 +72,7 @@ function launch(e,attack,ang,p){
 function recover(e,time){
  e.state='recover';e.t=time*(e.weaselPhase===3?.68:e.weaselPhase===2?.83:1);
  e.tele=null;e.dangerous=false;e.weaselMove='';
- e.weaselCd=(e.weaselPhase===3?.45:e.weaselPhase===2?.67:.94)+rnd()*.2;
+ e.weaselCd=(e.weaselPhase===3?.32:e.weaselPhase===2?.48:.67)+rnd()*.17;
 }
 function rage(e,stage){
  e.weaselPhase=stage;
@@ -112,10 +112,10 @@ var oldThink=E._think;
 E._think=function(e,dt,p,d,ang,f){
  if(e.type!=='weaselDemon')return oldThink.apply(this,arguments);
  var phase=e.weaselPhase||1;
- if(!e.weaselPhase){e.weaselPhase=1;e.weaselCd=1.3;e.weaselCycle=0;phase=1;}
+ if(!e.weaselPhase){e.weaselPhase=1;e.weaselCd=.85;e.weaselCycle=0;phase=1;}
  var ratio=e.hp/Math.max(1,e.maxHp);
- if(ratio<=.25&&phase<3){rage(e,3);return;}
- if(ratio<=.65&&phase<2){rage(e,2);return;}
+ if(ratio<=.32&&phase<3){rage(e,3);return;}
+ if(ratio<=.72&&phase<2){rage(e,2);return;}
  if(e.weaselFx)e.weaselFx.t=Math.max(0,e.weaselFx.t-dt);
  e.weaselGlow=Math.max(0,(e.weaselGlow||0)-dt);
  e.dangerous=false;
@@ -128,7 +128,7 @@ E._think=function(e,dt,p,d,ang,f){
        push(e,p,phase===3?55:34,ang);
      }
      burst(e,phase===3?'#ee445a':'#b369de',22);
-     recover(e,1.1);
+     recover(e,.82);
    }
    return;
  }
@@ -188,20 +188,20 @@ E._think=function(e,dt,p,d,ang,f){
          Math.sin(e.weaselAngle)*sprint*dt);
        collide(e,p,e.r+13,1.14,26);
        if(wall)elapsed=e.weaselElapsed=cutoff;
-     }else if(phase>=2&&e.weaselStep===0){
+     }else if((phase>=2||e.weaselCycle%3===0)&&e.weaselStep===0){
        e.weaselStep=1;e.state='telegraph';
        e.weaselMove='returnPounce';e.weaselAngle=Math.atan2(p.y-e.y,p.x-e.x);
-       e.t=phase===3?.18:.26;
+       e.t=phase===3?.23:phase===2?.29:.36;
        e.tele={kind:'line',ang:e.weaselAngle,len:137,max:e.t};
        text(e,'SECOND FANG!','#f2a2bb');
-     }else recover(e,.73);
+     }else recover(e,.62);
    }else if(attack==='returnPounce'){
      // This is a separate second commitment, so a dodge can avoid it.
      e.dangerous=true;
      move(e,Math.cos(e.weaselAngle)*(phase===3?442:377)*dt,
        Math.sin(e.weaselAngle)*(phase===3?442:377)*dt);
      collide(e,p,e.r+13,phase===3?1.25:1.05,35);
-     if(elapsed>.26)recover(e,.78);
+     if(elapsed>.26)recover(e,.61);
    }else if(attack==='rootDive'){
      // Purple-marked ambush emerges with a directional claw strike.
      if(elapsed<.26){
@@ -209,11 +209,11 @@ E._think=function(e,dt,p,d,ang,f){
        move(e,Math.cos(e.weaselAngle)*243*dt,Math.sin(e.weaselAngle)*243*dt);
        collide(e,p,e.r+15,1.18,30);
      }
-     if(elapsed>.35)recover(e,.8);
+     if(elapsed>.35)recover(e,.63);
    }else if(attack==='hexSpit'){
-     if(elapsed>.27)recover(e,.67);
+     if(elapsed>.27)recover(e,.55);
    }else if(attack==='tailScythe'){
-     if(elapsed>.31)recover(e,.70);
+     if(elapsed>.31)recover(e,.57);
    }else recover(e,.7);
    return;
  }

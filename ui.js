@@ -28,7 +28,7 @@
   var sel = { skill: null, item: null, charge: null };      // item: {src:'bag', i} | {src:'eq', key}
   var toast = { s: '', t: 0, c: COL.text };
   var flash = {};                             // skill id -> seconds of pulse left
-  var bb = { pct: 1, chip: 1, alpha: 0, name: '', phase: 1, intro: 0, introMax: 2.2, color: '#c03a3a' };
+  var bb = { pct: 1, chip: 1, alpha: 0, name: '', phase: 1, kind: '', intro: 0, introMax: 2.2, color: '#c03a3a' };
 
   /* ---------- helpers ---------- */
   function ease(v) { return 1 - Math.pow(1 - Math.max(0, Math.min(1, v)), 3); }
@@ -193,8 +193,9 @@
     var ST = CC.SkillTree;
     if (!ST || !p) { tx(c, ST ? 'No hero yet' : 'Skill tree unavailable', x + w / 2, y + h / 2, 14, COL.dim, 'center'); return; }
     var pts = ST.points(p), list = ST.nodes(p.classId), detailH = 90, stripH = 64, lvl = p.level || 1;
-    tx(c, 'Skill points: ' + pts, x + 6, y + 8, 14, pts > 0 ? COL.good : COL.dim);
-    tx(c, p.name + '  LV ' + lvl + '/' + ST.MAX_LEVEL, x + w - 6, y + 8, 12, p.color || COL.text, 'right');
+    tx(c,pts>0?'POINTS TO SPEND: '+pts:'Skill points: 0',x+6,y+8,13,pts>0?COL.good:COL.dim);
+    tx(c,'LV '+lvl+'/'+ST.MAX_LEVEL,x+w*.63,y+8,10,p.color||COL.text,'center');
+    button(c,addHit,x+w-90,y+4,84,23,'Continue',true,close,'#39644a');
     var colW = w / 4, top = y + 44, avail = h - detailH - stripH - 60, rowH = Math.max(32, Math.min(64, avail / 6)), R = Math.max(10, Math.min(17, colW * 0.3, rowH * 0.36)), i, n, cx, cy;
     for (i = 0; i < 4; i++) tx(c, ST.colTitle(p.classId, i), x + colW * (i + 0.5), y + 28, 11, i === 3 ? (p.color || COL.accent) : COL.dim, 'center');
     function pos(nd) { return { x: x + colW * (nd.col + 0.5), y: top + nd.tier * rowH + R }; }
@@ -489,11 +490,13 @@
     if (bb.chip > bb.pct) { rr(c, x + 1, y + 1, Math.max(h - 2, (w - 2) * bb.chip), h - 2, 6); c.fillStyle = 'rgba(255,255,255,0.55)'; c.fill(); }
     if (bb.pct > 0) {
       var g = c.createLinearGradient(0, y, 0, y + h);
-      g.addColorStop(0, bb.phase === 2 ? '#ff6a4a' : '#e05a5a'); g.addColorStop(1, bb.phase === 2 ? '#a01a1a' : '#8a2a3a');
+      g.addColorStop(0,bb.kind==='patchwork'?'#d99aff':bb.phase===2?'#ff6a4a':'#e05a5a');
+      g.addColorStop(1,bb.kind==='patchwork'?'#6f288f':bb.phase===2?'#a01a1a':'#8a2a3a');
       rr(c, x + 1, y + 1, Math.max(h - 2, (w - 2) * bb.pct), h - 2, 6); c.fillStyle = g; c.fill();
     }
-    c.fillStyle = 'rgba(255,255,255,0.7)'; c.fillRect(Math.round(x + w / 2), y + 1, 1, h - 2); // phase 2 marker
-    c.lineWidth = 1.5; c.strokeStyle = bb.phase === 2 ? '#ff8a5a' : COL.line; rr(c, x, y, w, h, 7); c.stroke();
+    if(bb.kind!=='patchwork'){c.fillStyle='rgba(255,255,255,0.7)';c.fillRect(Math.round(x+w/2),y+1,1,h-2);}
+    c.lineWidth=1.5;c.strokeStyle=bb.kind==='patchwork'?'#b76be2':bb.phase===2?'#ff8a5a':COL.line;
+    rr(c,x,y,w,h,7);c.stroke();
     tx(c, bb.name + (bb.phase === 2 ? '  ENRAGED' : ''), x + w / 2, y + h / 2 + 0.5, 10, '#fff', 'center');
     if (bb.intro > 0) { // name banner: slides in, holds, fades
       var a = Math.min(1, bb.intro / 0.4, (bb.introMax - bb.intro) / 0.35), slide = (1 - ease((bb.introMax - bb.intro) / 0.35)) * 40;
@@ -573,7 +576,8 @@
     for (var k in flash) { flash[k] -= dt; if (flash[k] <= 0) delete flash[k]; }
     var B = CC.Enemies && CC.Enemies.bossBar;
     if (B) {
-      bb.name = B.name || 'Boss'; bb.phase = B.phase || 1; bb.intro = B.intro || 0; bb.color = B.color || bb.color;
+      bb.name=B.name||'Boss';bb.phase=B.phase||1;bb.kind=B.kind||'';
+      bb.intro=B.intro||0;bb.color=B.color||bb.color;
       bb.pct += (Math.max(0, Math.min(1, B.pct)) - bb.pct) * Math.min(1, dt * 14);
       bb.chip = Math.max(bb.pct, bb.chip - dt * 0.35);
       bb.alpha = Math.min(1, bb.alpha + dt * 4);
