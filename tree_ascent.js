@@ -65,11 +65,14 @@ function build(floor){
    stamp(x,y,2.45,n%2?2:1);
   }
  }
- for(n=1;n<nodes.length-1;n++)stamp(nodes[n][0],nodes[n][1],3.5,3);
+ for(n=1;n<nodes.length-1;n++)stamp(nodes[n][0],nodes[n][1],3.5,2);
  var spawn={x:(nodes[0][0]+.5)*T,y:(nodes[0][1]+.5)*T},
      goal={x:(nodes[nodes.length-1][0]+.5)*T,y:(nodes[nodes.length-1][1]+.5)*T};
  // Carve open approach to summit and the 3-egg nest.
- stamp(nodes[nodes.length-1][0],nodes[nodes.length-1][1],3.3,3);
+ stamp(nodes[nodes.length-1][0],nodes[nodes.length-1][1],3.3,2);
+ // Realm interprets kind 3 as a raised solid/tree-art tile. Reserve it
+ // strictly for real walls, never for walkable balcony platforms.
+ for(var wi=0;wi<tiles.length;wi++)if(tiles[wi]!==0)kind[wi]=3;
  var forbidden=[spawn,goal],points=[],samples=[
   nodes[2],nodes[3],nodes[4],nodes[5],nodes[nodes.length-3]
  ];
@@ -99,14 +102,17 @@ function build(floor){
  }});
  lights.push({x:goal.x,y:goal.y,r:150,color:floor===5?'247,192,107':'170,221,163',inten:.9,flicker:.08});
  // Keep a custom artistic terrain palette and layers for every level of ascent.
- function ground(c,k,sx,sy,hv,tt,tx,ty){
-   c.fillStyle=k===3?'#72573c':k===2?'#62432e':'#493523';
-   c.fillRect(sx,sy,T,T);
+ function ground(k,hv,tx,ty){
+   // Realm.ground returns a COLOR; the detail callback paints texture after it.
+   return k===2?'#72573c':k===1?'#493523':'#272522';
+ }
+ function detail(c,k,sx,sy,hv,tt,tx,ty){
    for(var z=0;z<4;z++){
      var rx=sx+nrand(tx*7+z,ty+floor)*T,ry=sy+nrand(ty*9+z,tx+floor)*T;
      line(c,rx,ry,rx+8,ry+Math.sin(z+tx)*2,z%2?'#876246':'#372a22',1.1);
    }
-   if((tx*31+ty*7+floor)%6===0)oval(c,sx+19,sy+11,8,4,'rgba(83,117,57,.5)');
+   if((tx*31+ty*7+floor)%6===0)
+     oval(c,sx+19,sy+11,8,4,'rgba(83,117,57,.5)');
  }
  function solidArt(c,k,sx,sy,hv,tt,tx,ty){
    // Gnarled living bark wall with hanging vines and visible void between branches.
@@ -123,7 +129,7 @@ function build(floor){
  var map=CC.Realm.create({
    name:titles[floor-1],w:W,h:H,tiles:tiles,kind:kind,spawn:spawn,stairs:goal,
    enemySpawns:[],chests:[],props:props,lights:lights,
-   ground:ground,drawSolid:solidArt,ambient:'8,12,12,.73',
+   ground:ground,detail:detail,drawSolid:solidArt,ambient:'8,12,12,.73',
    playerLight:195,viewR:235,fog:.08,viewBoost:1.1
  });
  map.treeAscent=true;map.ascentFloor=floor;map.enemySpawns=points;
