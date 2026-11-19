@@ -651,15 +651,27 @@ Camp.drawUI=function(c,W,H,hit){
     c.fillStyle='rgba(8,6,15,0.76)';c.fillRect(W/2-125,12,250,26);
     c.fillStyle='#e8d7b0';c.font='bold 14px Georgia';c.textAlign='center';
     c.fillText(room==='tent'?'INSIDE THE TENT':'YOUR CAMPSITE',W/2,30);
+    // Contextual action panel for mobile; matches the exact physical interaction points.
+    var p=hero(), act='', callback=null, ww=136, bx=W-ww-14, by=148;
     if(room==='outside'){
-      var w=118,h=30;
-      c.fillStyle='#56402d';c.fillRect(W-132,148,w,h);c.strokeStyle='#b89a72';c.strokeRect(W-132,148,w,h);
-      c.fillStyle='#fff';c.font='12px Georgia';c.fillText('Enter tent',W-74,168);
-      hit(W-132,148,w,h,goTent);
-    } else {
-      c.fillStyle='#56402d';c.fillRect(W-136,148,122,30);c.strokeStyle='#b89a72';c.strokeRect(W-136,148,122,30);
-      c.fillStyle='#fff';c.font='12px Georgia';c.fillText('Leave tent',W-75,168);
-      hit(W-136,148,122,30,goOutside);
+      if(p&&distance(p,{x:OUT.w/2,y:OUT.h/2-65})<57){
+        act='Enter Tent';callback=goTent;
+      } else if(p&&distance(p,{x:OUT.w/2-125,y:OUT.h/2+57})<42){
+        act='Sit on Stump';callback=function(){Camp.interact();};
+      }
+    }else{
+      if(p&&distance(p,{x:IN.w/2-75,y:IN.h/2})<48){
+        act='Rest & Heal';callback=function(){Camp.interact();};
+      }else if(p&&distance(p,{x:IN.w/2+80,y:IN.h/2})<50){
+        act='Open Chest';callback=function(){Camp.interact();};
+      }else{act='Leave Tent';callback=goOutside;}
+    }
+    if(callback){
+      c.fillStyle='rgba(25,19,17,.94)';c.fillRect(bx,by,ww,34);
+      c.strokeStyle='#c19d63';c.lineWidth=1.5;c.strokeRect(bx,by,ww,34);
+      c.fillStyle='#efd5a5';c.font='bold 12px Georgia';c.textAlign='center';
+      c.fillText(act,bx+ww/2,by+21);
+      hit(bx,by,ww,34,callback);
     }
   }
   if(messageTime>0 && !modal){
