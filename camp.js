@@ -36,12 +36,51 @@ function restoreCave() {
       v && typeof v==='object' ? JSON.parse(JSON.stringify(v)) : v;
   });
 }
+// Palisade collision shares the exact same coordinates as its rendered posts.
+var GATE_HALF = 40, FENCE_X = 34, FENCE_Y = 34;
+function campBlocked(x,y) {
+  if (!isFinite(x) || !isFinite(y)) return true;
+  if (room === 'tent') {
+    if(x<27||x>IN.w-27||y<29||y>IN.h-26)return true;
+    // Solid bed / chest. Approach from the central aisle to interact.
+    if(x>61&&x<146&&y>91&&y<159)return true;
+    if(x>225&&x<298&&y>103&&y<161)return true;
+    return false;
+  }
+  if(x<15||y<14||x>OUT.w-15||y>OUT.h-12)return true;
+  if(y>=25&&y<=OUT.h-25&&(x>=25&&x<=45||x>=OUT.w-45&&x<=OUT.w-25))return true;
+  if(x>=25&&x<=OUT.w-25&&y>=24&&y<=45)return true;
+  // Southern fence is solid except for the actual walkable gate.
+  if(y>=OUT.h-47&&y<=OUT.h-24&&Math.abs(x-OUT.w/2)>GATE_HALF)return true;
+  // Canvas tent, campfire and stump also block walking through the objects.
+  if(x>OUT.w/2-78&&x<OUT.w/2+78&&y>OUT.h/2-126&&y<OUT.h/2-39)return true;
+  if(Math.hypot(x-(OUT.w/2+126),y-(OUT.h/2+40))<17)return true;
+  if(Math.hypot(x-(OUT.w/2-126),y-(OUT.h/2+58))<15)return true;
+  return false;
+}
 function floorMap() {
-  return { campScene: true, isSolid: function(x,y) {
-    var a = dimensions();
-    return x < 36 || y < 38 || x > a.w-36 || y > a.h-36;
-  }, isSolidTile: function(x,y) { return this.isSolid(x*32+16,y*32+16); },
-  w: 20,h:16,spawn:{x:OUT.w/2,y:OUT.h/2} };
+  return {campScene:true,isSolid:campBlocked,
+    isSolidTile:function(x,y){return this.isSolid(x*32+16,y*32+16);},
+    w:20,h:16,spawn:{x:OUT.w/2,y:OUT.h/2}};
+}
+// In the world, the small marker also has a physically solid palisade and open south gate.
+// Only its current floor is affected; save and restore the original collision method.
+function installWorldFence() {
+  if(!home||!home.map||typeof home.map.isSolid!=='function')return;
+  var scene=home.map, original=scene.isSolid;
+  home.originalSolid=original;
+  scene.isSolid=function(x,y){
+    if(original.call(scene,x,y))return true;
+    if(!home||inCamp()||state().area!==home.area||state().floor!==home.floor)return false;
+    var dx=x-home.x,dy=y-home.y;
+    if(Math.abs(dy)<34 && Math.abs(dx)>29 && Math.abs(dx)<43)return true;
+    if(Math.abs(dx)<43 && dy>-34 && dy<-25)return true;
+    if(Math.abs(dx)<43 && dy>25 && dy<34 && Math.abs(dx)>17)return true;
+    return false;
+  };
+}
+function uninstallWorldFence() {
+  if(home&&home.originalSolid&&home.map)home.map.isSolid=home.originalSolid;
 }
 var map = floorMap();
 function note(s) { message = s; messageTime = 3; }
@@ -87,7 +126,7 @@ function leave(pack) {
     while (inventory.length) bag.push(inventory.shift());
   }
   if (!restoreWorld()) return;
-  if (pack) { home = null; inventory.length=0; }
+  if (pack) { uninstallWorldFence(); home = null; inventory.length=0; }
   else note('Camp remains here. Return to the marker to enter.');
 }
 Camp.request = function() {
@@ -103,6 +142,7 @@ Camp.confirm = function(yes) {
     var s=state(), p=hero();
     home = {mode:s.mode,area:s.area,floor:s.floor,map:s.map,dungeon:CC.Dungeon,x:p.x,y:p.y,
       caveSnapshot: s.area === 'cave' ? snapshotCave(CC.Dungeon) : null};
+    installWorldFence();
     enter();
   } else if (modal === 'leave') {
     if (yes) modal='pack'; else { modal=''; var p1=hero(); if(p1){p1.x=OUT.w/2;p1.y=OUT.h/2+55;} }
@@ -124,7 +164,7 @@ Camp.nearAction = function(){
   var p=hero();
   if (!p) return false;
   if (Camp.isWorldCampNear()) return true;
-  if (room === 'outside') return distance(p,{x:OUT.w/2,y:OUT.h/2-65})<57 || distance(p,{x:OUT.w/2-125,y:OUT.h/2+57})<40;
+  if (room === 'outside') return distance(p,{x:OUT.w/2,y:OUT.h/2-65})<57 || distance(p,{x:OUT.w/2-125,y:OUT.h/2+57})<42;
   if (room === 'tent') return distance(p,{x:IN.w/2-75,y:IN.h/2})<48 ||
     distance(p,{x:IN.w/2+80,y:IN.h/2})<50;
   return false;
@@ -136,8 +176,8 @@ Camp.interact = function() {
   if (Camp.isWorldCampNear()) { enter();return true; }
   if (room==='outside') {
     if (distance(p,{x:OUT.w/2,y:OUT.h/2-65})<57) {goTent();return true;}
-    if (distance(p,{x:OUT.w/2-125,y:OUT.h/2+57})<40) {
-      p.x=OUT.w/2-125;p.y=OUT.h/2+75;p.campSitting=true;
+    if (distance(p,{x:OUT.w/2-125,y:OUT.h/2+57})<42) {
+      p.x=OUT.w/2-125;p.y=OUT.h/2+84;p.campSitting=true;
       note('Resting by the fire. A quiet moment.');
     }
     return true;
@@ -156,7 +196,8 @@ Camp.update = function(dt) {
   if(!inCamp()||modal)return;
   var p=hero();if(!p)return;
   var dim=dimensions();
-  if(room==='outside' && (p.x<53 || p.x>dim.w-53 || p.y<53 || p.y>dim.h-53)) {
+  if(room==='outside' && p.y>dim.h-57 &&
+      Math.abs(p.x-dim.w/2)<GATE_HALF-8) {
     modal='leave';
   }
   if(room==='outside' && p.campSitting && CC.input && (Math.abs(CC.input.moveX)+Math.abs(CC.input.moveY)>0.2)) p.campSitting=false;
@@ -196,7 +237,7 @@ Camp.respawn = function() {
   note('You awaken at your camp.');
   return true;
 };
-Camp.clear = function(){room='';modal='';home=null;inventory.length=0;};
+Camp.clear = function(){uninstallWorldFence();room='';modal='';home=null;inventory.length=0;};
 function rect(c,x,y,w,h,color){c.fillStyle=color;c.fillRect(x,y,w,h);}
 function path(c,points,color){c.fillStyle=color;c.beginPath();c.moveTo(points[0],points[1]);for(var i=2;i<points.length;i+=2)c.lineTo(points[i],points[i+1]);c.closePath();c.fill();}
 function log(c,x,y){rect(c,x-11,y-3,22,8,'#54321f');rect(c,x-9,y-6,18,5,'#91643d');}
