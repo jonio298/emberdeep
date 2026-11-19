@@ -1088,6 +1088,16 @@
       ctx.strokeStyle = ac; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.6 + 0.3 * Math.sin(t * 5); ctx.beginPath(); ctx.arc(sx, sy, e.r + 4, 0, PI2); ctx.stroke(); ctx.globalAlpha = al;
     }
     ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(sx, sy + e.r * 0.8, e.r * 0.9, e.r * 0.4, 0, 0, PI2); ctx.fill();
+    // Threat recognition: a restrained red floor circle only once the monster approaches.
+    var nearHero=playerOf(), alertRange=e.r+(nearHero&&nearHero.r||9)+34;
+    if (!dead && nearHero && Math.hypot(nearHero.x-e.x,nearHero.y-e.y)<=alertRange) {
+      ctx.save();
+      ctx.globalAlpha=.39+.15*Math.sin(t*7+e.anim);
+      ctx.strokeStyle=e.state==='telegraph'?'#f66c61':'#c92838';
+      ctx.lineWidth=1.5;ctx.beginPath();
+      ctx.ellipse(sx,sy+e.r*.79,e.r*1.1,e.r*.53,0,0,PI2);ctx.stroke();
+      ctx.restore();
+    }
     var tele = e.state === 'telegraph', shake = tele ? Math.sin(t * 60) * 1.2 : 0;
     ctx.translate(sx + shake, sy + (e.type === 'bat' ? bob * 2 - 4 : bob * 0.4));
     ctx.scale(e.face * sc, sc);
