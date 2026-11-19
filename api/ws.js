@@ -14,7 +14,8 @@ const sessions = new Map();
 const channels = new Map();
 const wsClients = new Map();
 const rateLimits = new WeakMap();
-const redis = process.env.REDIS_URL ? new Redis(process.env.REDIS_URL, {
+const REDIS_URL = process.env.REDIS_URL || process.env.KV_URL || process.env.UPSTASH_REDIS_URL || '';
+const redis = REDIS_URL ? new Redis(REDIS_URL, {
   maxRetriesPerRequest: 1, enableReadyCheck: true
 }) : null;
 const subscriber = redis ? redis.duplicate() : null;
@@ -374,4 +375,5 @@ wss.on('connection', (ws) => {
   });
   ws.on('error', () => {});
 });
+export { wss };
 export default server;

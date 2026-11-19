@@ -1,0 +1,9 @@
+# One-click host for Emberdeep + co-op on Render (free plan works; no Redis needed).
+# Render dashboard -> New -> Blueprint -> pick this repo.
+services:
+  - type: web
+    name: emberdeep
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start

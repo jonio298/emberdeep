@@ -2,6 +2,18 @@
 
 This update adds a multiplayer lobby, public room browser, six-character private invite codes, two-player movement, host-controlled enemy state, shared cave generation, chat, XP notifications, item pickup requests, and voluntary single-item transfers. Solo mode and its saved game remain separate.
 
+## Quick start (no Redis, no Vercel)
+
+Rooms live in memory on a single running server, which is all two players need.
+
+**On your own network:** run `npm install` once, then `npm start`. It prints a link like `http://192.168.1.129:3000`. Open that link on both phones (same Wi-Fi) and choose Multiplayer.
+
+**Over the internet:** deploy the repo as a Node web service. On Render: New -> Blueprint -> select this repo (`render.yaml` is included). Both players open the URL Render gives you. Free instances sleep when idle, so the first visit may take about 30 seconds.
+
+**Game on another host (e.g. Vercel) with the server elsewhere:** open the game once with `?server=your-app.onrender.com` on the end of the link. The address is remembered in that browser.
+
+Redis (below) is only needed when running several server instances. `REDIS_URL`, `KV_URL` and `UPSTASH_REDIS_URL` are all recognised.
+
 ## Vercel deployment
 
 1. Import the GitHub repository jonio298/emberdeep into Vercel, select framework preset Other, and use the repository root.

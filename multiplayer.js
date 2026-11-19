@@ -10,7 +10,19 @@ var chat=[],trade=null,positionClock=0,snapshotClock=0,roomClock=0,pickupClock=0
 var lastScene='',lastRemote=0,pendingPickups={};
 var colors={wizard:'#75caff',necromancer:'#b98eff',thief:'#e6809f',swordsman:'#f3bf78'};
 var el=function(id){return document.getElementById(id);};
-var URL=function(){return (location.protocol==='https:'?'wss:':'ws:')+'//'+location.host+'/api/ws';};
+// The game page and the room server are normally the same host. To point a page hosted
+// elsewhere (e.g. static Vercel) at a separate server, open it once with ?server=your-host.onrender.com
+var URL=function(){
+ var custom='';
+ try{
+  var q=(location.search.match(/[?&]server=([^&]+)/)||[])[1];
+  if(q)localStorage.setItem('emberdeep-server',decodeURIComponent(q));
+  custom=localStorage.getItem('emberdeep-server')||'';
+ }catch(_){}
+ custom=custom.replace(/^(https?|wss?):\/\//,'').replace(/\/.*$/,'');
+ if(custom){var secure=location.protocol==='https:'||!/^(localhost|127\.|192\.168\.|10\.)/.test(custom);return (secure?'wss:':'ws:')+'//'+custom+'/api/ws';}
+ return (location.protocol==='https:'?'wss:':'ws:')+'//'+location.host+'/api/ws';
+};
 var ready=function(){return ws&&ws.readyState===1;};
 function send(o){if(ready()){ws.send(JSON.stringify(o));return true;}return false;}
 function message(t){if(el('mp-status'))el('mp-status').textContent=t;}

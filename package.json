@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Emberdeep browser RPG with two-player co-op WebSocket rooms",
   "scripts": {
-    "check": "node --check api/ws.js && node --check multiplayer.js && node --check main.js && node --check classes.js && node --check enemies.js",
+    "start": "node server.js",
+    "check": "node --check api/ws.js && node --check server.js && node --check multiplayer.js && node --check main.js && node --check classes.js && node --check enemies.js",
     "test": "node --test tests/multiplayer.test.mjs",
     "validate": "npm run check && npm test"
   },
