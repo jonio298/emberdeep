@@ -274,8 +274,9 @@
     return map;
   }
 
-  P.generate = function () {
-    var seed = (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0, map = null, tries = 0;
+  P.generate = function (fixedSeed) {
+    var seed = Number.isFinite(fixedSeed) ? (fixedSeed >>> 0) :
+      (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0, map = null, tries = 0;
     while (!map && tries < 16) { map = build(seeded(seed + tries * 7919)); tries++; }
     if (!map) throw new Error('Plains generation failed');
     map.seed = seed;
