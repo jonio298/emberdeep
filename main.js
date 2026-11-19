@@ -463,10 +463,35 @@
     ctx.globalAlpha = 1;
   }
 
+  // Presentation effects must keep expiring while gameplay is blocked by perk selection,
+  // inventory/skill overlays, manual pause, or camp confirmation dialogs.
+  // No enemies, input, combat, or player movement are advanced here.
+  function updatePresentationFx(dt) {
+    for (var a = particles.length - 1; a >= 0; a--) {
+      var q = particles[a];
+      q.life -= dt; q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.92; q.vy *= 0.92;
+      if (q.blood) q.vy += 260 * dt;
+      if (q.life <= 0) {
+        if (q.blood && Math.random() < 0.5) addDecal(q.x, q.y, q.size * 0.8, q.c);
+        particles.splice(a, 1);
+      }
+    }
+    for (var b = texts.length - 1; b >= 0; b--) {
+      var t = texts[b];
+      t.life -= dt; t.age += dt; t.y += t.vy * dt; t.vy *= 0.94;
+      if (t.life <= 0) texts.splice(b, 1);
+    }
+    if (flashT > 0) flashT = Math.max(0, flashT - dt);
+    if (hurtT > 0) hurtT = Math.max(0, hurtT - dt);
+    shakeMag *= Math.pow(0.002, dt);
+    if (shakeMag < 0.1) shakeMag = 0;
+  }
+
   function update(dt) {
     var s = CC.state, p = s.player;
     time += dt;
     call('UI', 'update', dt);
+    updatePresentationFx(dt);
     if (uiOpen() !== uiWas) { uiWas = uiOpen(); resetInputHeld(); }
     if (paused || uiWas || (p && p.perkOpen) || (CC.Camp && CC.Camp.isOpen && CC.Camp.isOpen())) return;
     if (tunnel) { updateTunnel(dt); return; }
@@ -511,22 +536,6 @@
       cam.x += (tx - cam.x) * k; cam.y += (ty - cam.y) * k;
     }
 
-    for (var a = particles.length - 1; a >= 0; a--) {
-      var q = particles[a];
-      q.life -= dt; q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.92; q.vy *= 0.92;
-      if (q.blood) q.vy += 260 * dt;
-      if (q.life <= 0) {
-        if (q.blood && Math.random() < 0.5) addDecal(q.x, q.y, q.size * 0.8, q.c);
-        particles.splice(a, 1);
-      }
-    }
-    for (var b = texts.length - 1; b >= 0; b--) {
-      var t = texts[b];
-      t.life -= dt; t.age += dt; t.y += t.vy * dt; t.vy *= 0.94;
-      if (t.life <= 0) texts.splice(b, 1);
-    }
-    if (flashT > 0) flashT = Math.max(0, flashT - dt);
-    if (hurtT > 0) hurtT = Math.max(0, hurtT - dt);
     // player damage / low-health feedback (detected from hp so every damage source is covered)
     if (p && !p.stub && typeof p.hp === 'number') {
       if (lastHp !== null && p.hp < lastHp - 0.5) { hurtT = Math.max(hurtT, 0.45); addDecal(p.x, p.y + 4, 4 + Math.random() * 3, '#6e0c10'); }
@@ -535,8 +544,7 @@
         beat += dt * (1.2 + (0.35 - p.hp / p.maxHp) * 4); // heartbeat speeds up as health drops
       } else beat = 0;
     } else lastHp = null;
-    shakeMag *= Math.pow(0.002, dt);
-    if (shakeMag < 0.1) shakeMag = 0;
+
   }
 
   /* ---------- drawing helpers ---------- */
