@@ -301,6 +301,10 @@
         p.bloodMarks.push({ x: (Math.random() - 0.5) * 12, y: -13 + Math.random() * 22,
           r: 0.55 + Math.random() * 1.6 });
     }
+    // Persistent damage: every landed basic slash or weapon projectile physically tears
+    // a nonrectangular piece of flesh/fur/straw off the target.
+    if (opts.basicAttack && !opts.minion && CC.WoundArt && CC.WoundArt.impact)
+      CC.WoundArt.impact(e,opts.angle||0,type);
     if (type !== 'poison' && type !== 'fire') {
       e._hitFlash = crit ? 0.16 : 0.09;
       fxBlood(e.x, e.y, crit ? 10 : 4, p ? e.x - p.x : 0, p ? e.y - p.y : 0);
