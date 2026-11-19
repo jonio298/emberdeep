@@ -444,25 +444,32 @@
     var cls = p.classId, dir, i;
     p.atkAnim = 0.2;
     if (cls === 'swordsman') {
-      var step = (p.combo % 3) + 1, fin = step === 3;
-      p.combo = fin ? 0 : step; p.comboT = 1.25; p.comboDisplay = step; p.comboDisplayT = 0.75;
+      // Only a damaging swipe advances the chain. Multiple targets still count once.
+      var step = (p.combo || 0) + 1, fin = step === 3;
       dir = aimDir(p, 56);
-      var mult = fin ? 1.75 * (1 + 0.5 * (p.flags.heavy || 0)) : 0.9 + step * 0.13;
-      var range = fin ? 43 : 31, half = fin ? 1.4 : 0.9;
-      var hits = cone(p, dir, range, half, mult, 'slash', fin ? 12 : 3, 0);
+      var mult = fin ? 1.30 * (1 + 0.25 * (p.flags.heavy || 0)) : 0.85 + step * 0.10;
+      var range = fin ? 38 : 31, half = fin ? 1.18 : 0.9;
+      var hits = cone(p, dir, range, half, mult, 'slash', fin ? 8 : 3, 0);
       p.swingAng = dir.a; p.swingSign = step === 2 ? -1 : 1;
-      addFx({ kind: 'arc', x: p.x, y: p.y, a: dir.a, half: half, r: range, t: 0.19, max: 0.19,
-        col: fin ? '#c26aff' : step === 2 ? '#c4a0ff' : '#ffffff' });
-      if (fin) {
-        var cx = p.x + dir.x * 24, cy = p.y + dir.y * 24;
-        radial(p, cx, cy, 62, 1.45, 'slash');
-        addFx({ kind: 'ring', x: cx, y: cy, r: 62, t: 0.34, max: 0.34, col: '#ba65ff' });
-        fxBurst(cx, cy, '#d89aff', 30, 175);
-        fxText(p.x, p.y - 31, '3 HIT - RIFT CLEAVE!', '#c379ff', 15);
-        fxShake(7); fxStop(0.08);
-      } else fxText(p.x, p.y - 27, step + ' HIT COMBO', '#bb72ff', 12);
-      p.cd.attack = p.cdMax.attack * (fin ? 1.35 : 0.8);
-      if (hits) fxStop(fin ? 0.055 : 0.025);
+      addFx({ kind: 'arc', x: p.x, y: p.y, a: dir.a, half: half, r: range, t: 0.16, max: 0.16,
+        col: hits && fin ? '#a06ed2' : '#ffffff' });
+      if (hits > 0) {
+        p.combo = fin ? 0 : step;
+        p.comboT = 1.0;
+        p.comboDisplay = step; p.comboDisplayT = 0.5;
+        if (fin) {
+          var cx = p.x + dir.x * 23, cy = p.y + dir.y * 23;
+          radial(p, cx, cy, 43, 0.55, 'slash');
+          addFx({ kind: 'ring', x: cx, y: cy, r: 43, t: 0.27, max: 0.27, col: '#9467bf' });
+          fxBurst(cx, cy, '#9c6bcc', 15, 110);
+          fxText(p.x, p.y - 25, 'RIFT CLEAVE  x3', '#aa80c9', 10);
+          fxShake(3); fxStop(0.04);
+        } else fxText(p.x, p.y - 24, step + ' HIT COMBO', '#a184c1', 9);
+        fxStop(0.02);
+      } else {
+        p.combo = 0; p.comboT = 0; p.comboDisplayT = 0;
+      }
+      p.cd.attack = p.cdMax.attack * (fin && hits ? 1.25 : 0.9);
     } else if (cls === 'wizard') {
       dir = aimDir(p, 170);
       var twin = p.flags.twin ? [-0.1, 0.1] : [0];
@@ -470,28 +477,33 @@
       p.cd.attack = p.cdMax.attack; p.castFlash = 0.15;
     } else if (cls === 'thief') {
       dir = aimDir(p, 40);
-      var hit = (p.combo % 5) + 1, finish = hit === 5;
-      p.combo = finish ? 0 : hit; p.comboT = 1.1; p.comboDisplay = hit; p.comboDisplayT = 0.72;
+      var hit = (p.combo || 0) + 1, finish = hit === 5;
       p.swingAng = dir.a; p.swingSign = hit % 2 ? 1 : -1;
-      cone(p, dir, finish ? 37 : 27, finish ? 1.05 : 0.7,
-        finish ? 1.5 : 0.8 + hit * 0.1, 'slash', finish ? 7 : 2, 0);
+      var strikes = cone(p, dir, finish ? 33 : 27, finish ? 0.95 : 0.7,
+        finish ? 1.22 : 0.78 + hit * 0.07, 'slash', finish ? 5 : 2, 0);
       addFx({ kind: 'arc', x: p.x, y: p.y, a: dir.a + (hit % 2 ? -0.16 : 0.16),
-        half: finish ? 1.4 : 0.55, r: finish ? 48 : 27,
-        t: finish ? 0.27 : 0.12, max: finish ? 0.27 : 0.12,
-        col: finish ? '#ee7aff' : '#b995ff' });
-      if (finish) {
-        // Five stabbing afterimages burst in a shadow nova.
-        var nx = p.x + dir.x * 19, ny = p.y + dir.y * 19;
-        radial(p, nx, ny, 68, 1.65, 'slash');
-        addFx({ kind: 'ring', x: nx, y: ny, r: 68, t: 0.37, max: 0.37, col: '#a447ef' });
-        for (i = 0; i < 5; i++) addFx({ kind: 'arc', x: nx, y: ny,
-          a: dir.a + (i - 2) * 0.43, half: 0.22, r: 38 + i * 5,
-          t: 0.28, max: 0.28, col: i % 2 ? '#eeaaff' : '#7943e8' });
-        fxBurst(nx, ny, '#bc60fa', 36, 185);
-        fxText(p.x, p.y - 31, '5 HIT - SHADOW BLOOM!', '#d37aff', 15);
-        fxShake(8); fxStop(0.09);
-      } else fxText(p.x, p.y - 27, hit + ' HIT COMBO', '#bb72ff', 12);
-      p.cd.attack = p.cdMax.attack * (finish ? 1.5 : 0.72);
+        half: finish && strikes ? 1.15 : 0.55, r: finish && strikes ? 39 : 27,
+        t: 0.14, max: 0.14, col: finish && strikes ? '#a576ca' : '#bea4d3' });
+      if (strikes > 0) {
+        p.combo = finish ? 0 : hit;
+        p.comboT = 0.95;
+        p.comboDisplay = hit; p.comboDisplayT = 0.5;
+        if (finish) {
+          // Distinct shadow-bloom finisher. Splash hits are not combo progress.
+          var nx = p.x + dir.x * 18, ny = p.y + dir.y * 18;
+          radial(p, nx, ny, 46, 0.65, 'slash');
+          addFx({ kind: 'ring', x: nx, y: ny, r: 46, t: 0.27, max: 0.27, col: '#9a60bf' });
+          for (i = 0; i < 3; i++) addFx({ kind: 'arc', x: nx, y: ny,
+            a: dir.a + (i - 1) * 0.48, half: 0.18, r: 28 + i * 5,
+            t: 0.19, max: 0.19, col: '#9c70c6' });
+          fxBurst(nx, ny, '#a678c4', 16, 105);
+          fxText(p.x, p.y - 25, 'SHADOW BLOOM  x5', '#af84cc', 10);
+          fxShake(3); fxStop(0.04);
+        } else fxText(p.x, p.y - 24, hit + ' HIT COMBO', '#a184c1', 9);
+      } else {
+        p.combo = 0; p.comboT = 0; p.comboDisplayT = 0;
+      }
+      p.cd.attack = p.cdMax.attack * (finish && strikes ? 1.35 : 0.82);
     } else {
       dir = aimDir(p, 170);
       var fan = p.flags.volley ? [-0.2, 0, 0.2] : [0];
