@@ -179,23 +179,91 @@ function doCone(p,a,range,half,base,type,slow){
  }
  return hits;
 }
+function landing(p){
+ var spec=p&&p.chargedLanding;
+ if(!spec)return false;
+ p.chargedLanding=null;
+ var id=p.classId,ST=CC.SkillTree,
+   focus=ST&&ST.rank?ST.rank(p,'focus'):0,
+   quick=ST&&ST.rank?ST.rank(p,'quickening'):0,
+   base={swordsman:35,thief:38,wizard:42,necromancer:43}[id]||36,
+   radius=base+focus*4+quick*9,
+   mastery=1+focus*.35+quick*.30,
+   strength=(.85+spec.power*.25)*mastery,
+   damage=p.stats.dmg*strength,
+   type=id==='wizard'?'arcane':id==='necromancer'?'drain':'slash',
+   color=slotDefinition(p,'dash').color,
+   hits=targets(p.x,p.y,radius);
+ for(var j=0;j<hits.length;j++){
+   var enemy=hits[j],dealt=hurt(enemy,damage,type);
+   if(id==='swordsman'){
+     status(enemy,'stun',.30+quick*.10);
+     push(enemy,p.x,p.y,9);
+   }else if(id==='thief'){
+     status(enemy,'slow',1.1,.58);
+     push(enemy,p.x,p.y,6);
+   }else if(id==='wizard'){
+     status(enemy,'slow',.80,.63);
+   }else if(id==='necromancer'){
+     status(enemy,'slow',1.1,.54);
+     if(CC.Classes&&CC.Classes.heal)CC.Classes.heal(p,dealt*.23);
+   }
+ }
+ effect('landing',{x:p.x,y:p.y,r:radius,color:color,
+   heroClass:id,life:.62,hits:hits.length});
+ burst(p.x,p.y,color,15+Math.min(15,hits.length*3));
+ shake(Math.min(5,2+hits.length));
+ if(hits.length)fxText(p.x,p.y-24,hits.length+' SPLASH HIT'+(hits.length>1?'S':''),color);
+ return true;
+}
+function tickTeleport(p,dt){
+ var t=p&&p.teleportPhase;
+ if(!t)return;
+ t.t+=dt;
+ if(!t.shifted&&t.t>=t.duration*.51){
+   // This is a true instantaneous relocation (never a dash across tiles).
+   t.shifted=true;
+   p.x=t.x;p.y=t.y;
+   effect('teleportIn',{x:p.x,y:p.y,heroClass:p.classId,
+     color:slotDefinition(p,'dash').color,life:.43});
+   landing(p);
+ }
+ if(t.t>=t.duration){p.teleportPhase=null;p.chargedDash=false;}
+}
 function cast(p,slot,where,power){
  var d=slotDefinition(p,slot),col=d.color,sc=1+power*.52,
      dmg=p.stats.dmg,angle=Math.atan2(where.dy,where.dx),
      x=where.x,y=where.y;
  if(slot==='dash'){
-   // Existing dash movement/collision automatically handles this longer rush.
-   p.dashT=.32+.035*power;
-   var speed=(500+62*power),direction=norm(where.dx,where.dy);
-   p.dashVX=direction.x*speed;p.dashVY=direction.y*speed;
-   p.dashHit=[];p.chargedDash=p.classId==='thief';
-   p.dashAttack=p.classId==='thief';
-   p.iframes=Math.max(p.iframes||0,p.dashT+.08);
+   var direction=norm(where.dx,where.dy),
+       travel=Math.hypot(where.x-p.x,where.y-p.y),
+       speed=590+power*85,transporter=p.classId==='wizard'||p.classId==='necromancer';
+   p.chargedLanding={power:power,fromX:p.x,fromY:p.y,
+     targetX:where.x,targetY:where.y};
    p.cd.dash=Math.max(p.cd.dash||0,p.cdMax.dash*1.50);
    p.swingAng=angle;p.face=direction.x>=0?1:-1;
-   effect('dash',{x:p.x,y:p.y,dx:direction.x,dy:direction.y,
-     color:col,life:.42});
-   burst(p.x,p.y,col,16);fxText(p.x,p.y-24,d.name,col);
+   if(transporter){
+     // Wizard shatters into arcane blue runes. Necromancer dissolves into
+     // green spectral smoke. Both teleport, without traversing intermediate tiles.
+     p.dashT=0;p.dashTarget=null;p.chargedDash=false;p.dashAttack=false;
+     p.teleportPhase={x:where.x,y:where.y,startX:p.x,startY:p.y,
+       t:0,duration:.40,shifted:false};
+     p.iframes=Math.max(p.iframes||0,.47);
+     effect('teleportOut',{x:p.x,y:p.y,heroClass:p.classId,
+       color:col,life:.35});
+   }else{
+     // Swordsman/Thief physically travel to the selected point and stop.
+     p.dashSpeed=speed;
+     p.dashTarget={x:where.x,y:where.y};
+     p.dashT=travel/speed+.09;
+     p.dashVX=direction.x*speed;p.dashVY=direction.y*speed;
+     p.dashHit=[];p.chargedDash=true;
+     p.dashAttack=p.classId==='thief';
+     p.iframes=Math.max(p.iframes||0,p.dashT+.07);
+     effect('dash',{x:p.x,y:p.y,dx:direction.x,dy:direction.y,
+       distance:travel,color:col,life:p.dashT+.14,heroClass:p.classId});
+   }
+   burst(p.x,p.y,col,11);fxText(p.x,p.y-24,d.name,col);
    return;
  }
  if(p.classId==='wizard'&&slot==='spell1'){
@@ -257,7 +325,9 @@ function release(slot){
  return true;
 }
 function combatTick(dt){
- if(!hero()){cancel();effects.length=0;return;}
+ var p=hero();
+ if(!p){cancel();effects.length=0;return;}
+ tickTeleport(p,dt);
  if(active){
    active.time+=dt;
    if(active.time>=ARM&&!active.charged){active.charged=true;var p=active.hero,d=slotDefinition(p,active.slot);
@@ -447,7 +517,7 @@ function drawPreview(c,cam){
  c.restore();
  c.restore();
 }
-SC.begin=begin;SC.drag=drag;SC.release=release;SC.cancel=cancel;SC.clear=clear;SC.update=update;
+SC.begin=begin;SC.drag=drag;SC.release=release;SC.cancel=cancel;SC.clear=clear;SC.update=update;SC.land=landing;
 SC.isActive=isActive;SC.info=info;SC.draw=function(c,cam){drawEffects(c,cam);drawPreview(c,cam);};
 SC.definitions=DEFINITIONS;SC.chargeThreshold=ARM;SC.holdDuration=FULL;
 })(window);
