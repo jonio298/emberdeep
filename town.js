@@ -460,7 +460,8 @@
         else { (s.inventory = s.inventory || []).push(it); d.text = 'You got ' + it.name + ' (in your pack).'; }
       } });
     } else if (n.folk === 'healer') {
-      d.text = 'The fire keeps the cold away, and I keep the rest away. Sit and breathe.';
+      if(CC.EggQuest&&CC.EggQuest.dialog)CC.EggQuest.dialog(d);
+      else d.text='The fire keeps the cold away, and I keep the rest away.';
       d.actions.push({ label: 'Rest by the fire', run: function () { p.hp = p.maxHp; p.mana = p.maxMana; d.text = 'Warmth floods back. You feel whole.'; } });
     } else if (n.folk === 'story') d.text = 'They say the sequoias here are older than the mountain. The forest below is their shadow, and the shadow is hungry.';
     else if (n.folk === 'dag') d.text = 'Do not go out at night. Ha! It is always night. Take a torch, and a spare friend.';
@@ -507,7 +508,9 @@
     if (CC.Dungeon !== m) CC.Dungeon = m;
     m.draw(ctx, cam);
     drawCreeps(ctx, cam);
+    if(CC.EggQuest&&CC.EggQuest.drawTownNest)CC.EggQuest.drawTownNest(ctx,cam);
     if (CC.Classes && CC.Classes.drawPlayer) CC.Classes.drawPlayer(ctx, cam);
+    if(CC.EggQuest&&CC.EggQuest.drawCompanion)CC.EggQuest.drawCompanion(ctx,cam);
     if (m.drawFront) m.drawFront(ctx, cam); // trees and buildings the hero is standing behind redraw over them
     m.drawLighting(ctx, cam);
   };
