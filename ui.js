@@ -21,7 +21,7 @@
     good: '#8fd46a', bad: '#e0584a', gold: '#e8c04a' };
   var FONT = 'Georgia, "Palatino Linotype", "Book Antiqua", serif';
   var mouse = { cx: 0, cy: 0, on: false, x: -1, y: -1, bound: false }, hoverInfo = null, canvasEl = null;
-  var TABS = [{ id: 'skills', key: 'KeyK', name: 'Skills' }, { id: 'inv', key: 'KeyI', name: 'Pack' }, { id: 'map', key: 'KeyM', name: 'Map' }];
+  var TABS = [{ id: 'skills', key: 'KeyK', name: 'Skills' }, { id: 'inv', key: 'KeyI', name: 'Pack' }, { id: 'map', key: 'KeyM', name: 'Map' }, { id: 'stats', key: 'KeyC', name: 'Stats' }];
   var BAG_MAX = 40, FRACT = { crit: 1, speed: 1, cdr: 1, lifesteal: 1 };
 
   var cur = null, target = false, t = 0, clock = 0, hovering = false;
@@ -320,9 +320,17 @@
     yy += 18;
     // paper doll: hero silhouette with slots around it (amulet head, weapon / armor / ring across the body, trinket at the feet), charms in a row below
     var step = cs + 12, mid = x + w / 2 - cs / 2, POS = { amulet: [-1, 0], helm: [0, 0], trinket: [1, 0], weapon: [-1, 1], armor: [0, 1], ring: [1, 1], gloves: [-1, 2], boots: [1, 2] }, extra = 0, ci = 0, i;
-    c.save(); c.fillStyle = 'rgba(224,168,74,0.08)';
-    c.beginPath(); c.arc(x + w / 2, yy + cs * 0.55, cs * 0.4, 0, 6.2832); c.fill();
-    rr(c, x + w / 2 - cs * 0.65, yy + cs * 1.05, cs * 1.3, cs * 1.6, cs * 0.28); c.fill(); c.restore();
+    // Anatomical paper doll, with armor and equipment slots positioned at the body part.
+    c.save(); c.translate(x + w / 2, yy);
+    c.strokeStyle = 'rgba(224,168,74,0.65)'; c.lineWidth = 2;
+    c.fillStyle = '#66566b'; c.beginPath(); c.arc(0, cs * 0.50, cs * 0.31, 0, 6.2832); c.fill(); c.stroke();
+    c.fillStyle = '#3f344a'; rr(c, -cs * 0.38, cs * 0.9, cs * 0.76, cs * 1.25, cs * 0.22); c.fill(); c.stroke();
+    c.beginPath(); c.moveTo(-cs * 0.38, cs * 1.05); c.lineTo(-cs * 0.65, cs * 2.0);
+    c.moveTo(cs * 0.38, cs * 1.05); c.lineTo(cs * 0.65, cs * 2.0);
+    c.moveTo(-cs * 0.19, cs * 2.1); c.lineTo(-cs * 0.24, cs * 2.9);
+    c.moveTo(cs * 0.19, cs * 2.1); c.lineTo(cs * 0.24, cs * 2.9); c.stroke();
+    c.fillStyle = 'rgba(224,168,74,0.15)'; rr(c, -cs * 0.38, cs * 0.9, cs * 0.76, cs * 1.25, 3); c.fill();
+    c.restore();
     for (i = 0; i < keys.length; i++) {
       (function (k) {
         var isCharm = k.indexOf('charm') === 0, pp = POS[k], cx, cy, it = p.equipment && p.equipment[k];
@@ -376,6 +384,36 @@
     if (toast.t > 0) tx(c, toast.s, x + w - 10, dy + detailH - 12, 11, toast.c, 'right');
   }
 
+  // Final computed numbers (class base + level scaling + all gear and skill modifiers).
+  function drawStats(c, x, y, w, h, p) {
+    if (!p) return;
+    var stats = p.stats || {}, equip = p.equipment || {}, mods = p.mods || {};
+    tx(c, p.name + '  -  Level ' + p.level, x + 8, y + 13, 17, COL.accent);
+    tx(c, 'Final values include all equipment and learned skills', x + 8, y + 35, 11, COL.dim);
+    var data = [
+      ['Health', Math.ceil(p.hp) + ' / ' + p.maxHp], ['Mana', Math.ceil(p.mana) + ' / ' + p.maxMana],
+      ['Damage', (stats.dmg || 0).toFixed(1)], ['Armor', (stats.armor || 0).toFixed(1)],
+      ['Move speed', (stats.speed || 0).toFixed(1)], ['Critical chance', ((stats.crit || 0) * 100).toFixed(1) + '%'],
+      ['Critical damage', ((stats.critDmg || 0) * 100).toFixed(0) + '%'],
+      ['Cooldown reduction', ((stats.cdr || 0) * 100).toFixed(1) + '%'],
+      ['Life steal', ((stats.lifesteal || 0) * 100).toFixed(1) + '%'],
+      ['Luck', (stats.luck || 0).toFixed(1)], ['Health regen / s', (stats.regen || 0).toFixed(2)],
+      ['Mana regen / s', (stats.manaRegen || 0).toFixed(2)],
+      ['Experience bonus', '+' + ((mods.xpPct || 0) * 100).toFixed(0) + '%'],
+      ['Area bonus', '+' + ((mods.aoePct || 0) * 100).toFixed(0) + '%']
+    ];
+    var row = Math.max(19, Math.min(29, (h - 118) / data.length));
+    for (var i = 0; i < data.length; i++) {
+      var yy = y + 56 + i * row;
+      if (i % 2 === 0) { c.fillStyle = 'rgba(224,168,74,0.055)'; rr(c, x + 4, yy - 9, w - 8, row - 1, 3); c.fill(); }
+      tx(c, data[i][0], x + 10, yy, 12, COL.text);
+      tx(c, data[i][1], x + w - 10, yy, 12, COL.good, 'right');
+    }
+    var bonus = Object.keys(equip).filter(function (slot) { return equip[slot]; }).length;
+    tx(c, bonus + ' equipped items  |  ' + (p.perks || []).length + ' perks  |  ' +
+      (CC.SkillTree ? CC.SkillTree.spent(p) : 0) + ' skill points invested', x + w / 2, y + h - 12, 11, COL.accent, 'center');
+  }
+
   function drawMap(c, x, y, w, h) {
     var D = CC.Dungeon, s = CC.state;
     if (s.mode !== 'dungeon') { tx(c, 'No map in town', x + w / 2, y + h / 2, 14, COL.dim, 'center'); return; }
@@ -405,7 +443,7 @@
         addHit(px, py, pw, ph, function () { /* absorb taps inside the panel */ });
       }
       frame(c, px, py, pw, ph);
-      var tw = (pw - 20 - 36) / 3;
+      var tw = (pw - 20 - 36 - (TABS.length - 1) * 4) / TABS.length;
       TABS.forEach(function (tb, i) {
         var bx = px + 10 + i * (tw + 4), by = py + 10, on = tb.id === cur;
         rr(c, bx, by, tw, 28, 6); c.fillStyle = on ? 'rgba(224,168,74,0.2)' : (target && mouse.x >= bx && mouse.x < bx + tw && mouse.y >= by && mouse.y < by + 28 ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.05)'); c.fill();
@@ -422,6 +460,7 @@
       if (cur === 'skills') drawSkills(c, hit, ax, ay, aw, ah, p);
       else if (cur === 'inv') drawInv(c, hit, ax, ay, aw, ah, p);
       else if (cur === 'map') drawMap(c, ax, ay, aw, ah);
+      else if (cur === 'stats') drawStats(c, ax, ay, aw, ah, p);
       c.restore();
       if (target && e > 0.9 && cur === 'inv') drawTip(c, W, H, p);
     }
@@ -480,19 +519,17 @@
     tx(c, where, px + pw / 2, py + 61, 11, COL.text, 'center');
     tx(c, Math.floor(s.gold || 0) + ' G', px + pw - 12, py + 61, 13, COL.gold, 'right');
     c.fillStyle = 'rgba(224,168,74,0.25)'; c.fillRect(px + 12, py + 70, pw - 24, 1);
-    var sz = 24, gap = 4, by = py + 74;
-    TABS.forEach(function (tb, k) {
-      var x = px + 12 + k * (sz + gap), on = target && cur === tb.id;
-      rr(c, x, by, sz, sz, 6); c.fillStyle = on ? 'rgba(224,168,74,0.35)' : 'rgba(16,10,20,0.85)'; c.fill();
-      c.lineWidth = 2; c.strokeStyle = on ? COL.accent : COL.line; c.stroke();
-      tx(c, tb.key.slice(3), x + sz / 2, by + sz / 2 + 0.5, 12, on ? COL.accent : '#fff', 'center');
-      addHit(x, by, sz, sz, function () { toggle(tb.id); });
-      if (tb.id === 'skills' && pts > 0) { // unspent-points badge
-        var pulse = 1 + Math.sin(clock * 5) * 0.12;
-        c.beginPath(); c.arc(x + sz - 3, by + 3, 7 * pulse, 0, 6.2832); c.fillStyle = COL.good; c.fill();
-        tx(c, String(pts), x + sz - 3, by + 3.5, 9, '#0b0812', 'center');
-      }
-    });
+    var sz = 24, by = py + 74, pk = 46, on = target && cur === 'inv';
+    // Skills, Pack and Map live in the overlay's tabs; the HUD shows only the Pack button (with the unspent-skill-points badge).
+    rr(c, px + 12, by, pk, sz, 6); c.fillStyle = on ? 'rgba(224,168,74,0.35)' : 'rgba(16,10,20,0.85)'; c.fill();
+    c.lineWidth = 2; c.strokeStyle = on ? COL.accent : COL.line; c.stroke();
+    tx(c, 'PACK', px + 12 + pk / 2, by + sz / 2 + 0.5, 11, on ? COL.accent : '#fff', 'center');
+    addHit(px + 12, by, pk, sz, function () { toggle('inv'); });
+    if (pts > 0) {
+      var pulse = 1 + Math.sin(clock * 5) * 0.12;
+      c.beginPath(); c.arc(px + 12 + pk - 2, by + 3, 7 * pulse, 0, 6.2832); c.fillStyle = COL.good; c.fill();
+      tx(c, String(pts), px + 12 + pk - 2, by + 3.5, 9, '#0b0812', 'center');
+    }
     if (s.mode === 'dungeon') button(c, addHit, px + pw - 12 - 68, by, 68, sz, 'Retreat', true, function () { if (CC.returnToTown) CC.returnToTown(); }, '#5a2a22');
   }
 

@@ -605,7 +605,8 @@
   function mv(e, dx, dy) { var D = CC.Dungeon, r = D && D.moveWithCollision ? D.moveWithCollision(e, dx, dy) : (e.x += dx, e.y += dy, null); return r && (r.hitX || r.hitY); }
   function hurt(p, e, amt) { // same rules as the cave's hurtPlayer: armour, brief i-frames, floating number
     if (!p || p.hp <= 0 || p.invuln > 0) return 0;
-    var dmg = Math.max(1, Math.round(amt * 100 / (100 + (p.armor || 0))));
+    var defense=(p.armor || (p.stats&&p.stats.armor) || 0) * (p.bearRoarT>0?.7:1);
+    var dmg = Math.max(1, Math.round(amt * 100 / (100 + defense)));
     p.hp -= dmg; p.invuln = 0.45; p.hurtFlash = 0.2;
     if (CC.fx) { if (CC.fx.shake) CC.fx.shake(3); if (CC.fx.text) CC.fx.text(p.x, p.y - 14, '-' + dmg, '#ff5a5a', 12); }
     return dmg;
@@ -613,17 +614,66 @@
 
   var BRAIN = {
     bear: function (e, dt, p, d, ang, f, sp) {
-      var rage = e.hp < e.maxHp * 0.4 ? 1.3 : 1;
-      if (e.state === 'idle') {
-        mv(e, Math.cos(ang) * sp * rage, Math.sin(ang) * sp * rage);
-        if (e.cd <= 0 && d < 140) this._tele(e, 'lunge', 0.55 / rage, ang);
-      } else if (e.state === 'telegraph') { if ((e.t -= dt) <= 0) { e.state = 'act'; e.t = 0.38; e.tele = null; } }
-      else if (e.state === 'act') {
-        e.dangerous = true;
-        var hit = mv(e, Math.cos(e.ang) * 270 * f * dt, Math.sin(e.ang) * 270 * f * dt);
-        if (hit || (e.t -= dt) <= 0) { e.state = 'recover'; e.t = 0.8; }
-      } else if (e.state === 'recover') { if ((e.t -= dt) <= 0) { e.state = 'idle'; e.cd = 1.5 + R() * 0.8; } }
-      else e.state = 'idle';
+      // Distinct attacks: frightening roar, short-range tooth snap, full-bodied lunge.
+      // All attacks telegraph first; defense debuff is 30% for exactly 10 gameplay seconds.
+      e.roarCd=Math.max(0,(e.roarCd||0)-dt);
+      e.roarFx=Math.max(0,(e.roarFx||0)-dt);
+      e.biteFx=Math.max(0,(e.biteFx||0)-dt);
+      e.lungeFx=Math.max(0,(e.lungeFx||0)-dt);
+      var rage=e.hp<e.maxHp*.4?1.25:1,cx=Math.cos(ang),cy=Math.sin(ang);
+      function begin(kind,t) {
+        e.state='telegraph';e.t=t;e.ang=ang;e.atk=kind;e.biteHit=false;
+        e.tele=kind==='roar'?{kind:'circle',rad:145,max:t}:
+          {kind:'line',ang:ang,len:kind==='lunge'?132:44,max:t};
+      }
+      if(e.state==='idle'){
+        if(d>e.r+(p.r||9)+5)mv(e,cx*sp*rage,cy*sp*rage);
+        if(e.cd<=0){
+          if((!e.roaredOnce||e.roarCd<=0&&R()<.35)&&d<165){
+            e.roaredOnce=true;e.roarCd=15;
+            begin('roar',.7);
+          }else if(d<53)begin('bite',.27);
+          else if(d<192)begin('lunge',.57/rage);
+        }
+      }else if(e.state==='telegraph'){
+        if((e.t-=dt)<=0){
+          e.tele=null;e.state='act';
+          if(e.atk==='roar'){
+            e.t=.58;e.roarFx=.85;
+            if(d<148){
+              p.bearRoarT=10;
+              if(CC.fx&&CC.fx.text)CC.fx.text(p.x,p.y-24,'ARMOR -30% (10s)','#ec8290',12);
+            }
+            if(CC.fx){if(CC.fx.shake)CC.fx.shake(5);if(CC.fx.burst)CC.fx.burst(e.x,e.y,'#b7a28b',18,115);}
+          }else if(e.atk==='bite'){e.t=.26;e.biteFx=.34;}
+          else{e.t=.48;e.lungeFx=.51;if(CC.fx&&CC.fx.shake)CC.fx.shake(2);}
+        }
+      }else if(e.state==='act'){
+        if(e.atk==='roar'){
+          e.dangerous=false;
+        }else if(e.atk==='bite'){
+          // Both snapping jaws and the bite itself have their own animation window.
+          mv(e,Math.cos(e.ang)*115*f*dt,Math.sin(e.ang)*115*f*dt);
+          var bd=Math.hypot(p.x-e.x,p.y-e.y);
+          if(!e.biteHit&&bd<e.r+(p.r||9)+13){
+            e.biteHit=true;e.contact=.75;
+            if(hurt(p,e,e.dmg*1.12)){
+              if(CC.fx&&CC.fx.burst)CC.fx.burst(p.x,p.y,'#b41c30',9,70);
+            }
+          }
+          e.dangerous=false;
+        }else{
+          e.dangerous=true;
+          var wall=mv(e,Math.cos(e.ang)*295*f*dt,Math.sin(e.ang)*295*f*dt);
+          if(wall){e.t=0;if(CC.fx&&CC.fx.shake)CC.fx.shake(3);}
+        }
+        if((e.t-=dt)<=0){
+          e.state='recover';e.t=e.atk==='roar'?.88:e.atk==='bite'?.54:.73;
+          e.dangerous=false;
+        }
+      }else if(e.state==='recover'){
+        if((e.t-=dt)<=0){e.state='idle';e.cd=e.atk==='roar'?2.3:1.0+R()*.5;}
+      }else e.state='idle';
     },
     raven: function (e, dt, p, d, ang, f, sp) {
       if (e.state === 'idle') {
@@ -710,14 +760,117 @@
     var an = e.anim, tele = e.state === 'telegraph', k;
     switch (e.type) {
       case 'bear': {
-        var step = Math.sin(an * 9) * 2;
-        ctx.fillStyle = dark; ctx.fillRect(-r * 0.7, r * 0.3, 4, r * 0.7 + step); ctx.fillRect(r * 0.4, r * 0.3, 4, r * 0.7 - step); ctx.fillRect(-r * 0.2, r * 0.4, 4, r * 0.6 - step);
-        ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(-1, 1, r * 1.15, r * 0.85, 0, 0, PI2); ctx.fill();
-        ctx.fillStyle = dark; for (k = 0; k < 5; k++) { ctx.beginPath(); ctx.moveTo(-r + k * 5, -r * 0.7); ctx.lineTo(-r + k * 5 + 2, -r * 1.05); ctx.lineTo(-r + k * 5 + 4, -r * 0.7); ctx.fill(); } // spined back
-        ctx.fillStyle = col; ctx.beginPath(); ctx.arc(r * 0.9, -r * 0.25, r * 0.55, 0, PI2); ctx.fill();
-        ctx.fillStyle = '#cdbf9a'; ctx.beginPath(); ctx.moveTo(r * 0.75, -r * 0.7); ctx.quadraticCurveTo(r * 0.7, -r * 1.35, r * 1.05, -r * 1.3); ctx.lineTo(r * 0.95, -r * 0.7); ctx.fill(); // horn
-        ctx.fillStyle = '#ff2a2a'; ctx.shadowColor = '#ff2a2a'; ctx.shadowBlur = 6; ctx.fillRect(r * 1.0, -r * 0.45, 3, 2.5); ctx.fillRect(r * 0.7, -r * 0.45, 3, 2.5); ctx.shadowBlur = 0;
-        if (tele) { ctx.fillStyle = '#e8e0c8'; ctx.fillRect(r * 1.25, -r * 0.05, 2, 4); ctx.fillRect(r * 1.0, -r * 0.05, 2, 4); }
+        var lunge=e.atk==='lunge'&&(e.state==='act'||e.state==='telegraph'),
+            bite=e.atk==='bite'&&(e.state==='act'||e.biteFx>0),
+            roaring=e.atk==='roar'&&(e.state==='act'||e.roarFx>0),
+            pace=Math.sin(an*8.4),headPush=lunge?(e.state==='act'?r*.5:r*.13):0,
+            jaw=bite?(e.biteHit?0.15:.6+.35*Math.abs(Math.sin(an*26))):roaring?.85:.11,
+            front=roaring?-.65:r*.15;
+        ctx.save();
+        // Contoured massive shoulders, powerful haunches, weight-shifting limbs.
+        ctx.fillStyle='rgba(5,3,2,.48)';
+        ctx.beginPath();ctx.ellipse(-1,r*.85,r*1.65,r*.55,0,0,PI2);ctx.fill();
+        ctx.fillStyle='#120f0e';
+        ctx.beginPath();ctx.ellipse(-r*.82,r*.34,r*.48,r*.62,.12,0,PI2);ctx.fill();
+        ctx.beginPath();ctx.ellipse(-r*.65,-r*.22,r*.5,r*.51,-.18,0,PI2);ctx.fill();
+        // Hind legs, front paws and big curved claws animate independently.
+        for(var leg=0;leg<4;leg++){
+          var rear=leg<2,xx=rear?-r*.78:r*.59,
+              yy=leg%2?r*.63:-r*.42,phase=pace*(leg%2?1:-1);
+          ctx.fillStyle=rear?'#1c1511':'#241a15';
+          ctx.beginPath();ctx.ellipse(xx+phase*(rear?1.3:2.4),yy+2,r*(rear?.43:.34),r*.42,
+            rear?-.25:.2,0,PI2);ctx.fill();
+          ctx.fillStyle='#493228';
+          ctx.beginPath();ctx.ellipse(xx+r*.15+phase*2,yy+r*.37,r*.34,r*.23,0,0,PI2);ctx.fill();
+          ctx.fillStyle='#ece2c4';
+          for(var claw=0;claw<3;claw++){
+            var cx=xx+r*.25+phase*2+(claw-1)*r*.19,cy=yy+r*.46;
+            ctx.beginPath();ctx.moveTo(cx-1,cy-1);ctx.lineTo(cx+3.5,cy+2);
+            ctx.lineTo(cx-1,cy+3);ctx.fill();
+          }
+        }
+        // Dense tufted back/shoulder fur and highlights.
+        ctx.fillStyle='#271a15';
+        ctx.beginPath();ctx.ellipse(-r*.25,-r*.04,r*1.29,r*.94,-.08,0,PI2);ctx.fill();
+        ctx.fillStyle='#38261d';
+        ctx.beginPath();ctx.ellipse(-r*.68,-r*.30,r*.86,r*.81,-.24,0,PI2);ctx.fill();
+        ctx.fillStyle='#503426';
+        ctx.beginPath();ctx.ellipse(-r*.79,-r*.45,r*.64,r*.45,-.27,0,PI2);ctx.fill();
+        ctx.strokeStyle='#67503c';ctx.lineWidth=1;
+        for(k=0;k<16;k++){
+          var fx=-r*1.19+(k%8)*r*.23,fy=-r*.58+Math.floor(k/8)*r*.47;
+          ctx.beginPath();ctx.moveTo(fx,fy);ctx.lineTo(fx-2.5,fy-3-(k%3));ctx.stroke();
+        }
+        // Muscular upper neck with shaggy mane, recognizable rounded bear ears.
+        ctx.fillStyle='#2e211b';ctx.beginPath();ctx.ellipse(r*.52,-r*.28,r*.65,r*.72,-.12,0,PI2);ctx.fill();
+        ctx.fillStyle='#3c2920';
+        ctx.beginPath();ctx.arc(r*.95+headPush,-r*.56,r*.19,0,PI2);
+        ctx.arc(r*.35+headPush,-r*.55,r*.19,0,PI2);ctx.fill();
+        ctx.fillStyle='#a18a75';
+        ctx.beginPath();ctx.arc(r*.95+headPush,-r*.56,r*.10,0,PI2);
+        ctx.arc(r*.35+headPush,-r*.55,r*.10,0,PI2);ctx.fill();
+        // Head pitches forward as it lunges and jaw separates visibly during bite.
+        ctx.fillStyle='#3b2b24';ctx.beginPath();
+        ctx.ellipse(r*.75+headPush,-r*.17,r*.68,r*.57,roaring?-.13:.08,0,PI2);ctx.fill();
+        ctx.fillStyle='#806251';ctx.beginPath();
+        ctx.ellipse(r*1.16+headPush,r*.08,r*.49,r*.31,0,0,PI2);ctx.fill();
+        ctx.fillStyle='#0c0809';ctx.beginPath();
+        ctx.ellipse(r*1.43+headPush,-r*.02,r*.16,r*.14,0,0,PI2);ctx.fill();
+        // Biting teeth: opening dark maw with two rows that actually snap shut.
+        var mx=r*1.14+headPush,my=r*.23,open=jaw*r*.74;
+        ctx.fillStyle='#170609';
+        ctx.beginPath();ctx.moveTo(mx-r*.35,my-1);ctx.lineTo(mx+r*.34,my-2);
+        ctx.lineTo(mx+r*.25,my+open+2);ctx.lineTo(mx-r*.22,my+open);ctx.closePath();ctx.fill();
+        ctx.fillStyle='#951d2a';ctx.beginPath();ctx.ellipse(mx,my+open*.72,r*.22,Math.max(1,open*.20),0,0,PI2);ctx.fill();
+        ctx.fillStyle='#f4e6c9';
+        for(k=0;k<4;k++){
+          var tx=mx-r*.29+k*r*.20;
+          ctx.beginPath();ctx.moveTo(tx,my-2);ctx.lineTo(tx+r*.08,my-2);
+          ctx.lineTo(tx+r*.04,my+Math.max(2,open*.42));ctx.fill();
+          if(open>3){ctx.beginPath();ctx.moveTo(tx,my+open);ctx.lineTo(tx+r*.09,my+open);
+            ctx.lineTo(tx+r*.04,my+open*.58);ctx.fill();}
+        }
+        ctx.strokeStyle='#a97869';ctx.lineWidth=2.4;
+        ctx.beginPath();ctx.moveTo(mx-r*.3,my+open);
+        ctx.quadraticCurveTo(mx,my+open+r*.18,mx+r*.38,my+open*.85);ctx.stroke();
+        // Angry red eye, brow ridge, scar, directional growl flecks.
+        ctx.fillStyle='#120b0b';ctx.fillRect(r*.62+headPush,-r*.35,8,4);
+        // Wicked red eyes with a breathing ember glow, brighter when roaring or lunging.
+        ctx.save();
+        ctx.shadowColor='#ff171f';ctx.shadowBlur=9+3*Math.sin(an*4)+(roaring?8:0);
+        ctx.fillStyle='#ff1725';
+        ctx.beginPath();ctx.ellipse(r*.80+headPush,-r*.30,2.8,2.2,0,0,PI2);ctx.fill();
+        ctx.shadowBlur=0;ctx.fillStyle='#fff2c4';
+        ctx.fillRect(r*.81+headPush,-r*.31,1.0,1.0);ctx.restore();
+        ctx.strokeStyle='#b39374';ctx.lineWidth=1.5;ctx.beginPath();
+        ctx.moveTo(r*.48+headPush,-r*.5);ctx.lineTo(r*.82+headPush,-r*.45);ctx.stroke();
+        ctx.strokeStyle='#7b3130';ctx.lineWidth=1.7;
+        ctx.beginPath();ctx.moveTo(r*.15,-r*.25);ctx.lineTo(r*.32,-r*.08);ctx.stroke();
+        if(roaring){
+          // Layered outward sound rings while the armor-breaking roar lands.
+          var energy=e.roarFx>0?1-e.roarFx/.85:0;
+          ctx.strokeStyle='rgba(235,194,121,'+(.6*(1-energy)).toFixed(2)+')';
+          for(k=0;k<3;k++){ctx.lineWidth=1.6;
+            ctx.beginPath();ctx.arc(0,0,r*(1.1+energy*2.3)+k*6,0,PI2);ctx.stroke();}
+          for(k=0;k<5;k++){
+            var alpha=.23+.35*Math.abs(Math.sin(an*17+k));
+            ctx.globalAlpha=alpha;ctx.fillStyle='#ead2b0';
+            ctx.fillRect(r*1.5+headPush+k*3,front+k*2,3,2);
+          }
+          ctx.globalAlpha=1;
+        }
+        if(lunge&&e.state==='act'){
+          ctx.strokeStyle='rgba(221,180,137,.65)';ctx.lineWidth=2;
+          for(k=0;k<4;k++){
+            ctx.beginPath();ctx.moveTo(-r*1.65-k*6,-r*.5+k*r*.3);
+            ctx.lineTo(-r*2.1-k*9,-r*.5+k*r*.3);ctx.stroke();
+          }
+        }
+        if(bite&&e.state==='act'){
+          ctx.strokeStyle='rgba(255,233,204,.75)';ctx.lineWidth=2;
+          ctx.beginPath();ctx.arc(mx,my+open*.45,r*.8,-.8,.8);ctx.stroke();
+        }
+        ctx.restore();
         return true;
       }
       case 'raven': {

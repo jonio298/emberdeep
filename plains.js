@@ -383,10 +383,10 @@
       if (e.state === 'idle') {
         var jerk = 0.3 + 1.5 * Math.max(0, Math.sin(e.anim * 5));
         mv(e, Math.cos(ang) * sp * jerk, Math.sin(ang) * sp * jerk); // jerky, puppet-like
-        if (!e.summoned && e.hp < e.maxHp * 0.5) { // the crows it fed on come when it is half dead
-          e.summoned = true;
-          for (var k = 0; k < 2; k++) { var c = this.spawn('crow', e.x + (k ? 14 : -14), e.y - 8, 1, { awake: true }); if (c) { c.group = e.group || 0; c.cd = 0.3; } }
-          if (CC.fx && CC.fx.text) CC.fx.text(e.x, e.y - 30, 'CAW!', '#cfc8d8', 12);
+        if (!e.summoned && e.hp < e.maxHp * 0.5) {
+          e.summoned=true;
+          e.crowHatch={age:0,side:-1,phase:'peek',birds:[]};
+          if(CC.fx&&CC.fx.text)CC.fx.text(e.x,e.y-30,'CROWS IN THE STRAW...','#cfc8d8',10);
         }
         if (e.cd <= 0 && d < 78) this._tele(e, 'strike', 0.5, ang);
       } else if (e.state === 'telegraph') { if ((e.t -= dt) <= 0) { e.state = 'act'; e.t = 0.3; e.tele = null; } }
@@ -487,6 +487,8 @@
       ctx.fillStyle = '#ff5a3a'; ctx.fillRect(r * 0.75, -3, 2, 2);
     },
     scarecrow: function (ctx, e, r, col, dark, t) {
+      ctx.save();
+      if(e.crowLift)ctx.translate(0,-(e.carryHeight||18));
       var dorm = e.dormant, an = e.anim, step = Math.sin(an * 5) * 2, tele = e.state === 'telegraph' || e.state === 'act', k, lean = dorm ? 0 : Math.sin(an * 5) * 1.5;
       if (dorm) { ctx.fillStyle = '#3a2a1a'; ctx.fillRect(-1.8, -r * 3.1, 3.6, r * 3.9); ctx.fillRect(-r * 1.7, -r * 1.75, r * 3.4, 3); } // its post and crossbar
       else { ctx.fillStyle = dark; ctx.fillRect(-4, r * 0.1, 3, r * 0.8 + step); ctx.fillRect(2, r * 0.1, 3, r * 0.8 - step); } // ragged legs
@@ -510,6 +512,44 @@
       ctx.strokeStyle = '#2a1a0a'; ctx.lineWidth = 1.3; ctx.beginPath(); // stitched mouth, torn open on a strike
       if (tele) { ctx.fillStyle = '#1a0608'; ctx.fillRect(lean - r * 0.4, -r * 1.45, r * 0.8, r * 0.4); ctx.fillStyle = '#e8e4d0'; for (k = 0; k < 4; k++) ctx.fillRect(lean - r * 0.35 + k * r * 0.2, -r * 1.45, 2, 3); }
       else { ctx.moveTo(lean - r * 0.4, -r * 1.3); ctx.lineTo(lean + r * 0.4, -r * 1.3); for (k = 0; k < 5; k++) { ctx.moveTo(lean - r * 0.35 + k * r * 0.18, -r * 1.4); ctx.lineTo(lean - r * 0.3 + k * r * 0.18, -r * 1.2); } ctx.stroke(); }
+      // The sleeve is an occupied nest: two blinking eyes, straw rustling,
+      // and tiny beaks poking out before the actual crow sprites launch.
+      if(e.crowHatch&&e.crowHatch.phase==='peek'){
+        var age=e.crowHatch.age,side=e.crowHatch.side||-1,base=side*r*1.08,
+            eyeOpen=(Math.sin(age*16)>-.15&&Math.sin(age*10+1)>.2)?1:0.18,
+            peek=Math.min(1,Math.max(0,(age-.40)/.65));
+        ctx.fillStyle='#1b1315';ctx.beginPath();
+        ctx.ellipse(base,-r*.91,r*.52,r*.26,.12,0,PI2);ctx.fill();
+        ctx.save();ctx.shadowColor='#ee392f';ctx.shadowBlur=eyeOpen*6;
+        ctx.fillStyle='#f44838';
+        for(var bi=0;bi<2;bi++)ctx.fillRect(base+(bi?3:-5),-r*.95,2.0,2*eyeOpen);
+        ctx.restore();
+        for(var pj=0;pj<2;pj++){
+          var bx=base+(pj?5:-4);
+          // Pointed yellow beaks poke out one after the other.
+          var hop=Math.max(0,Math.min(1,(age-.58-pj*.19)/.25))*peek;
+          ctx.fillStyle='#d7ac50';ctx.beginPath();
+          ctx.moveTo(bx,-r*.83);ctx.lineTo(bx+side*(3+hop*7),-r*.79);
+          ctx.lineTo(bx+side*hop*2,-r*.72);ctx.fill();
+        }
+        ctx.strokeStyle='#d5b769';ctx.lineWidth=1.1;ctx.beginPath();
+        for(pj=0;pj<5;pj++){
+          var sw=base+Math.sin(age*23+pj*3)*3;
+          ctx.moveTo(sw,-r*.86+pj*1.5);
+          ctx.lineTo(sw+side*(4+pj),-r*.95+pj*2);
+        }
+        ctx.stroke();
+      }
+      // Carry makes the stuffed body swing beneath two struggling birds.
+      if(e.crowLift){
+        ctx.strokeStyle='#dbbd71';ctx.lineWidth=1.5;ctx.beginPath();
+        ctx.moveTo(-r*1.05,-r*1.12);ctx.lineTo(-r*.78,-r*.72);
+        ctx.moveTo(r*1.05,-r*1.12);ctx.lineTo(r*.78,-r*.72);
+        ctx.stroke();
+        ctx.fillStyle='#dfc46b';
+        for(var ci=0;ci<5;ci++)ctx.fillRect(-r*1.0+ci*r*.50,r*.18+Math.sin(an*18+ci)*2,2,2);
+      }
+      ctx.restore();
     },
     mawworm: function (ctx, e, r, col, dark, t) {
       var an = e.anim, under = e.state === 'idle' || e.state === 'telegraph' || e.state === 'recover', k;

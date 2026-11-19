@@ -20,7 +20,7 @@
 
   var CC = window.CC = window.CC || {};
   CC.TILE = CC.TILE || 32;
-  CC.input = { moveX: 0, moveY: 0, aimX: 1, aimY: 0, attack: false, spell1: false, spell2: false, dash: false };
+  CC.input = { moveX: 0, moveY: 0, aimX: 1, aimY: 0, attack: false, spell1: false, spell2: false, dash: false, potion: false };
   CC.state = { mode: 'title', player: null, floor: 1, gold: 0, kills: 0, bestFloor: 1, map: null, classId: null, runGold: 0 };
 
   CC.CaveDungeon = CC.CaveDungeon || CC.Dungeon; // the realms (town, forest) swap CC.Dungeon; this keeps the cave generator
@@ -32,7 +32,6 @@
   var STEP = 1 / 60;
   var time = 0;
   var hitStopLeft = 0, shakeMag = 0;
-  var timeScale = 1;                 // set by CC.Cine: 0 freezes the game, 0.2 is slow motion
   var particles = [], texts = [], decals = [];
   var flashT = 0, flashMax = 0.15, flashCol = '#ffffff', hurtT = 0, lastHp = null, beat = 0, vigKey = '', vigGrad = null;
   var ui = [];                       // clickable canvas buttons rebuilt each frame
@@ -164,11 +163,13 @@
       var p = CC.state.player;
       if (p) { p.hp = p.maxHp; p.mana = p.maxMana; if (p.stub) { p.x = 0; p.y = 0; } }
       call('Town', 'enter');
+      call('Waypoints', 'discover', 'town', CC.Town && CC.Town.map);
       snapCamera();
     }
   };
 
   CC.startRun = function (floor, area) {
+    call('CriticalScene', 'reset');
     var s = CC.state;
     s.area = area === 'plains' && has('Plains', 'generate') ? 'plains' : area === 'forest' && has('Forest', 'generate') ? 'forest' : 'cave'; // 'forest' = the Giant Forest, then the Rolling Plains, in front of floor 1
     s.floor = Math.max(1, floor | 0 || 1);
@@ -179,8 +180,31 @@
     loadFloor();
   };
 
+  // Travel between discovered regions without resetting hero XP, skills, equipment or gold.
+  CC.travelToArea = function (dest) {
+    if (dest !== 'plains' && dest !== 'forest' && dest !== 'cave') return false;
+    if (dest === 'plains' && !(CC.Waypoints && CC.Waypoints.status().plains)) return false;
+    call('CriticalScene', 'reset');
+    CC.state.area=dest;CC.state.mode='dungeon';paused=false;
+    resetInputHeld();loadFloor();
+    return true;
+  };
   CC.nextFloor = function () {
-    if (CC.state.area === 'forest' && has('Plains', 'generate')) { // the forest's far edge opens onto the Rolling Plains
+    call('CriticalScene', 'reset');
+    if (CC.state.area === 'forest' && has('TreeTunnel', 'generate')) {
+      CC.state.area = 'tree-tunnel';
+      CC.fx.text(cam.x + cam.w / 2, cam.y + cam.h / 2, 'INSIDE THE ANCIENT TREE', '#b9df8d', 16);
+      loadFloor();
+      return;
+    }
+    if (CC.state.area === 'tree-tunnel' && has('Plains', 'generate')) {
+      if (!call('TreeTunnel', 'canExit')) return;
+      CC.state.area = 'plains';
+      CC.fx.text(cam.x + cam.w / 2, cam.y + cam.h / 2, 'THE OPEN PLAINS', '#ffd36b', 16);
+      loadFloor();
+      return;
+    }
+    if (CC.state.area === 'forest' && has('Plains', 'generate')) {
       CC.state.area = 'plains';
       CC.fx.text(cam.x + cam.w / 2, cam.y + cam.h / 2, 'THE OPEN PLAINS', '#ffd36b', 16);
       loadFloor();
@@ -206,17 +230,23 @@
     particles.length = 0; texts.length = 0; decals.length = 0;
     if (s.area === 'forest') { map = call('Forest', 'generate'); CC.Dungeon = map; } // CC.Dungeon is whichever map the player is in
     else if (s.area === 'plains') { map = call('Plains', 'generate'); CC.Dungeon = map; }
+    else if (s.area === 'tree-tunnel') { map = call('TreeTunnel', 'generate'); CC.Dungeon = map; }
     else { CC.Dungeon = CC.CaveDungeon; map = call('Dungeon', 'generate', s.floor); }
     s.map = map || null;
+    if(s.area==='plains')call('Waypoints','discover','plains',map);
+    call('Breakables','populate',s.area,map);
     var sp = map && (map.spawn || map.start);
     if (p && sp) { p.x = sp.x; p.y = sp.y; }
     else if (p && p.stub) { p.x = 0; p.y = 0; }
     call('Enemies', 'spawnForFloor', s.floor, (map && (map.enemySpawns || map.spawns)) || []);
+    if (s.area === 'tree-tunnel') call('TreeTunnel', 'populate', s.floor);
     snapCamera();
   }
 
   function startGame(classId) {
     var s = CC.state;
+    call('Camp', 'clear'); // a fresh hero must not inherit a previous run's fence or checkpoint
+    call('Waypoints','reset');
     s.classId = classId; s.kills = 0; s.runGold = 0; s.floor = 1;
     var p = call('Classes', 'create', classId);
     if (!p || typeof p !== 'object') p = stubPlayer(classId);
@@ -233,15 +263,28 @@
   /* ---------- input ---------- */
   var keys = {};
   var joy = { id: null, bx: 0, by: 0, x: 0, y: 0 };
-  var held = { attack: 0, spell1: 0, spell2: 0, dash: 0, interact: 0 };
+  var held = { attack: 0, spell1: 0, spell2: 0, dash: 0, interact: 0, potion: 0 };
   var pending = {};
   var actionKeys = { Space: 'attack', KeyQ: 'spell1', KeyE: 'spell2',
-    ShiftLeft: 'dash', ShiftRight: 'dash', KeyF: 'interact', Enter: 'interact' };
+    ShiftLeft: 'dash', ShiftRight: 'dash', KeyF: 'interact', Enter: 'interact', KeyH: 'potion' };
   var paused = false, uiWas = false;
   function playing() { return CC.state.mode === 'town' || CC.state.mode === 'dungeon'; }
   function pressAction(name) {
     if (playing() && !paused && !uiOpen() && !(CC.state.player && CC.state.player.perkOpen)) pending[name] = true;
   }
+  CC.usePotion = function () {
+    var s=CC.state,p=s&&s.player;
+    if (!p || p.hp<=0 || p.hp>=p.maxHp || !s.potions || !playing() ||
+        paused || uiOpen() || p.perkOpen || (CC.Camp && CC.Camp.isOpen && CC.Camp.isOpen())) return false;
+    s.potions--;
+    var amount=Math.max(20,Math.ceil(p.maxHp*.40)),before=p.hp;
+    p.hp=Math.min(p.maxHp,p.hp+amount);
+    if(CC.fx) {
+      CC.fx.text(p.x,p.y-25,'+'+Math.ceil(p.hp-before)+' HP','#ff8493',12);
+      CC.fx.burst(p.x,p.y,'#e74359',15,90);
+    }
+    return true;
+  };
   function togglePause() {
     if (!playing()) return;
     paused = !paused;
@@ -250,6 +293,8 @@
   function interact() {
     var s = CC.state, p = s.player;
     if (!p) return;
+    if (CC.Waypoints && CC.Waypoints.interact && CC.Waypoints.interact()) return;
+    if (CC.Camp && CC.Camp.interact && CC.Camp.interact()) return;
     if (s.mode === 'town') {
       if (has('Town', 'interact')) call('Town', 'interact');
       else CC.startRun(1);
@@ -269,6 +314,31 @@
     }
     call('Loot', 'pickupNear', p);
   }
+  // The mobile primary button switches to F/Enter only when an actionable target is close.
+  // Keep the original keyboard actions unchanged, including Space for attack.
+  function nearbyAction() {
+    var s = CC.state, p = s.player, map = s.map;
+    if (!p || !playing()) return false;
+    if (CC.Waypoints && CC.Waypoints.isNear && CC.Waypoints.isNear()) return true;
+    if (CC.Camp && CC.Camp.nearAction && CC.Camp.nearAction()) return true;
+    function near(o, radius) { return o && Math.hypot(p.x - o.x, p.y - o.y) <= radius; }
+    var npcs, j;
+    if (s.mode === 'town') {
+      if (CC.Town && CC.Town.dialog) return true;
+      npcs = CC.Town && CC.Town.map && CC.Town.map.npcs || [];
+      for (j = 0; j < npcs.length; j++) if (near(npcs[j], 48)) return true;
+      return false;
+    }
+    if ((s.area === 'forest' || s.area === 'plains') && map) {
+      npcs = map.npcs || [];
+      for (j = 0; j < npcs.length; j++) if (near(npcs[j], 48)) return true;
+    }
+    // Forest/plains transitions happen by walking into them, not by using F.
+    if (s.area !== 'forest' && s.area !== 'plains' && map && near(map.stairs, 26)) return true;
+    var chests = map && map.chests || [];
+    for (j = 0; j < chests.length; j++) if (!chests[j].opened && near(chests[j], 32)) return true;
+    return false;
+  }
   var ptrs = {};
   var btns = {};                      // layout, recomputed on resize
 
@@ -278,15 +348,16 @@
     btns.spell1 = { x: W - m - 118, y: H - m - 40, r: 29, label: 'S1' };
     btns.spell2 = { x: W - m - 100, y: H - m - 120, r: 29, label: 'S2' };
     btns.dash = { x: W - m - 28, y: H - m - 154, r: 24, label: 'DASH' };
+    btns.potion = { x: W - m - 174, y: H - m - 100, r: 18, label: 'POTION' };
   }
 
   function resetInputHeld() {
-    held.attack = held.spell1 = held.spell2 = held.dash = held.interact = 0;
+    held.attack = held.spell1 = held.spell2 = held.dash = held.interact = held.potion = 0;
     keys = {}; pending = {};
     joy.id = null; joy.x = joy.y = 0;
     ptrs = {};
     call('Charge', 'cancel');
-    var i = CC.input; i.moveX = i.moveY = 0; i.attack = i.spell1 = i.spell2 = i.dash = i.interact = false;
+    var i = CC.input; i.moveX = i.moveY = 0; i.attack = i.spell1 = i.spell2 = i.dash = i.interact = i.potion = false;
   }
 
   function pollInput() {
@@ -303,7 +374,7 @@
       var n = Math.sqrt(mx * mx + my * my);
       i.aimX = mx / n; i.aimY = my / n;
     }
-    ['attack', 'spell1', 'spell2', 'dash', 'interact'].forEach(function (name) {
+    ['attack', 'spell1', 'spell2', 'dash', 'interact', 'potion'].forEach(function (name) {
       i[name] = !!pending[name];
     });
     pending = {};
@@ -330,13 +401,15 @@
     var u = hitUi(p.x, p.y);
     if (u) { ptrs[e.pointerId] = { kind: 'ui' }; u.cb(); return; }
     var mode = CC.state.mode;
-    if (paused || uiOpen() || (CC.state.player && CC.state.player.perkOpen) || (mode !== 'dungeon' && mode !== 'town')) return;
+    if (paused || uiOpen() || (CC.Waypoints && CC.Waypoints.isOpen && CC.Waypoints.isOpen()) ||
+        (CC.state.player && CC.state.player.perkOpen) || (mode !== 'dungeon' && mode !== 'town')) return;
     for (var name in btns) {
       var b = btns[name], dx = p.x - b.x, dy = p.y - b.y;
       if (dx * dx + dy * dy <= (b.r + 10) * (b.r + 10)) {
-        ptrs[e.pointerId] = { kind: 'btn', name: name };
-        if (!held[name]) pressAction(name);
-        held[name]++;
+        var action = name === 'attack' && nearbyAction() ? 'interact' : name;
+        ptrs[e.pointerId] = { kind: 'btn', name: action };
+        if (!held[action]) pressAction(action);
+        held[action]++;
         return;
       }
     }
@@ -378,6 +451,9 @@
     if (actionKeys[e.code] || e.code === 'Escape' || e.code === 'KeyP' || e.code.indexOf('Arrow') === 0) e.preventDefault();
     if (e.repeat || keys[e.code]) return;
     keys[e.code] = true;
+    if (CC.Waypoints && CC.Waypoints.isOpen && CC.Waypoints.isOpen() &&
+        CC.Waypoints.key(e.code)) { e.preventDefault(); return; }
+    if (CC.Camp && CC.Camp.isOpen && CC.Camp.isOpen() && CC.Camp.key(e.code)) return;
     // K / I / M open the skill tree, pack and map; Escape closes whichever is open before it would pause
     if (playing() && call('UI', 'key', e.code)) { resetInputHeld(); return; }
     if (e.code === 'Escape' || e.code === 'KeyP') { togglePause(); return; }
@@ -437,43 +513,10 @@
     ctx.globalAlpha = 1;
   }
 
-  function update(dt) {
-    var s = CC.state, p = s.player;
-    time += dt;
-    call('UI', 'update', dt);
-    if (uiOpen() !== uiWas) { uiWas = uiOpen(); resetInputHeld(); }
-    if (paused || uiWas) return;
-    if (tunnel) { updateTunnel(dt); return; }
-    pollInput();
-    if (CC.input.interact && playing()) { interact(); return; }
-
-    if (s.mode === 'town' || s.mode === 'dungeon') {
-      updateStub(dt);
-      if (s.mode === 'town') {
-        call('Town', 'update', dt);
-        if (!has('Town', 'update') && p && !p.stub) call('Classes', 'update', dt, { noCombat: true });
-      } else {
-        call('Classes', 'update', dt);
-        call('Enemies', 'update', dt);
-        call('Charge', 'update', dt, !!(keys.Space || held.attack > 0)); // hold attack to charge; a tap is the normal attack
-        call('Loot', 'update', dt);
-        // The hollow tree and the barrow are walked into; the cave stairs and chests still use F / Enter or USE.
-        var ex = s.map && s.map.stairs;
-        if (ex && p && !p.stub && (s.area === 'forest' || s.area === 'plains') && Math.hypot(p.x - ex.x, p.y - ex.y) <= 28 && !playerDead()) {
-          tunnel = { t: 0, swapped: false, label: s.area === 'forest' ? 'INSIDE THE HOLLOW TREE...' : 'DOWN INTO THE BARROW...' };
-          resetInputHeld();
-        }
-        if (playerDead()) { s.mode = 'dead'; resetInputHeld(); CC.fx.shake(10); }
-      }
-      if (s.mode !== 'town' && s.mode !== 'dungeon') return;
-    }
-
-    // camera follows with light smoothing
-    if (p && (s.mode === 'town' || s.mode === 'dungeon')) {
-      var tx = p.x - cam.w / 2, ty = p.y - cam.h / 2, k = 1 - Math.pow(0.0005, dt);
-      cam.x += (tx - cam.x) * k; cam.y += (ty - cam.y) * k;
-    }
-
+  // Presentation effects must keep expiring while gameplay is blocked by perk selection,
+  // inventory/skill overlays, manual pause, or camp confirmation dialogs.
+  // No enemies, input, combat, or player movement are advanced here.
+  function updatePresentationFx(dt) {
     for (var a = particles.length - 1; a >= 0; a--) {
       var q = particles[a];
       q.life -= dt; q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.92; q.vy *= 0.92;
@@ -490,6 +533,68 @@
     }
     if (flashT > 0) flashT = Math.max(0, flashT - dt);
     if (hurtT > 0) hurtT = Math.max(0, hurtT - dt);
+    shakeMag *= Math.pow(0.002, dt);
+    if (shakeMag < 0.1) shakeMag = 0;
+  }
+
+  function update(dt) {
+    var s = CC.state, p = s.player;
+    time += dt;
+    call('UI', 'update', dt);
+    updatePresentationFx(dt);
+    call('Waypoints','update',dt);
+    if (uiOpen() !== uiWas) { uiWas = uiOpen(); resetInputHeld(); }
+    if (paused || uiWas || (p && p.perkOpen) ||
+        (CC.Waypoints && CC.Waypoints.isOpen && CC.Waypoints.isOpen()) ||
+        (CC.Camp && CC.Camp.isOpen && CC.Camp.isOpen())) return;
+    if (tunnel) { updateTunnel(dt); return; }
+    pollInput();
+    if (CC.input.interact && playing()) { interact(); return; }
+    if (CC.input.potion) CC.usePotion();
+    if (CC.Camp && CC.Camp.isInside && CC.Camp.isInside()) {
+      call('Classes', 'update', dt, { noCombat: true });
+      if (p && p.stub) movePlayer(p, CC.input.moveX * p.speed * dt, CC.input.moveY * p.speed * dt);
+      call('Camp', 'update', dt);
+      if (p) {
+        var txc = p.x - cam.w / 2, tyc = p.y - cam.h / 2;
+        cam.x += (txc - cam.x) * Math.min(1, dt * 12);
+        cam.y += (tyc - cam.y) * Math.min(1, dt * 12);
+      }
+      return;
+    }
+
+    if (s.mode === 'town' || s.mode === 'dungeon') {
+      updateStub(dt);
+      if (s.mode === 'town') {
+        call('Town', 'update', dt);
+        if (!has('Town', 'update') && p && !p.stub) call('Classes', 'update', dt, { noCombat: true });
+      } else {
+        call('Classes', 'update', dt);
+        call('Enemies', 'update', dt);
+        call('Charge', 'update', dt, !!(keys.Space || held.attack > 0)); // hold attack to charge; a tap is the normal attack
+        call('Loot', 'update', dt);
+        call('Breakables','update',dt);
+        if (s.area === 'tree-tunnel') call('TreeTunnel', 'update', dt);
+        // Walk through the living tunnel and defeat its miniboss before entering the plains.
+        var ex = s.map && s.map.stairs;
+        if (ex && p && !p.stub && (s.area === 'forest' || s.area === 'plains' ||
+            (s.area === 'tree-tunnel' && call('TreeTunnel', 'canExit'))) &&
+            Math.hypot(p.x - ex.x, p.y - ex.y) <= 28 && !playerDead()) {
+          tunnel = { t: 0, swapped: false, label: s.area === 'forest' ? 'INTO THE ANCIENT TREE...' :
+            s.area === 'tree-tunnel' ? 'EMERGING INTO THE PLAINS...' : 'DOWN INTO THE BARROW...' };
+          resetInputHeld();
+        }
+        if (playerDead()) { s.mode = 'dead'; resetInputHeld(); CC.fx.shake(10); }
+      }
+      if (s.mode !== 'town' && s.mode !== 'dungeon') return;
+    }
+
+    // camera follows with light smoothing
+    if (p && (s.mode === 'town' || s.mode === 'dungeon')) {
+      var tx = p.x - cam.w / 2, ty = p.y - cam.h / 2, k = 1 - Math.pow(0.0005, dt);
+      cam.x += (tx - cam.x) * k; cam.y += (ty - cam.y) * k;
+    }
+
     // player damage / low-health feedback (detected from hp so every damage source is covered)
     if (p && !p.stub && typeof p.hp === 'number') {
       if (lastHp !== null && p.hp < lastHp - 0.5) { hurtT = Math.max(hurtT, 0.45); addDecal(p.x, p.y + 4, 4 + Math.random() * 3, '#6e0c10'); }
@@ -498,8 +603,7 @@
         beat += dt * (1.2 + (0.35 - p.hp / p.maxHp) * 4); // heartbeat speeds up as health drops
       } else beat = 0;
     } else lastHp = null;
-    shakeMag *= Math.pow(0.002, dt);
-    if (shakeMag < 0.1) shakeMag = 0;
+
   }
 
   /* ---------- drawing helpers ---------- */
@@ -579,20 +683,35 @@
   }
 
   function drawWorld() {
-    var s = CC.state;
+    var s = CC.state, v = call('CriticalScene', 'view', cam.w, cam.h);
     var ox = shakeMag ? (Math.random() - 0.5) * shakeMag * 2 : 0;
     var oy = shakeMag ? (Math.random() - 0.5) * shakeMag * 2 : 0;
-    var rx = cam.x, ry = cam.y;
-    cam.x = Math.round(cam.x + ox); cam.y = Math.round(cam.y + oy); // one offset for every world layer
+    var rx = cam.x, ry = cam.y, rw = cam.w, rh = cam.h;
+    var cinematicZoom = v ? v.scale : 1, activeZoom = zoom * cinematicZoom;
+    if (v) {
+      cam.w = W / activeZoom; cam.h = H / activeZoom;
+      cam.x = rx * (1 - v.blend) + (v.x - cam.w / 2) * v.blend + ox;
+      cam.y = ry * (1 - v.blend) + (v.y - cam.h / 2) * v.blend + oy;
+    } else {
+      cam.x = Math.round(rx + ox); cam.y = Math.round(ry + oy);
+    }
     ctx.save();
-    ctx.scale(zoom, zoom);
+    ctx.scale(activeZoom, activeZoom);
     ctx.fillStyle = '#0b0812'; ctx.fillRect(0, 0, cam.w, cam.h);
-    if (s.mode === 'dungeon') {
+    if (CC.Camp && CC.Camp.isInside && CC.Camp.isInside()) {
+      call('Camp', 'drawScene', ctx, cam);
+      call('Classes', 'drawPlayer', ctx, cam);
+    } else if (s.mode === 'dungeon') {
       // The shell already applied ctx.scale(zoom). Dungeon.draw scales by cam.zoom itself, so hand it a
       // zoom-1 view of the same camera: tiles, fog and entities then share one world-to-screen mapping.
       var dcam = { x: cam.x, y: cam.y, w: cam.w, h: cam.h, zoom: 1 };
-      if (has('Dungeon', 'draw')) call('Dungeon', 'draw', ctx, dcam); else drawFallbackFloor();
+      if (s.area === 'tree-tunnel') call('TreeTunnel', 'draw', ctx, dcam);
+      else if (has('Dungeon', 'draw')) call('Dungeon', 'draw', ctx, dcam);
+      else drawFallbackFloor();
       drawDecals();
+      call('Breakables','draw',ctx,cam);
+      call('Waypoints','draw',ctx,cam);
+      call('Camp', 'drawWorldMarker', ctx, cam); // grounded below the hero, not painted over them
       call('Loot', 'draw', ctx, cam);
       call('Enemies', 'draw', ctx, cam);
       call('Classes', 'draw', ctx, cam);
@@ -602,9 +721,11 @@
     } else {
       if (has('Town', 'draw')) call('Town', 'draw', ctx, cam);
       else { drawFallbackFloor(); call('Classes', 'drawPlayer', ctx, cam); }
+      call('Waypoints','draw',ctx,cam);
     }
+    if (s.mode === 'town') call('Camp', 'drawWorldMarker', ctx, cam);
     drawFallbackPlayer();
-    if (s.mode === 'dungeon') call('Cine', 'draw', ctx, cam);
+    if (s.mode === 'dungeon') call('MonsterMelee', 'drawFx', ctx, cam);
     for (var a = 0; a < particles.length; a++) {
       var q = particles[a], qa = Math.max(0, q.life / q.max);
       ctx.globalAlpha = q.blood ? Math.min(1, qa * 2) : qa;
@@ -626,8 +747,11 @@
       ctx.fillStyle = t.c; ctx.fillText(t.s, t.x - cam.x, t.y - cam.y);
     }
     ctx.globalAlpha = 1;
+    // Draw isolation over ALL normal particles, damage popups and monsters.
+    // The critical scene itself redraws ONLY the hero and struck targets.
+    if(s.mode==='dungeon')call('CriticalScene','drawWorld',ctx,cam);
     ctx.restore();
-    cam.x = rx; cam.y = ry;
+    cam.x = rx; cam.y = ry; cam.w = rw; cam.h = rh;
   }
 
   function bar(x, y, w, h, frac, c1, c2, text) {
@@ -662,7 +786,8 @@
 
     label(Math.floor(s.gold) + ' G', W - 12, top + 8, 15, '#e8c04a', 'right');
     if (s.mode === 'dungeon') {
-      label(s.area === 'forest' ? 'Giant Forest' : s.area === 'plains' ? 'Rolling Plains' : 'Floor ' + s.floor, W - 12, top + 28, 13, '#e8dcc4', 'right');
+      label(s.area === 'forest' ? 'Giant Forest' : s.area === 'tree-tunnel' ? 'Hollow Tree' :
+        s.area === 'plains' ? 'Rolling Plains' : 'Floor ' + s.floor, W - 12, top + 28, 13, '#e8dcc4', 'right');
       addButton(W - 78, top + 42, 66, 26, 'Retreat', '#5a2a22', function () { CC.returnToTown(); });
     } else {
       label('Town', W - 12, top + 28, 13, '#e8dcc4', 'right');
@@ -682,17 +807,19 @@
 
     var p = CC.state.player;
     for (var name in btns) {
-      var b = btns[name], on = held[name] > 0 || (name === 'attack' && keys.Space);
-      var txt = b.label;
+      var b = btns[name], contextual = name === 'attack' && nearbyAction();
+      var on = held[contextual ? 'interact' : name] > 0 || (name === 'attack' && keys.Space);
+      var txt = contextual ? 'ACTION' : b.label;
       if (p && p.spellNames) {
         if (name === 'spell1' && p.spellNames[0]) txt = p.spellNames[0];
         if (name === 'spell2' && p.spellNames[1]) txt = p.spellNames[1];
       }
-      var col = name === 'attack' ? '255,140,70' : name === 'dash' ? '120,220,160' : '140,120,255';
+      var col = name === 'potion' ? '225,55,70' : contextual ? '105,205,170' :
+        name === 'attack' ? '255,140,70' : name === 'dash' ? '120,220,160' : '140,120,255';
       ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 6.3);
       ctx.fillStyle = 'rgba(' + col + ',' + (on ? 0.7 : 0.35) + ')'; ctx.fill();
       ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.stroke();
-      var cd = p && p.cd ? p.cd[name] : 0, cdMax = p && p.cdMax ? p.cdMax[name] : 0;
+      var cd = !contextual && p && p.cd ? p.cd[name] : 0, cdMax = !contextual && p && p.cdMax ? p.cdMax[name] : 0;
       if (cd > 0 && cdMax > 0) {
         var f = Math.min(1, cd / cdMax);
         ctx.beginPath(); ctx.moveTo(b.x, b.y);
@@ -700,7 +827,21 @@
         ctx.closePath(); ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fill();
         label(cd.toFixed(cd < 10 ? 1 : 0), b.x, b.y - b.r - 8, 10, '#ddd');
       }
-      label(txt, b.x, b.y, b.r > 35 ? 15 : 11, '#fff');
+      if (name === 'potion') {
+        var count=(CC.state && CC.state.potions)||0;
+        ctx.save();ctx.translate(b.x,b.y-2);
+        ctx.fillStyle='#ffc9c9';ctx.fillRect(-3,-10,6,3);
+        ctx.fillStyle='#603a35';ctx.fillRect(-5,-7,10,3);
+        ctx.beginPath();ctx.moveTo(-5,-4);ctx.lineTo(-9,0);ctx.lineTo(-8,9);
+        ctx.quadraticCurveTo(0,13,8,9);ctx.lineTo(9,0);ctx.lineTo(5,-4);
+        ctx.closePath();ctx.fillStyle=count>0?'#d9233a':'#70444a';ctx.fill();
+        ctx.strokeStyle='#ffd2cc';ctx.lineWidth=1.4;ctx.stroke();
+        ctx.fillStyle='#ffb6b2';ctx.fillRect(-5,1,3,4);
+        ctx.restore();
+        ctx.fillStyle='rgba(20,7,10,0.88)';ctx.fillRect(b.x+7,b.y+7,20,16);
+        ctx.strokeStyle='#b96367';ctx.strokeRect(b.x+7,b.y+7,20,16);
+        label(String(count),b.x+17,b.y+15,11,count>0?'#fff2e6':'#ad9394');
+      } else label(txt, b.x, b.y, b.r > 35 ? 15 : 11, '#fff');
     }
   }
 
@@ -731,14 +872,17 @@
       gr.addColorStop(0, 'rgba(255,255,255,0.12)'); gr.addColorStop(1, 'rgba(255,255,255,0.03)');
       ctx.fillStyle = gr; ctx.fill();
       ctx.lineWidth = 2; ctx.strokeStyle = c.color; ctx.stroke();
-      // emblem
-      var ex2 = x + 38, ey = yy + ch / 2, bob = Math.sin(time * 3 + n) * 2;
-      ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.ellipse(ex2, ey + 20, 15, 5, 0, 0, 6.3); ctx.fill();
-      ctx.fillStyle = c.color; ctx.beginPath(); ctx.arc(ex2, ey + bob, 16, 0, 6.3); ctx.fill();
-      ctx.fillStyle = '#0b0812'; ctx.fillRect(ex2 - 8, ey - 4 + bob, 4, 4); ctx.fillRect(ex2 + 4, ey - 4 + bob, 4, 4);
-      label(c.name, x + 72, yy + 22, 18, c.color, 'left');
-      font(11, 'normal'); ctx.textAlign = 'left'; ctx.fillStyle = '#d8d0ee';
-      wrap(c.desc, x + 72, yy + 44, cw - 84, 14);
+      // Four individually illustrated heroes, sized to fit the original selection cards.
+      var portraitWidth=Math.max(58,Math.min(83,ch*.66));
+      if(CC.HeroPortraits&&CC.HeroPortraits.draw)
+        CC.HeroPortraits.draw(ctx,c.id,x+6,yy+5,portraitWidth,ch-10);
+      else {
+        ctx.fillStyle=c.color;ctx.beginPath();ctx.arc(x+36,yy+ch/2,19,0,6.283);ctx.fill();
+      }
+      var textX=x+portraitWidth+20;
+      label(c.name,textX,yy+23,17,c.color,'left');
+      font(11,'normal');ctx.textAlign='left';ctx.fillStyle='#d8d0ee';
+      wrap(c.desc,textX,yy+44,cw-portraitWidth-31,14);
     });
     label('Tap a hero to begin', W / 2, H - 22, 12, '#8a80a8');
   }
@@ -762,7 +906,12 @@
       label(l[0], W / 2 - 10, y + n * 30, 15, '#cfc5ff', 'right');
       label(String(l[1]), W / 2 + 10, y + n * 30, 17, '#ffe08a', 'left');
     });
-    addButton(W / 2 - 100, H * 0.62, 200, 52, 'Return to Town', '#3a6a3a', function () { CC.returnToTown(); });
+    if (CC.Camp && CC.Camp.hasCamp && CC.Camp.hasCamp()) {
+      addButton(W / 2 - 110, H * 0.59, 220, 48, 'Respawn at Camp', '#5b6341', function () {
+        if (call('Camp', 'respawn')) { resetInputHeld(); snapCamera(); }
+      });
+      addButton(W / 2 - 110, H * 0.69, 220, 44, 'Return to Town', '#3a6a3a', function () { CC.returnToTown(); });
+    } else addButton(W / 2 - 100, H * 0.62, 200, 52, 'Return to Town', '#3a6a3a', function () { CC.returnToTown(); });
   }
 
   function drawFallbackTownPanel() {
@@ -778,13 +927,26 @@
     if (m === 'title') { drawTitle(); return; }
     drawWorld();
     if (m === 'town' || m === 'dungeon' || m === 'dead') drawScreenFx();
+    if (m === 'dungeon') call('CriticalScene', 'drawScreen', ctx, W, H);
+    // No floating HUD/buttons/other overlays during the brief critical close-up.
+    if(m==='dungeon'&&call('CriticalScene','isActive'))return;
     if (tunnel && m === 'dungeon') drawTunnel();
     if (m === 'town' || m === 'dungeon') {
       drawHud(); drawControls();
       if (m === 'town') drawFallbackTownPanel();
-      addButton(W - 154, 78, 142, 28, 'USE [F / Enter]', '#3a546a', function () { pressAction('interact'); });
+      var skillPts = CC.SkillTree && CC.state.player ? CC.SkillTree.points(CC.state.player) : 0;
+      if (skillPts > 0) {
+        addButton(W - 154, 78, 142, 28, skillPts + ' skill point' + (skillPts === 1 ? '' : 's'),
+          '#603b83', function () { call('UI', 'open', 'skills'); });
+      }
       addButton(W - 94, 112, 82, 28, paused ? 'Resume' : 'Pause', '#4a3a6a', togglePause);
-      if (paused) {
+      if (CC.Camp && !(CC.Camp.isInside && CC.Camp.isInside())) {
+        if (CC.Camp.isWorldCampNear && CC.Camp.isWorldCampNear())
+          addButton(W - 160, 184, 148, 30, 'Enter Camp', '#6b5437', function () { call('Camp', 'interact'); });
+        else if (!(CC.Camp.hasCamp && CC.Camp.hasCamp()))
+          addButton(W - 160, 184, 148, 30, 'Set Camp', '#6b5437', function () { call('Camp', 'request'); });
+      }
+      if (paused && !uiOpen()) {
         ctx.fillStyle = 'rgba(8,4,16,0.65)'; ctx.fillRect(0, H * 0.4, W, 80);
         label('PAUSED', W / 2, H * 0.4 + 40, 28, '#ffe08a');
       }
@@ -792,8 +954,12 @@
       if (m === 'town') call('Town', 'drawPanel', ctx, W, H, addHit);
       else if (CC.state.area === 'forest') call('Forest', 'drawOverlay', ctx, W, H);
       else if (CC.state.area === 'plains') call('Plains', 'drawOverlay', ctx, W, H);
-      call('UI', 'drawHud', ctx, W, H, addHit);   // K / I / M buttons
-      call('UI', 'draw', ctx, W, H, addHit);      // overlays (registered last, so they win taps) and the boss bar
+      if (CC.state.area === 'tree-tunnel') call('TreeTunnel', 'drawHud', ctx, W, H);
+      call('MonsterMelee', 'drawStatus', ctx, W, H);
+      call('UI', 'drawHud', ctx, W, H, addHit);   // single Pack button; K / I / M remain keyboard shortcuts
+      call('UI', 'draw', ctx, W, H, addHit);
+      call('Camp', 'drawUI', ctx, W, H, addHit);
+      call('Waypoints','drawUI',ctx,W,H,addHit);
     } else if (m === 'dead') {
       drawHud(); drawDead();
     }
@@ -805,10 +971,10 @@
     var dt = Math.min(0.1, (now - last) / 1000 || 0);
     last = now;
     try {
-      if (CC.Cine) { CC.Cine.tick(dt); timeScale = CC.fx.scale == null ? 1 : CC.fx.scale; } else timeScale = 1;
-      dt *= timeScale;
-      if (hitStopLeft > 0 && timeScale > 0) { hitStopLeft -= dt; time += dt; }
+      call('CriticalScene', 'update', dt);
+      if (hitStopLeft > 0) { hitStopLeft -= dt; time += dt; }
       else {
+        dt *= call('CriticalScene', 'rate') || 1;
         acc += dt;
         while (acc >= STEP) { update(STEP); acc -= STEP; }
       }

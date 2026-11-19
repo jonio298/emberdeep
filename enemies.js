@@ -37,9 +37,26 @@
   var SPURT = { ghoul: { n: 9, pow: 130 }, charger: { n: 7, pow: 110 }, demon: { n: 8, pow: 120 }, spitter: { n: 8, pow: 100 }, scorpion: { n: 6, pow: 100 } };
 
   /* Toughness: every base monster HP is multiplied by HP_MULT (basic enemies took ~2 hits of 10 damage before, ~4 now). */
-  var HP_MULT = 2;
+  var HP_MULT = 2.15; // modest difficulty increase: ~7.5% enemy HP
   /* Dismemberment: parts that fly off in this order as HP falls (one per equal slice of the HP bar). The enemy keeps fighting. */
-  var PARTS = ['limb', 'armor', 'limb', 'head'];
+  // Anatomy profiles: each detached piece is also hidden from the still-living sprite.
+  var PARTS = ['armLeft', 'armRight', 'head', 'legLeft'];
+  var ANATOMY = {
+    charger: ['hornLeft', 'armLeft', 'hornRight', 'legLeft'], goblin: ['hornLeft', 'armLeft', 'head', 'legLeft'],
+    demon: ['hornLeft', 'armLeft', 'hornRight', 'head'], dragon: ['hornLeft', 'hornRight', 'legLeft', 'head'],
+    scorpion: ['armLeft', 'armRight', 'legLeft', 'legRight'], spider: ['legLeft', 'legRight', 'armLeft', 'armRight'],
+    snake: ['tail', 'tail', 'head', 'tail'], bat: ['wingLeft', 'wingRight', 'head', 'legLeft'],
+    slime: ['chunk', 'chunk', 'chunk', 'chunk'], spitter: ['chunk', 'chunk', 'chunk', 'chunk'],
+    ghoul: ['armLeft', 'armRight', 'head', 'legLeft'], skeleton: ['armLeft', 'armRight', 'head', 'legLeft'],
+    archer: ['armLeft', 'armRight', 'head', 'legLeft'],
+    bear: ['legLeft', 'armRight', 'legRight', 'head'],
+    scarecrow: ['armLeft', 'armRight', 'head', 'legLeft'],
+    horror: ['armLeft', 'head', 'legLeft', 'armRight'],
+    direwolf: ['legLeft', 'armRight', 'head', 'legRight'],
+    mawworm: ['chunk', 'chunk', 'head', 'chunk'],
+    raven: ['wingLeft', 'wingRight', 'head', 'legLeft'],
+    crow: ['wingLeft', 'wingRight', 'head', 'legLeft']
+  };
   var ARMOR_LOOK = { skeleton: 1, archer: 1, charger: 1, demon: 1, dragon: 1, scorpion: 1 };
   /* Bone piles: every bone/skull left by a death or a torn-off part adds to the pile within PILE_R px. A pile that stays untouched for
      PILE_DELAY s rolls once to rise as a skeleton: chance = 0 below 6 bones, then +5% per bone above 5, capped at 70%. */
@@ -97,7 +114,8 @@
   function hurtPlayer(p, amt, e, kind) {
     if (!p || p.hp <= 0 || (p.invuln > 0)) return 0;
     if (p.cursed > 0) amt *= 1.25; // Hex: cursed players take 25% more damage
-    var dmg = Math.max(1, Math.round(amt * 100 / (100 + (p.armor || 0))));
+    var defense=(p.armor || (p.stats && p.stats.armor) || 0) * (p.bearRoarT>0?.7:1);
+    var dmg = Math.max(1, Math.round(amt * 100 / (100 + defense)));
     p.hp -= dmg; p.invuln = 0.45; p.hurtFlash = 0.2;
     if (e && e.vamp) e.hp = Math.min(e.maxHp, e.hp + dmg * 0.5);
     if (kind === 'poison' || kind === 'web') { p._poison = { t: 3, dps: Math.max(1, amt * 0.25), acc: 0 }; if (kind === 'web') p.slowT = 1.5; } // slowT: data for the player code
@@ -202,8 +220,8 @@
 
   function make(type, x, y, floor, opts) {
     var d = TYPES[type], hs = 1 + 0.18 * (floor - 1), e = {
-      id: nextId++, type: type, name: d.name, x: x, y: y, r: d.r, hp: 0, maxHp: 0, dmg: Math.round(d.dmg * (1 + 0.12 * (floor - 1))),
-      spd: d.spd, xp: d.xp, color: d.color, state: 'idle', t: 0, cd: 0.5 + R() * 1.5, face: 1, flash: 0, slow: 0, burn: 0,
+      id: nextId++, type: type, name: d.name, x: x, y: y, r: d.r, hp: 0, maxHp: 0, dmg: Math.round(d.dmg * (1 + 0.12 * (floor - 1)) * 1.19),
+      spd: d.spd * 1.12, xp: d.xp, color: d.color, state: 'idle', t: 0, cd: 0.42 + R() * 1.1, face: 1, flash: 0, slow: 0, burn: 0,
       asleep: true, dead: false, contact: 0, size: 0, floor: floor, ang: 0, tele: null, group: 0, anim: R() * 10, strafe: R() < 0.5 ? 1 : -1
     };
     opts = opts || {};
@@ -320,7 +338,15 @@
       if (CC.fx && CC.fx.text) CC.fx.text(e.x, e.y - e.r - 6, String(dealt), type === 'fire' ? '#ff9a3a' : type === 'frost' ? '#8ad8ff' : type === 'necro' ? '#a8ff9a' : '#ffffff', 11);
       if (e.group) for (var i = 0; i < this.list.length; i++) if (this.list[i].group === e.group) this.list[i].asleep = false;
       if (e.boss && e.phase === 1 && e.hp <= e.maxHp * 0.5 && e.hp > 0) this._phase2(e);
-      if (e.hp <= 0) this._kill(e); else this._dismember(e);
+      if (e.hp <= 0) {
+        // A strong killing blade or basic projectile can sever the head as the final piece.
+        // The detached head travels and lands as a persistent, recognizable body part.
+        if ((e.type === 'bear' || e.type === 'bat' || e.type === 'crow' || e.type === 'raven') &&
+            !(e.missing && e.missing.head) &&
+            (type === 'slash' || type === 'melee' || type === 'physical') &&
+            R() < (e.type === 'bear' ? .72 : .60)) this._detach(e,'head');
+        this._kill(e);
+      } else this._dismember(e);
       return dealt;
     },
 
@@ -454,18 +480,59 @@
     // one body part per equal slice of lost HP (PARTS order); the enemy keeps attacking until hp reaches 0
     _dismember: function (e) {
       if (GORE <= 0 || e.ghost || e.collapsed || e.dead || e.hp <= 0) return;
-      var n = PARTS.length, want = Math.min(n, Math.floor((1 - e.hp / e.maxHp) * (n + 1)));
+      var parts = ANATOMY[e.type] || PARTS;
+      var n = parts.length, want = Math.min(n, Math.floor((1 - e.hp / e.maxHp) * (n + 1)));
       e.lostN = e.lostN || 0;
-      while (e.lostN < want) this._detach(e, PARTS[e.lostN++]);
+      while (e.lostN < want) this._detach(e, parts[e.lostN++]);
     },
-    _detach: function (e, name) {
-      var d = TYPES[e.type] || {}, boney = this._boney(e), limbless = e.type === 'slime' || e.type === 'spitter';
-      var kind = limbless ? 'chunk' : name === 'armor' && !(ARMOR_LOOK[e.type] || e.armored || e.boss) ? 'limb' : name;
-      var col = kind === 'armor' ? '#8a8a96' : boney && kind !== 'chunk' ? BONE : e.color, a = R() * PI2, sp = 80 + R() * 90;
-      var q = this._gorePart(e.x, e.y, Math.cos(a) * sp, Math.sin(a) * sp, 110 + R() * 80, kind, col, 0.9 + R() * 0.5, 0);
-      if (q && boney && (kind === 'limb' || kind === 'head')) q.pileN = 2; // torn-off bones count toward the pile they land on
+    _detach: function (e, slot) {
+      var d = TYPES[e.type] || {}, boney = this._boney(e);
+      var kind = slot === 'head' ? 'head' : slot.indexOf('horn') === 0 ? 'horn' :
+        slot.indexOf('leg') === 0 ? 'hoof' : slot === 'chunk' || slot === 'tail' ? 'chunk' : 'limb';
+      e.missing = e.missing || {};
+      if (slot !== 'chunk' && slot !== 'tail' && e.missing[slot]) return;
+      if (slot !== 'chunk') e.missing[slot] = true;
+      e.nubs = e.nubs || [];
+      if (!e.ghost && !e.collapsed && slot !== 'chunk') e.nubs.push({ slot: slot, t: 0, next: 0 });
+      var col = boney && kind !== 'horn' && kind !== 'hoof' ? BONE : e.color;
+      var a = R() * PI2, sp = 80 + R() * 90;
+      var q = this._gorePart(e.x, e.y, Math.cos(a) * sp, Math.sin(a) * sp,
+        110 + R() * 80, kind, col, 0.9 + R() * 0.5, 0);
+      if (q && boney && (kind === 'limb' || kind === 'head')) q.pileN = 2;
       if (!(d.bone && !d.blood)) this._spurt(e, a, 5, 120, this._bloodOf(e));
-      if (CC.fx && CC.fx.burst) CC.fx.burst(e.x, e.y, kind === 'armor' ? '#b0b0be' : this._bloodOf(e), 5, 70);
+      if (CC.fx && CC.fx.burst) CC.fx.burst(e.x, e.y, this._bloodOf(e), 5, 70);
+    },
+    // Anatomy-local position of the severed joint (facing is handled by the sprite).
+    _nubPosition: function (e, slot) {
+      var r = e.r;
+      if (slot === 'head') return { x: 0, y: -r * 0.23 };
+      if (slot === 'hornLeft') return { x: -r * 0.55, y: -r * 0.75 };
+      if (slot === 'hornRight') return { x: r * 0.55, y: -r * 0.75 };
+      if (slot === 'armLeft') return { x: -r * 0.73, y: r * 0.12 };
+      if (slot === 'armRight') return { x: r * 0.73, y: r * 0.12 };
+      if (slot === 'legLeft') return { x: -r * 0.42, y: r * 0.63 };
+      if (slot === 'legRight') return { x: r * 0.42, y: r * 0.63 };
+      return { x: -r, y: r * 0.3 };
+    },
+    _bleedNubs: function (e, dt) {
+      if (!e.nubs || !e.nubs.length || GORE <= 0 || e.collapsed || e.dead) return;
+      var bone = (TYPES[e.type] || {}).bone && !(TYPES[e.type] || {}).blood;
+      if (bone) return;
+      for (var i = 0; i < e.nubs.length; i++) {
+        var nub = e.nubs[i];
+        nub.t += dt; nub.next -= dt;
+        if (nub.next > 0) continue;
+        nub.next = e.type === 'bear' ? (nub.t < 3 ? .09 + R() * .12 : .38 + R() * .25) :
+          nub.t < 2 ? 0.13 + R() * 0.16 : 0.7 + R() * 0.7;
+        var pt = this._nubPosition(e, nub.slot), face = e.face || 1;
+        var ang = Math.atan2(pt.y, pt.x * face) + (R() - 0.5) * 0.4;
+        var bx = e.x + pt.x * face, by = e.y + pt.y;
+        for (var k = 0; k < (e.type === 'bear' && nub.t < 3 ? 5 : nub.t < 2 ? 3 : 1); k++) {
+          var a = ang + (R() - 0.5) * 0.6, v = 75 + R() * 80;
+          this._gorePart(bx, by, Math.cos(a) * v, Math.sin(a) * v, 40 + R() * 55,
+            'blood', this._bloodOf(e), 0.7 + R() * 0.5, 0);
+        }
+      }
     },
     // ---------- bone piles ----------
     pileChance: function (bones) { return bones < 6 ? 0 : Math.min(0.7, (bones - 5) * 0.05); },
@@ -541,6 +608,7 @@
         if (sx < -20 || sx > vw + 20 || sy < -40 || sy > vh + 20) continue;
         var py = sy - Math.max(0, q.z);
         ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(sx, sy, 1.5 + q.s, 1, 0, 0, PI2); ctx.fill();
+        if (CC.WoundArt && CC.WoundArt.flying(ctx,q,sx,py)) continue;
         if (q.kind === 'blood') {
           ctx.strokeStyle = q.col; ctx.lineWidth = 1 + q.s * 0.6; ctx.lineCap = 'round';
           ctx.beginPath(); ctx.moveTo(sx, py); ctx.lineTo(sx - q.vx * 0.025, py - q.vy * 0.025 + q.vz * 0.025); ctx.stroke(); ctx.lineCap = 'butt';
@@ -548,6 +616,11 @@
           ctx.save(); ctx.translate(sx, py); ctx.rotate(q.rot); ctx.fillStyle = BONE; ctx.fillRect(-3.5 * q.s - 1, -1, 7 * q.s + 2, 2); ctx.fillRect(-3.5 * q.s - 2, -2, 2, 4); ctx.fillRect(3.5 * q.s, -2, 2, 4); ctx.restore();
         } else if (q.kind === 'skull') {
           ctx.fillStyle = BONE; ctx.beginPath(); ctx.arc(sx, py, 3.5, 0, PI2); ctx.fill(); ctx.fillStyle = '#10080a'; ctx.fillRect(sx - 2, py - 1, 1.5, 1.5); ctx.fillRect(sx + 0.5, py - 1, 1.5, 1.5);
+        } else if (q.kind === 'horn' || q.kind === 'hoof') {
+          ctx.save(); ctx.translate(sx, py); ctx.rotate(q.rot); ctx.fillStyle = q.col;
+          ctx.beginPath(); ctx.moveTo(-4 * q.s, 2 * q.s); ctx.lineTo(4 * q.s, 0);
+          ctx.lineTo(-3 * q.s, -2 * q.s); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = BLOOD; ctx.fillRect(-4 * q.s, -1, 2, 3); ctx.restore();
         } else if (q.kind === 'limb') {
           ctx.save(); ctx.translate(sx, py); ctx.rotate(q.rot); ctx.fillStyle = q.col; ctx.fillRect(-4 * q.s, -1.5, 8 * q.s, 3); ctx.fillStyle = BLOOD; ctx.fillRect(-4 * q.s - 1, -1.5, 2, 3); ctx.restore();
         } else if (q.kind === 'head') {
@@ -626,6 +699,7 @@
       if (p) {
         if (p.invuln > 0) p.invuln -= dt;
         if (p.cursed > 0) p.cursed -= dt;
+        if (p.bearRoarT > 0) p.bearRoarT = Math.max(0,p.bearRoarT-dt);
         if (p.slowT > 0) p.slowT -= dt;
         if (p._poison) { var po = p._poison; po.t -= dt; po.acc += po.dps * dt; if (po.acc >= 1 && p.hp > 1) { var tk = Math.floor(po.acc); po.acc -= tk; p.hp -= tk; } if (po.t <= 0) p._poison = null; }
       }
@@ -634,6 +708,7 @@
         if (e.dead) { e.deadT += dt; if (e.deadT > 0.6) this.list.splice(i, 1); continue; }
         e.anim += dt; if (e.flash > 0) e.flash -= dt; if (e.contact > 0) e.contact -= dt;
         this._bleed(e, dt);
+        this._bleedNubs(e, dt);
         if (e.invuln > 0) e.invuln -= dt;
         if (e.burn > 0) { e.burn -= dt; e.hp -= (e.burnDps || 1) * dt; if (e.hp <= 0) { this._kill(e); continue; } this._dismember(e); }
         var slowF = e.slow > 0 ? 0.5 : 1; if (e.slow > 0) e.slow -= dt;
@@ -652,7 +727,7 @@
         // walk the tile path around walls; equals the direct angle when the line is clear
         if (e.boss) this._boss(e, dt, p, d, ang, f); else this._think(e, dt * (e.frenzy ? 1.25 : 1), p, d, ang, f);
         if (!e.boss && d < 420) this._spurtAI(e, dt, ang);
-        if (!e.boss) this._special(e, dt, p, d, ang);
+        if (!e.boss && !e.stitched) this._special(e, dt, p, d, ang); // Patchwork uses dedicated boss attacks
         // contact damage while dangerous
         if (e.dangerous && e.contact <= 0 && d < e.r + (p.r || 10)) {
           if (hurtPlayer(p, e.dmg, e, e.poison ? 'poison' : e.fireproof ? 'fire' : null)) e.contact = 0.7;
@@ -879,7 +954,9 @@
         var m = this.remains[i], mx = m.x - cam.x, my = m.y - cam.y;
         if (mx < -40 || mx > vw + 40 || my < -40 || my > vh + 40) continue;
         if (D && D.isVisible && !D.isVisible(m.x, m.y)) continue;
-        drawRemain(ctx, m, Math.round(mx), Math.round(my));
+        if (!CC.WoundArt || !CC.WoundArt.ground ||
+            !CC.WoundArt.ground(ctx, m, Math.round(mx), Math.round(my)))
+          drawRemain(ctx, m, Math.round(mx), Math.round(my));
       }
       for (i = 0; i < this.list.length; i++) {
         e = this.list[i];
@@ -893,10 +970,7 @@
         if (D && D.isVisible && !D.isVisible(e.x, e.y)) continue;
         if (e.hidden) continue; // burrowed boss
         drawEnemy(ctx, e, Math.round(e.x - cam.x), Math.round(e.y - cam.y), t);
-        if (e.lostN && !e.dead) { // wound marks: one red stump per detached part
-          ctx.fillStyle = '#a01018';
-          for (var wk = 0; wk < e.lostN; wk++) ctx.fillRect(Math.round(e.x - cam.x) + (wk - 1.5) * e.r * 0.5 - 1, Math.round(e.y - cam.y) - e.r * 0.2 + (wk % 2) * 3, 3, 3);
-        }
+
       }
       this._drawGore(ctx, cam, vw, vh);
       for (i = 0; i < this.piles.length; i++) { // big bone piles stir as the rise roll nears
@@ -921,6 +995,19 @@
         ctx.fillStyle = q.color;
         if (q.kind === 'fireball') { ctx.globalAlpha = 0.35; ctx.beginPath(); ctx.arc(sx, sy, q.r + 3, 0, PI2); ctx.fill(); ctx.globalAlpha = 1; ctx.fillStyle = '#ffd24a'; ctx.beginPath(); ctx.arc(sx, sy, q.r - 1, 0, PI2); ctx.fill(); ctx.fillStyle = q.color; ctx.beginPath(); ctx.arc(sx - q.vx * 0.04, sy - q.vy * 0.04, q.r - 2, 0, PI2); ctx.fill(); }
         else if (q.kind === 'wail') { ctx.globalAlpha = 0.6; ctx.beginPath(); ctx.arc(sx, sy, q.r + 1, 0, PI2); ctx.fill(); ctx.globalAlpha = 0.25; ctx.beginPath(); ctx.arc(sx - q.vx * 0.06, sy - q.vy * 0.06, q.r + 3, 0, PI2); ctx.fill(); ctx.globalAlpha = 1; }
+        else if (q.kind === 'bone') {
+          // Genuine spinning ivory projectiles rather than small generic colored circles.
+          ctx.save(); ctx.translate(sx,sy); ctx.rotate(Math.atan2(q.vy,q.vx) + this._time*11);
+          ctx.shadowColor='#be8edf';ctx.shadowBlur=5;
+          ctx.strokeStyle='#eadbc2';ctx.lineWidth=3.8;ctx.lineCap='round';
+          ctx.beginPath();ctx.moveTo(-10,0);ctx.lineTo(10,0);ctx.stroke();
+          ctx.shadowBlur=0;ctx.fillStyle='#fff3dd';
+          for(var tip=-1;tip<=1;tip+=2){ctx.beginPath();ctx.arc(tip*9,-2,2.6,0,PI2);
+            ctx.arc(tip*9,2,2.6,0,PI2);ctx.fill();}
+          ctx.strokeStyle='#bfa88b';ctx.lineWidth=1.3;
+          ctx.beginPath();ctx.moveTo(-7,0);ctx.lineTo(7,0);ctx.stroke();
+          ctx.restore();
+        }
         else if (q.kind === 'arrow') { ctx.save(); ctx.translate(sx, sy); ctx.rotate(Math.atan2(q.vy, q.vx)); ctx.fillRect(-7, -1, 14, 2); ctx.fillStyle = '#fff'; ctx.fillRect(5, -2, 3, 4); ctx.restore(); }
         else { ctx.beginPath(); ctx.arc(sx, sy, q.r, 0, PI2); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fillRect(sx - 1, sy - 1, 2, 2); }
       }
@@ -931,6 +1018,47 @@
         ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fillRect(bx + bw * 0.5, by, 1, 10);
         ctx.fillStyle = '#fff'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(b.name + (b.phase === 2 ? ' - ENRAGED' : ''), bx + bw / 2, by + 8); ctx.textAlign = 'left';
       }
+    }
+  };
+
+  // Critical cutscenes reuse the SAME enemy sprites and accumulated gore/wounds as
+  // regular gameplay, but never redraw unrelated enemies, corpses, HUD or scenery.
+  E.drawCriticalTargets = function (ctx, cam, participants, scene, time) {
+    if(!Array.isArray(participants))return;
+    var seen=[],t=this._time;
+    for(var i=0;i<participants.length;i++){
+      var e=participants[i];
+      if(!e||seen.indexOf(e.id)>=0)continue;
+      seen.push(e.id);
+      var x=e.x-cam.x,y=e.y-cam.y,r=e.r||9;
+      // Distinct impact recoil: stab-in and yank-out (or the three Thief
+      // slashes) move the ACTUAL damaged enemy sprite for a handful of frames.
+      var kick=0;
+      if(scene&&scene.heroClass==='swordsman'){
+        kick=6*Math.exp(-Math.pow((time-.232)/.035,2)) -
+          5*Math.exp(-Math.pow((time-.463)/.04,2));
+      }else if(scene&&scene.heroClass==='thief'){
+        kick=3.2*Math.exp(-Math.pow((time-.205)/.034,2)) -
+          3.6*Math.exp(-Math.pow((time-.315)/.038,2)) +
+          4*Math.exp(-Math.pow((time-.415)/.038,2));
+      }else if(scene){
+        kick=5*Math.exp(-Math.pow((time-.31)/.065,2));
+      }
+      var a=scene&&Number.isFinite(scene.angle)?scene.angle:0;
+      x+=Math.cos(a)*kick;y+=Math.sin(a)*kick;
+      if(x < -70||y < -70||x > cam.w+70||y > cam.h+70)continue;
+      ctx.save();
+      // Subtle silhouette rim light on the black cinematic stage.
+      ctx.shadowColor='#bd384f';ctx.shadowBlur=7;
+      ctx.globalAlpha=.36;ctx.strokeStyle='#ba3b52';ctx.lineWidth=1.3;
+      ctx.beginPath();ctx.ellipse(x,y+Math.min(10,r*.85),r*1.12,r*.47,0,0,Math.PI*2);
+      ctx.stroke();ctx.globalAlpha=1;ctx.shadowBlur=0;
+      ctx.translate(x,y);ctx.scale(1.23,1.23);ctx.translate(-x,-y);
+      // A lethal crit must still show its victim during the finishing blow,
+      // including its detached anatomy and damage marks.
+      var display=e.dead ? Object.assign({},e,{dead:false,deadT:0,hp:Math.max(1,e.hp||0)}) : e;
+      drawEnemy(ctx,display,Math.round(x),Math.round(y),t);
+      ctx.restore();
     }
   };
 
@@ -979,6 +1107,9 @@
         ctx.rotate(rr() * PI2); ctx.fillStyle = m.col; ctx.globalAlpha = 0.95 * al;
         ctx.beginPath(); ctx.moveTo(-3 * m.s * 0.6, -2); ctx.lineTo(3 * m.s * 0.6, -1); ctx.lineTo(2 * m.s * 0.6, 2.5); ctx.lineTo(-2.5, 2); ctx.fill();
         ctx.fillStyle = 'rgba(255,140,140,0.35)'; ctx.fillRect(-1, -1, 2, 1); break;
+      case 'horn': case 'hoof':
+        ctx.rotate(rr() * PI2); ctx.fillStyle = m.col; ctx.globalAlpha = 0.95 * al;
+        ctx.beginPath(); ctx.moveTo(-4 * m.s, 2); ctx.lineTo(4 * m.s, 0); ctx.lineTo(-3 * m.s, -2); ctx.fill(); break;
       case 'limb':
         ctx.rotate(rr() * PI2); ctx.fillStyle = m.col; ctx.globalAlpha = 0.95 * al; ctx.fillRect(-4 * m.s, -1.5, 8 * m.s, 3); ctx.fillStyle = '#7a0f14'; ctx.fillRect(-4 * m.s - 1, -1.5, 2, 3); break;
       case 'head':
@@ -1021,6 +1152,16 @@
       ctx.strokeStyle = ac; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.6 + 0.3 * Math.sin(t * 5); ctx.beginPath(); ctx.arc(sx, sy, e.r + 4, 0, PI2); ctx.stroke(); ctx.globalAlpha = al;
     }
     ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(sx, sy + e.r * 0.8, e.r * 0.9, e.r * 0.4, 0, 0, PI2); ctx.fill();
+    // Threat recognition: a restrained red floor circle only once the monster approaches.
+    var nearHero=playerOf(), alertRange=e.r+(nearHero&&nearHero.r||9)+34;
+    if (!dead && nearHero && Math.hypot(nearHero.x-e.x,nearHero.y-e.y)<=alertRange) {
+      ctx.save();
+      ctx.globalAlpha=.39+.15*Math.sin(t*7+e.anim);
+      ctx.strokeStyle=e.state==='telegraph'?'#f66c61':'#c92838';
+      ctx.lineWidth=1.5;ctx.beginPath();
+      ctx.ellipse(sx,sy+e.r*.79,e.r*1.1,e.r*.53,0,0,PI2);ctx.stroke();
+      ctx.restore();
+    }
     var tele = e.state === 'telegraph', shake = tele ? Math.sin(t * 60) * 1.2 : 0;
     ctx.translate(sx + shake, sy + (e.type === 'bat' ? bob * 2 - 4 : bob * 0.4));
     ctx.scale(e.face * sc, sc);
@@ -1028,6 +1169,11 @@
     if (tele && Math.floor(t * 14) % 2 === 0 && e.flash <= 0) col = '#ff8a7a';
     var dark = shadeC(col, 0.6);
     var look = e.boss ? e.def.look : e.type;
+    // Clip away detached anatomy before drawing both base art and horror details.
+    // The hole is genuine transparency, not a dark patch painted over the sprite.
+    // Monster-specific jagged anatomical tears replace uniform rectangular cutouts.
+    ctx.save();
+    if (CC.WoundArt) CC.WoundArt.clip(ctx,e,look,r);
     switch (look) {
       case 'bat': // wings flap
         var fl = Math.sin(e.anim * 22) * 5;
@@ -1131,11 +1277,17 @@
         for (var l = 0; l < 4; l++) { var lo = Math.sin(e.anim * 14 + l) * 2; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-r - 3, -r * 0.8 + l * 4 + lo); ctx.moveTo(0, 0); ctx.lineTo(r + 3, -r * 0.8 + l * 4 - lo); ctx.stroke(); }
         ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(0, 1, r * (e.boss ? 1.0 : 0.9), r * 0.8, 0, 0, PI2); ctx.fill();
         ctx.fillStyle = e.boss ? '#ff7ad0' : '#ff3a3a'; ctx.fillRect(-4, -3, 2, 2); ctx.fillRect(-1, -4, 2, 2); ctx.fillRect(2, -3, 2, 2); break;
-      default: // Giant Forest monsters draw themselves; anything unknown is a plain disc
+      default: // Area-specific monsters are rendered by their own scene modules.
+        if (CC.WoundArt && CC.WoundArt.drawMonster &&
+            CC.WoundArt.drawMonster(ctx,e,r,col,dark,t)) break;
+        if (CC.TreeTunnel && CC.TreeTunnel.drawMonster &&
+            CC.TreeTunnel.drawMonster(ctx, e, r, col, dark, t)) break;
         if (CC.Forest && CC.Forest.drawMonster && CC.Forest.drawMonster(ctx, e, r, col, dark, t)) break;
         ctx.fillStyle = col; ctx.beginPath(); ctx.arc(0, 0, r, 0, PI2); ctx.fill();
     }
     if (!e.collapsed) horrorArt(ctx, e, look, r, col, dark, t);
+    ctx.restore(); // restore anatomy clipping
+    if (!e.collapsed && CC.WoundArt) CC.WoundArt.paint(ctx,e,look,r,t);
     ctx.restore();
     if (dead) return;
     if (e.shield > 0) { ctx.strokeStyle = 'rgba(120,160,255,0.8)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(sx, sy, e.r + 2, 0, PI2); ctx.stroke(); }
