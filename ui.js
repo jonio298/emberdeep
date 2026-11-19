@@ -21,7 +21,7 @@
     good: '#8fd46a', bad: '#e0584a', gold: '#e8c04a' };
   var FONT = 'Georgia, "Palatino Linotype", "Book Antiqua", serif';
   var mouse = { cx: 0, cy: 0, on: false, x: -1, y: -1, bound: false }, hoverInfo = null, canvasEl = null;
-  var TABS = [{ id: 'skills', key: 'KeyK', name: 'Skills' }, { id: 'inv', key: 'KeyI', name: 'Pack' }, { id: 'map', key: 'KeyM', name: 'Map' }, { id: 'quests', key: 'KeyJ', name: 'Quests' }, { id: 'stats', key: 'KeyC', name: 'Stats' }];
+  var TABS = [{ id: 'inv', key: 'KeyI', name: 'Inventory' }, { id: 'skills', key: 'KeyK', name: 'Skills' }, { id: 'quests', key: 'KeyJ', name: 'Quests' }, { id: 'map', key: 'KeyM', name: 'Map' }, { id: 'stats', key: 'KeyC', name: 'Stats' }];
   var BAG_MAX = 40, FRACT = { crit: 1, speed: 1, cdr: 1, lifesteal: 1 };
 
   var cur = null, target = false, t = 0, clock = 0, hovering = false;
@@ -184,6 +184,9 @@
   }
   function close() { target = false; }
   function toggle(name) { if (target && cur === name) close(); else open(name); }
+  // Character hub always opens with Inventory. Its five tabs remain available
+  // within the same shared window (K/I/J/M/C hotkeys are unchanged).
+  function openCharacter() { if (target && cur === 'inv') close(); else open('inv'); }
 
   /* ---------- panels ---------- */
   function drawSkills(c, addHit, x, y, w, h, p) {
@@ -529,24 +532,36 @@
     tx(c, where, px + pw / 2, py + 61, 11, COL.text, 'center');
     tx(c, Math.floor(s.gold || 0) + ' G', px + pw - 12, py + 61, 13, COL.gold, 'right');
     c.fillStyle = 'rgba(224,168,74,0.25)'; c.fillRect(px + 12, py + 70, pw - 24, 1);
-    var sz = 24, by = py + 74, pk = 46, on = target && cur === 'inv';
-    // Skills, Pack and Map live in the overlay's tabs; the HUD shows only the Pack button (with the unspent-skill-points badge).
-    rr(c, px + 12, by, pk, sz, 6); c.fillStyle = on ? 'rgba(224,168,74,0.35)' : 'rgba(16,10,20,0.85)'; c.fill();
-    c.lineWidth = 2; c.strokeStyle = on ? COL.accent : COL.line; c.stroke();
-    tx(c, 'PACK', px + 12 + pk / 2, by + sz / 2 + 0.5, 11, on ? COL.accent : '#fff', 'center');
-    addHit(px + 12, by, pk, sz, function () { toggle('inv'); });
-    var qx=px+12+pk+7;
-    rr(c,qx,by,49,sz,6);
-    c.fillStyle=target&&cur==='quests'?'rgba(224,168,74,.32)':'rgba(16,10,20,.88)';
-    c.fill();c.lineWidth=1.5;c.strokeStyle='#8e7352';c.stroke();
-    tx(c,'QUEST',qx+24.5,by+sz/2+.5,10,'#e8d2ac','center');
-    addHit(qx,by,49,sz,function(){toggle('quests');});
-    if (pts > 0) {
-      var pulse = 1 + Math.sin(clock * 5) * 0.12;
-      c.beginPath(); c.arc(px + 12 + pk - 2, by + 3, 7 * pulse, 0, 6.2832); c.fillStyle = COL.good; c.fill();
-      tx(c, String(pts), px + 12 + pk - 2, by + 3.5, 9, '#0b0812', 'center');
+    // Three aligned actions in the HUD, not another floating menu.
+    var by=py+74,sz=24,inner=pw-24,gap=5;
+    var charW=Math.max(38,Math.floor(inner*.27)),questW=Math.max(43,Math.floor(inner*.30)),
+        retreatW=Math.max(27,inner-charW-questW-gap*2);
+    var hx=px+12,activeChar=target&&cur==='inv',
+        activeQuest=target&&cur==='quests';
+    rr(c,hx,by,charW,sz,6);
+    c.fillStyle=activeChar?'rgba(224,168,74,.35)':'rgba(16,10,20,.87)';
+    c.fill();c.lineWidth=1.5;c.strokeStyle=activeChar?COL.accent:COL.line;c.stroke();
+    tx(c,'CHAR',hx+charW/2,by+sz/2+.5,11,
+       activeChar?COL.accent:'#f2eadb','center');
+    addHit(hx,by,charW,sz,openCharacter);
+    var qx=hx+charW+gap;
+    rr(c,qx,by,questW,sz,6);
+    c.fillStyle=activeQuest?'rgba(224,168,74,.32)':'rgba(16,10,20,.87)';
+    c.fill();c.lineWidth=1.5;c.strokeStyle=activeQuest?COL.accent:COL.line;c.stroke();
+    tx(c,questW<49?'QUEST':'QUEST',qx+questW/2,by+sz/2+.5,
+       questW<48?9:10,activeQuest?COL.accent:'#e8d2ac','center');
+    addHit(qx,by,questW,sz,function(){toggle('quests');});
+    if(pts>0){
+      var pulse=1+Math.sin(clock*5)*.12;
+      c.beginPath();c.arc(hx+charW-2,by+3,7*pulse,0,6.2832);
+      c.fillStyle=COL.good;c.fill();
+      tx(c,String(pts),hx+charW-2,by+3.5,9,'#0b0812','center');
     }
-    if (s.mode === 'dungeon') button(c, addHit, px + pw - 12 - 68, by, 68, sz, 'Retreat', true, function () { if (CC.returnToTown) CC.returnToTown(); }, '#5a2a22');
+    if(s.mode==='dungeon'){
+      var bx=qx+questW+gap, small=retreatW<57;
+      button(c,addHit,bx,by,retreatW,sz,small?'EXIT':'Retreat',
+        true,function(){if(CC.returnToTown)CC.returnToTown();},'#5a2a22');
+    }
   }
 
   function update(dt) {
@@ -576,6 +591,6 @@
   }
 
   CC.UI = { open: open, close: close, toggle: toggle, isOpen: function () { return target; }, visible: function () { return cur !== null; },
-    update: update, key: key, draw: draw, drawHud: drawHud, ownsBossBar: true,
+    update: update, key: key, draw: draw, drawHud: drawHud, openCharacter: openCharacter, ownsBossBar: true,
     _state: function () { return { cur: cur, target: target, t: t, sel: sel }; } };
 })();
