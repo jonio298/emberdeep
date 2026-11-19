@@ -492,7 +492,7 @@
     for (j = 0; j < chests.length; j++) if (!chests[j].opened && near(chests[j], 32)) return true;
     return false;
   }
-  var ptrs = {};
+  var ptrs = {},lastMouseWorld=null;
   var btns = {};                      // layout, recomputed on resize
 
   function layout() {
@@ -508,6 +508,7 @@
     call('SpellCharge','cancel');
     held.attack = held.spell1 = held.spell2 = held.dash = held.interact = held.potion = 0;
     keys = {}; pending = {};
+    lastMouseWorld=null;
     joy.id = null; joy.x = joy.y = 0;
     ptrs = {};
     call('Charge', 'cancel');
@@ -592,6 +593,14 @@
       call('SpellCharge','drag',thumb.x,thumb.y);
       return;
     }
+    // PC: select an exact world-space destination under the mouse while
+    // holding Q/E/Shift. Mobile sticks to independent drag-from-button aiming.
+    if(e.pointerType==='mouse'){
+      var cursor=pos(e);
+      lastMouseWorld={x:cam.x+cursor.x/zoom,y:cam.y+cursor.y/zoom};
+      if(CC.SpellCharge&&CC.SpellCharge.isActive&&CC.SpellCharge.isActive())
+        call('SpellCharge','worldAim',lastMouseWorld.x,lastMouseWorld.y);
+    }
     if (e.pointerId !== joy.id) return;
     e.preventDefault();
     var p = pos(e), dx = p.x - joy.bx, dy = p.y - joy.by;
@@ -640,7 +649,8 @@
       var action=actionKeys[e.code];
       if((action==='spell1'||action==='spell2'||action==='dash') &&
          CC.state.mode==='dungeon'&&!paused && !uiOpen()){
-        call('SpellCharge','begin',action,0,0);
+        if(call('SpellCharge','begin',action,0,0) && lastMouseWorld)
+          call('SpellCharge','worldAim',lastMouseWorld.x,lastMouseWorld.y);
       }else pressAction(action);
     }
   });
