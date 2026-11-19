@@ -81,7 +81,7 @@ function build(floor){
   ['raven','bat','vine','rootling','bat'],
   ['sporeling','bat','horror','mosslurker','raven'],
   ['horror','vine','raven','mosslurker','horror'],
-  ['horror','bat','mosslurker','raven','heartroot','horror']
+  ['horror','bat','mosslurker','raven','horror','horror']
  ];
  for(i=0;i<samples.length;i++){
    var node=samples[i],cx=(node[0]+.5)*T,cy=(node[1]+.5)*T;
@@ -89,7 +89,8 @@ function build(floor){
    points.push({x:cx+(i%2?25:-25),y:cy+(i%3-1)*18,
      type:typesByFloor[floor-1][i%typesByFloor[floor-1].length]});
  }
- if(floor===5)points.push({x:(nodes[5][0]+.5)*T,y:(nodes[5][1]+1.3)*T,type:'horror'});
+ // Unique guardian stands just before the nest, on the reachable main bough.
+ if(floor===5)points.push({x:goal.x-3.5*T,y:goal.y,type:'weaselDemon',miniBoss:true});
  for(i=0;i<18+floor*3;i++){
    var nd=nodes[i%nodes.length],px=(nd[0]+.5)*T+(nrand(i,floor)-.5)*110,
       py=(nd[1]+.5)*T+(nrand(i*3,floor)-.5)*94;
@@ -181,7 +182,16 @@ A.populate=function(floor){
  if(!m||!m.treeAscent)return;
  for(var i=0;i<m.enemySpawns.length;i++){
    var pt=m.enemySpawns[i],enemy=E.spawn(pt.type,pt.x,pt.y,floor||1,{awake:false});
-   if(enemy){enemy.asleep=true;enemy.territory='tree';if(floor>=4&&i===m.enemySpawns.length-1){enemy.maxHp=Math.ceil(enemy.maxHp*1.45);enemy.hp=enemy.maxHp;}}
+   if(enemy){
+     enemy.asleep=true;enemy.territory='tree';
+     if(pt.miniBoss){
+       enemy.miniBoss=true;enemy.weaselPhase=1;enemy.weaselCd=1.1;
+       enemy.weaselCycle=0;enemy.xp=160;
+     }
+     if(floor===4&&i===m.enemySpawns.length-1){
+       enemy.maxHp=Math.ceil(enemy.maxHp*1.45);enemy.hp=enemy.maxHp;
+     }
+   }
  }
 };
 A.canAdvance=function(){
@@ -216,10 +226,21 @@ A.drawHud=function(c,w,h){
  c.fillStyle='#f2d7a1';c.font='bold 12px Georgia';
  c.fillText('ANCIENT TREE — FLOOR '+stage+' / 5',w/2,57);
  c.fillStyle='#b6c99d';c.font='11px Georgia';
- var caption=!A.canAdvance()?'Guardians remain':
+ var veyr=CC.TreeWeasel&&CC.TreeWeasel.status&&CC.TreeWeasel.status();
+ var caption=veyr?'VEYR, THE HOLLOW MAW — '+(
+   veyr.phase===3?'DESPERATE RAGE':veyr.phase===2?'RAGING':'GUARDING THE NEST'):
+   !A.canAdvance()?'Guardians remain':
    stage===5?(CC.EggQuest&&CC.EggQuest.hasGathered()?'Eggs secured · descend [F]':'Collect the orphaned eggs [F]'):
    'Climb to the next bough [F]';
  c.fillText(caption,w/2,72);
+ if(veyr){
+   var pct=Math.max(0,veyr.hp/Math.max(1,veyr.maxHp));
+   var width=Math.min(235,w-84),left=(w-width)/2;
+   c.fillStyle='rgba(22,8,19,.83)';c.fillRect(left,82,width,11);
+   c.fillStyle=veyr.phase===3?'#d82a46':veyr.phase===2?'#b34274':'#85567e';
+   c.fillRect(left+1,83,(width-2)*pct,9);
+   c.strokeStyle='#d7a7b7';c.strokeRect(left,82,width,11);
+ }
  c.restore();
 };
 A.drawEggs=function(c,cam){
