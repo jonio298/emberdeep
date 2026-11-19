@@ -153,8 +153,33 @@
     };
   }
 
+  // In-memory session worlds: preserve dead monsters, opened loot and map geometry
+  // across death, travel to town and revisits. A full reload resets these encounters.
+  var worldCache={};
+  function key(area,floor,treeFloor){return area+':'+(area==='tree-ascent'?(treeFloor||1):(floor||1));}
+  function rememberWorld(){
+    var s=CC.state,E=CC.Enemies,L=CC.Loot;
+    if(s.map&&E&&(s.mode==='dungeon'||s.mode==='dead')&&s.area!=='town'){
+      worldCache[key(s.area,s.floor,s.treeFloor)]={
+        map:s.map,enemies:E.list.slice(),remains:E.remains||[],gore:E.gore||[],
+        piles:E.piles||[],loot:L&&L.drops?L.drops.slice():[]
+      };
+    }
+  }
+  function clearWorldCache(){worldCache={};}
+  CC.sessionStatus=function(){return {visited:Object.keys(worldCache)};};
+  CC.respawnHere=function(){
+    var s=CC.state,p=s.player,E=CC.Enemies;
+    if(!p||s.mode!=='dead'||!s.map)return false;
+    s.mode='dungeon';p.hp=p.maxHp;p.mana=p.maxMana;
+    p.invuln=2;p.iframes=2;p.slowT=0;p.grabbedBy=null;p.grabT=0;
+    p.x=s.map.spawn.x;p.y=s.map.spawn.y;
+    if(E){E.projectiles.length=0;E.zones=[];}
+    resetInputHeld();snapCamera();call('SaveGame','save');return true;
+  };
   /* ---------- mode switching ---------- */
   CC.setMode = function (mode) {
+    if(mode==='town')rememberWorld();
     CC.state.mode = mode;
     paused = false;
     call('UI', 'close');
@@ -173,7 +198,7 @@
     var s = CC.state;
     s.area = area === 'plains' && has('Plains', 'generate') ? 'plains' : area === 'forest' && has('Forest', 'generate') ? 'forest' : 'cave'; // 'forest' = the Giant Forest, then the Rolling Plains, in front of floor 1
     s.floor = Math.max(1, floor | 0 || 1);
-    s.kills = 0; s.runGold = 0; s.startGold = s.gold;
+    if(!s.startGold)s.startGold=s.gold;
     s.mode = 'dungeon';
     paused = false;
     resetInputHeld();
@@ -191,6 +216,26 @@
   };
   CC.nextFloor = function () {
     call('CriticalScene', 'reset');
+    if(CC.state.area==='tree-ascent'){
+      if(!call('TreeAscent','canAdvance'))return;
+      if((CC.state.treeFloor||1)<5){
+        rememberWorld();CC.state.treeFloor=(CC.state.treeFloor||1)+1;
+        loadFloor();call('SaveGame','save');
+      }
+      return;
+    }
+    if(CC.state.area==='forest'&&CC.EggQuest&&CC.EggQuest.stage()==='climbing'){
+      rememberWorld();CC.state.area='tree-ascent';CC.state.treeFloor=1;
+      loadFloor();call('SaveGame','save');return;
+    }
+    if(CC.state.area==='forest'&&CC.EggQuest&&!CC.EggQuest.tunnelUnlocked()){
+      var hero=CC.state.player;
+      if(hero)CC.fx.text(hero.x,hero.y-28,
+        CC.EggQuest.stage()==='unstarted'?'SPEAK TO SISTER ALDER':'TAKE THE EGGS TO TOWN',
+        '#ecae7d',12);
+      return;
+    }
+    rememberWorld();
     if (CC.state.area === 'forest' && has('TreeTunnel', 'generate')) {
       CC.state.area = 'tree-tunnel';
       CC.fx.text(cam.x + cam.w / 2, cam.y + cam.h / 2, 'INSIDE THE ANCIENT TREE', '#b9df8d', 16);
@@ -226,25 +271,41 @@
   CC.returnToTown = function () { CC.state.fromForest = CC.state.mode === 'dungeon'; CC.setMode('town'); };
 
   function loadFloor() {
-    var s = CC.state, p = s.player, map;
-    particles.length = 0; texts.length = 0; decals.length = 0;
-    if (s.area === 'forest') { map = call('Forest', 'generate'); CC.Dungeon = map; } // CC.Dungeon is whichever map the player is in
-    else if (s.area === 'plains') { map = call('Plains', 'generate'); CC.Dungeon = map; }
+    var s=CC.state,p=s.player,map,E=CC.Enemies,L=CC.Loot,
+        cached=worldCache[key(s.area,s.floor,s.treeFloor)];
+    particles.length=0;texts.length=0;decals.length=0;
+    if(cached&&cached.map){
+      map=cached.map;CC.Dungeon=map;s.map=map;
+      if(s.area==='forest'&&CC.Forest)CC.Forest.map=map;
+      if(s.area==='plains'&&CC.Plains)CC.Plains.map=map;
+      if(E){E.list=cached.enemies;E.remains=cached.remains;E.gore=cached.gore;
+        E.piles=cached.piles;E.zones=[];E.projectiles.length=0;}
+      if(L)L.drops=cached.loot;
+      if(p&&map.spawn){p.x=map.spawn.x;p.y=map.spawn.y;}
+      snapCamera();return;
+    }
+    if (s.area === 'forest') { map = call('Forest', 'generate',s.resumeSeed); CC.Dungeon = map; } // CC.Dungeon is whichever map the player is in
+    else if (s.area === 'plains') { map = call('Plains', 'generate',s.resumeSeed); CC.Dungeon = map; }
+    else if (s.area === 'tree-ascent') { map = call('TreeAscent','generate',s.treeFloor||1); CC.Dungeon=map; }
     else if (s.area === 'tree-tunnel') { map = call('TreeTunnel', 'generate'); CC.Dungeon = map; }
     else { CC.Dungeon = CC.CaveDungeon; map = call('Dungeon', 'generate', s.floor); }
     s.map = map || null;
+    s.resumeSeed=null;
     if(s.area==='plains')call('Waypoints','discover','plains',map);
     call('Breakables','populate',s.area,map);
     var sp = map && (map.spawn || map.start);
     if (p && sp) { p.x = sp.x; p.y = sp.y; }
     else if (p && p.stub) { p.x = 0; p.y = 0; }
-    call('Enemies', 'spawnForFloor', s.floor, (map && (map.enemySpawns || map.spawns)) || []);
+    if(s.area==='tree-ascent')call('TreeAscent','populate',s.treeFloor||1);
+    else call('Enemies', 'spawnForFloor', s.floor, (map && (map.enemySpawns || map.spawns)) || []);
     if (s.area === 'tree-tunnel') call('TreeTunnel', 'populate', s.floor);
     snapCamera();
   }
 
   function startGame(classId) {
     var s = CC.state;
+    clearWorldCache();call('SaveGame','clear');call('EggQuest','reset');
+    s.gold=0;s.inventory=[];s.potions=2;s.bridgeDown=false;s.treeFloor=1;
     call('Camp', 'clear'); // a fresh hero must not inherit a previous run's fence or checkpoint
     call('Waypoints','reset');
     s.classId = classId; s.kills = 0; s.runGold = 0; s.floor = 1;
@@ -254,6 +315,13 @@
     CC.setMode('town');
   }
 
+  CC.leaveTreeAscent=function(){
+    var s=CC.state;
+    if(s.area!=='tree-ascent'||!CC.EggQuest||!CC.EggQuest.hasGathered())return false;
+    rememberWorld();s.area='forest';s.floor=1;loadFloor();
+    if(s.map&&s.map.stairs&&s.player){s.player.x=s.map.stairs.x;s.player.y=s.map.stairs.y+55;}
+    call('SaveGame','save');return true;
+  };
   function playerDead() {
     var p = CC.state.player;
     return p && p.hp <= 0;
