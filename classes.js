@@ -278,7 +278,7 @@
     var p = hero();
     if (!alive(e)) return 0;
     opts = opts || {};
-    var crit = !opts.noCrit && p && Math.random() < p.stats.crit;
+    var crit = !opts.noCrit && p && (typeof opts.preRolledCrit === 'boolean' ? opts.preRolledCrit : Math.random() < p.stats.crit);
     var back = false;
     if (p && p.classId === 'thief' && !opts.minion && type !== 'poison' && type !== 'fire') {
       var behind = typeof e.face === 'number' && e.face !== 0 && Math.abs(p.x - e.x) > 2 && (p.x - e.x) * e.face < 0;
@@ -290,7 +290,7 @@
     var viaEnemies = CC.Enemies && typeof CC.Enemies.damage === 'function';
     if (viaEnemies) { try { CC.Enemies.damage(e, dmg, type); } catch (err) { e.hp -= dmg; } }
     else e.hp -= dmg;
-    fxText(e.x, e.y - (e.r || 8) - 4, crit ? dmg + '!' : String(dmg), crit ? '#ffd24a' : back ? '#7de0b8' : '#fff', crit ? 17 : 10);
+    fxText(e.x, e.y - (e.r || 8) - 4, crit ? dmg + '!' : String(dmg), crit ? '#f04c57' : back ? '#7de0b8' : '#fff', crit ? 16 : 10);
     fxBurst(e.x, e.y, crit ? '#ffd24a' : '#ffffff', crit ? 14 : 4, crit ? 110 : 60);
     if (p && !opts.minion && (type === 'slash' || type === 'melee' || type === 'physical') &&
         Math.hypot(p.x - e.x, p.y - e.y) < 72 && !(e.ghost)) {
@@ -311,8 +311,8 @@
     }
     if (crit && opts.basicAttack && !opts.minion && CC.CriticalScene) {
       CC.CriticalScene.trigger({ kind: opts.attackKind === 'projectile' ? 'projectile' : 'slash',
-        x: e.x, y: e.y, r: e.r || 9, angle: opts.angle || 0,
-        color: opts.color || '#e5c5b3', damage: dmg });
+        heroClass: p.classId, x: e.x, y: e.y, r: e.r || 9, angle: opts.angle || 0,
+        color: opts.color || '#e5c5b3', damage: dmg, sourceX: p.x, sourceY: p.y });
     }
     if (crit) {
       fxFlash('#ffe9a0', 0.08);
@@ -448,6 +448,16 @@
     var pr = { x: sx, y: sy, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed,
       life: life, dmg: p.stats.dmg * dmgMul, r: r, kind: kind, type: type, col: col, a: a, hit: [] };
     if (extra) for (var k in extra) pr[k] = extra[k];
+    // Pre-roll only basic projectiles, so crit visuals are present at launch and
+    // this exact result is reused on hit. Spells/AOE retain the old hit-time rule.
+    if ((kind === 'bolt' || kind === 'shard') && p.stats) {
+      pr.preRolledCrit = Math.random() < p.stats.crit;
+      pr.critHero = p.classId;
+      if (pr.preRolledCrit) {
+        pr.col = p.classId === 'wizard' ? '#52ceff' : '#b67bff';
+        pr.critAge = 0;
+      }
+    }
     if (projs.length < 80) projs.push(pr);
     return pr;
   }
@@ -628,6 +638,7 @@
   function updateProjectiles(p, dt) {
     for (var i = projs.length - 1; i >= 0; i--) {
       var s = projs[i], end = false, target = null;
+      if (s.preRolledCrit) s.critAge = (s.critAge || 0) + dt;
       s.life -= dt;
       // sub-step so fast shots can't tunnel; on a wall, stop at the last open point (the wall edge)
       var mvx = s.vx * dt, mvy = s.vy * dt, nSub = Math.max(1, Math.ceil(Math.max(Math.abs(mvx), Math.abs(mvy)) / 3));
@@ -667,7 +678,8 @@
       } else if (target) {
         hitEnemy(target, s.dmg, s.type, {
           basicAttack: s.kind === 'bolt' || s.kind === 'shard',
-          attackKind: 'projectile', angle: s.a, color: s.col
+          attackKind: 'projectile', angle: s.a, color: s.col,
+          preRolledCrit: s.preRolledCrit
         });
         fxBurst(s.x, s.y, s.col, 5, 60);
       }
@@ -936,6 +948,10 @@
   }
 
   function drawProj(c, s, cam) {
+    if (s.preRolledCrit && CC.CriticalScene && CC.CriticalScene.drawProjectile) {
+      CC.CriticalScene.drawProjectile(c, s, cam);
+      return;
+    }
     var x = s.x - cam.x, y = s.y - cam.y;
     if (s.kind === 'shard') {
       c.save(); c.translate(x, y); c.rotate(s.a);
