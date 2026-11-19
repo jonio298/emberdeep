@@ -420,12 +420,29 @@
     });
   }
 
+  // Walking into the hollow tree (forest -> plains) or the barrow (plains -> caves) fades through a short tunnel, then the next area loads.
+  var tunnel = null;
+  function updateTunnel(dt) {
+    tunnel.t += dt;
+    if (!tunnel.swapped && tunnel.t >= 0.7) { tunnel.swapped = true; CC.nextFloor(); }
+    if (tunnel.t >= 1.5) tunnel = null;
+  }
+  function drawTunnel() {
+    var t = tunnel.t, a = t < 0.7 ? t / 0.7 : Math.max(0, 1 - (t - 0.7) / 0.8);
+    var g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.08, W / 2, H / 2, Math.hypot(W, H) * 0.6);
+    g.addColorStop(0, '#2a1608'); g.addColorStop(0.45, '#120a05'); g.addColorStop(1, '#030201');
+    ctx.globalAlpha = Math.min(1, a); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    label(tunnel.label, W / 2, H / 2, 22, '#ffd36b');
+    ctx.globalAlpha = 1;
+  }
+
   function update(dt) {
     var s = CC.state, p = s.player;
     time += dt;
     call('UI', 'update', dt);
     if (uiOpen() !== uiWas) { uiWas = uiOpen(); resetInputHeld(); }
     if (paused || uiWas) return;
+    if (tunnel) { updateTunnel(dt); return; }
     pollInput();
     if (CC.input.interact && playing()) { interact(); return; }
 
@@ -439,7 +456,12 @@
         call('Enemies', 'update', dt);
         call('Charge', 'update', dt, !!(keys.Space || held.attack > 0)); // hold attack to charge; a tap is the normal attack
         call('Loot', 'update', dt);
-        // Stairs and chests are activated explicitly by F / Enter or USE.
+        // The hollow tree and the barrow are walked into; the cave stairs and chests still use F / Enter or USE.
+        var ex = s.map && s.map.stairs;
+        if (ex && p && !p.stub && (s.area === 'forest' || s.area === 'plains') && Math.hypot(p.x - ex.x, p.y - ex.y) <= 28 && !playerDead()) {
+          tunnel = { t: 0, swapped: false, label: s.area === 'forest' ? 'INSIDE THE HOLLOW TREE...' : 'DOWN INTO THE BARROW...' };
+          resetInputHeld();
+        }
         if (playerDead()) { s.mode = 'dead'; resetInputHeld(); CC.fx.shake(10); }
       }
       if (s.mode !== 'town' && s.mode !== 'dungeon') return;
@@ -753,6 +775,7 @@
     if (m === 'title') { drawTitle(); return; }
     drawWorld();
     if (m === 'town' || m === 'dungeon' || m === 'dead') drawScreenFx();
+    if (tunnel && m === 'dungeon') drawTunnel();
     if (m === 'town' || m === 'dungeon') {
       drawHud(); drawControls();
       if (m === 'town') drawFallbackTownPanel();
