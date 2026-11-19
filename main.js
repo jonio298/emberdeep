@@ -786,7 +786,7 @@
             s.area === 'tree-tunnel' ? 'EMERGING INTO THE PLAINS...' : 'DOWN INTO THE BARROW...' };
           resetInputHeld();
         }
-        if (playerDead()) { s.mode = 'dead'; resetInputHeld(); CC.fx.shake(10); }
+        if (playerDead()) { s.mode = 'dead'; resetInputHeld(); call('SpellCharge','clear'); CC.fx.shake(10); }
       }
       if (s.mode !== 'town' && s.mode !== 'dungeon') return;
     }
