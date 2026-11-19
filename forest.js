@@ -231,7 +231,8 @@
     ctx.fillStyle = '#2a1209'; ctx.fillRect(sx - 32, sy - 3, 64, 3); // root lip
     var p = CC.state && CC.state.player;
     if (p && Math.hypot(p.x - (F.map ? F.map.stairs.x : 0), p.y - (F.map ? F.map.stairs.y : 0)) < 60) {
-      ctx.font = 'bold 10px Georgia, serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffe08a'; ctx.fillText('[F] Enter the hollow', sx, sy + 22); ctx.textAlign = 'left';
+      ctx.font = 'bold 10px Georgia, serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffe08a'; ctx.fillText(CC.EggQuest&&CC.EggQuest.tunnelUnlocked()?
+        '[F] Tunnel to the Plains':'[F] Hollow sealed — rescue eggs',sx,sy+22); ctx.textAlign = 'left';
     }
   }
 
@@ -541,8 +542,10 @@
     // Nothing moves the main hollow or changes its tunnel destination.
     var side = trails.filter(function(a){return a.length >= 10;})
       .sort(function(a,b){
-        var aa=a[a.length-1],bb=b[b.length-1];
-        return Math.hypot(bb.x-stx,bb.y-sty)-Math.hypot(aa.x-stx,aa.y-sty);
+        // Place the quest spur partway through the forest, rather than right
+        // beside the spawn or the main tunnel at the far end.
+        var aa=a[a.length-1],bb=b[b.length-1],targetY=H*.42;
+        return Math.abs(aa.y-targetY)-Math.abs(bb.y-targetY);
       })[0];
     if(!side)return null;
     var tip=side[side.length-1],sx0=Math.round(tip.x),sy0=Math.round(tip.y);
