@@ -18,6 +18,25 @@ function heroKind(o){
  var v=o.heroClass|| (o.kind==='slash'?'swordsman':'wizard');
  return LENGTHS[v]?v:(o.kind==='slash'?'swordsman':'wizard');
 }
+function snapshot(enemy){
+ if(!enemy)return null;
+ // Preserve original monster art, dismemberment and damage, even if the
+ // physical actor dies while the slowed cinematic is playing.
+ var o=Object.assign({},enemy);
+ o.dead=false;o.deadT=0;o.hidden=false;o.hp=Math.max(1,o.hp||0);
+ return o;
+}
+function appendTargets(scene,list){
+ if(!scene||!Array.isArray(list))return;
+ for(var j=0;j<list.length;j++){
+   var e=list[j];if(!e)continue;
+   var id=e.id;
+   if(scene.targets.some(function(t){return t.id===id;}))continue;
+   var shot=snapshot(e);
+   if(shot)scene.targets.push(shot);
+ }
+}
+function addTargets(list){if(active)appendTargets(active,list);}
 function trigger(hit){
  if(!hit||!isFinite(hit.x)||!isFinite(hit.y)||['slash','projectile'].indexOf(hit.kind)<0)return false;
  if(!(CC.state&&CC.state.mode==='dungeon'))return false;
@@ -26,8 +45,12 @@ function trigger(hit){
    x:hit.x,y:hit.y,sourceX:Number.isFinite(hit.sourceX)?hit.sourceX:hit.x-30,
    sourceY:Number.isFinite(hit.sourceY)?hit.sourceY:hit.y,
    angle:hit.angle||0,r:clamp(hit.r||10,5,30),
-   color:hit.color||'#f0e0d2',damage:hit.damage||0,duration:LENGTHS[id]
+   color:hit.color||'#f0e0d2',damage:hit.damage||0,duration:LENGTHS[id],
+   radius:hit.radius||44,targets:[]
  };
+ appendTargets(o,hit.targets);
+ if(!o.targets.length)appendTargets(o,[{id:-1,x:o.x,y:o.y,r:o.r,anim:0,dead:false,face:1,
+   type:'ghoul',color:'#917578',hp:1,maxHp:1}]);
  if(!active){active=o;now=0;}
  else if(queue.length<5)queue.push(o);
  return true;
@@ -38,10 +61,23 @@ function update(dt){
  if(now>=active.duration){active=queue.shift()||null;now=0;}
 }
 function reset(){active=null;queue.length=0;now=0;}
-function view(){
+function view(w,h){
  if(!active)return null;
  var k=reduced?0:envelope();
- return {x:active.x,y:active.y,scale:1+.47*k,blend:k};
+ var o=active,minX=o.sourceX,maxX=o.sourceX,minY=o.sourceY,maxY=o.sourceY;
+ for(var i=0;i<o.targets.length;i++){
+   var q=o.targets[i];minX=Math.min(minX,q.x);maxX=Math.max(maxX,q.x);
+   minY=Math.min(minY,q.y);maxY=Math.max(maxY,q.y);
+ }
+ var desired=1+.47*k,zoom=desired;
+ // Preserve the dramatic zoom but frame ALL actual participants, not just
+ // the primary target. Avoid cropping the hero out on longer blade reaches.
+ if(w&&h&&k>0){
+   var maxScale=Math.min(w/(maxX-minX+72),h/(maxY-minY+84));
+   zoom=1+(Math.min(desired,Math.max(1,maxScale))-1)*k;
+ }
+ return {x:(minX+maxX)/2,y:(minY+maxY)/2,
+   scale:zoom,blend:k};
 }
 function rate(){return active&&!reduced?1-.76*envelope():1;}
 function stroke(c,x1,y1,x2,y2,color,width){
@@ -78,58 +114,34 @@ function hitBurst(c,ox,oy,index,red){
  }
  c.restore();
 }
-function swordPose(c,id,range,brace,thrust,pull){
- // This is an animated miniature of the Swordsman bracing his boots and shoulders,
- // then stabbing through the target and visibly pulling the weapon free.
- var right=range>0?1:-1;
- c.save();c.scale(right,1);
- oval(c,-33,15,23,4,'rgba(0,0,0,.42)');
- // boots plant wider during brace
- stroke(c,-40,6,-47,15,'#493a31',6);
- stroke(c,-30,6,-25-brace*5,15,'#6e5340',6);
- stroke(c,-47,15,-54,15,'#c9a36e',2);
- stroke(c,-26-brace*5,15,-20-brace*5,15,'#b58b59',2);
- // trailing short red cloak and leather-plate
- c.fillStyle='#6c2532';c.beginPath();c.moveTo(-37,-27);
- c.lineTo(-58-brace*7,-23);c.lineTo(-62+thrust*8,8);
- c.lineTo(-35,3);c.closePath();c.fill();
- oval(c,-34-thrust*6,-6,10,18,'#38454a');
- oval(c,-34-thrust*6,-10,9,13,'#79858c');
- stroke(c,-40-thrust*6,-17,-33-thrust*6,0,'#c0b9ab',2);
- circle(c,-37-thrust*6,-30,7,'#d4ac87');
- // deliberate backwards lean, then forward driving shoulder
- stroke(c,-35-thrust*6,-23,-22+thrust*18-pull*3,-15,'#8c9091',7);
- oval(c,-22+thrust*18-pull*3,-15,5.4,4.8,'#d6b38e');
- // Blade is visibly sheathed BACK in brace, thrust INTO enemy, and withdrawn.
- var bladeBase=-16+thrust*19-pull*14,bladeEnd=bladeBase+24+thrust*25-pull*18;
- stroke(c,bladeBase,-14,bladeEnd,-14,'#455664',5);
- stroke(c,bladeBase+4,-15,bladeEnd,-15,'#f3f5e7',2.5);
- stroke(c,bladeBase+1,-20,bladeBase+1,-8,'#dbb579',3);
- c.restore();
-}
 function swordsman(c,o,t){
- var phase=t<.12?'brace':t<.29?'stab':t<.37?'lodged':t<.54?'withdraw':'fade';
- var brace=smooth(t/.12),thrust=smooth((t-.12)/.16);
- var pull=smooth((t-.37)/.16);
- var dir=Math.cos(o.angle)>=0?1:-1;
+ // The actual character and blue blade are drawn by Classes.drawCriticalHero.
+ // This overlay contains only the synchronized blade trail and TWO hit beats.
+ // 0-.13 kneel; .13-.28 stab; .28-.37 hold; .37-.54 yank; .54-.73 reset.
  c.save();c.rotate(o.angle);
- // Hero leans in from the source side, zoom stays centered on the enemy itself.
- swordPose(c,'swordsman',dir,brace,thrust,pull);
- if(t>.15&&t<.57){
-   var penetration=clamp((t-.15)/.14,0,1)*(1-smooth((t-.4)/.14));
-   stroke(c,-14,-4,19+penetration*12,-4,'#e8e0d1',2.5);
-   stroke(c,-12,-2,12+penetration*8,-2,'#9b112c',4);
-   if(t>.185&&t<.34)hitBurst(c,6,0,(t-.185)/.085,true);
-   if(t>.415&&t<.57)hitBurst(c,-3,-1,(t-.415)/.085,true);
-   for(var i=0;i<12;i++){
-     var age=t-.20-i*.012,prog=clamp(age/.35,0,1);
-     if(age<0)continue;
-     circle(c,Math.sin(i*11.7)*13+prog*(i-6)*2,
-       Math.cos(i*7.5)*3+prog*prog*(12+i),1+(i%3)*.45,
-       i%3===0?'#eb5164':'#8a1128');
-   }
+ var drive=smooth((t-.13)/.14),pull=smooth((t-.375)/.155);
+ if(t>.12&&t<.57){
+   var speed=smooth((t-.12)/.11)*(1-smooth((t-.49)/.09));
+   c.shadowColor='#239bff';c.shadowBlur=12*speed;
+   stroke(c,-26-drive*10+pull*9,-3,
+     17+drive*22-pull*13,-3,'#194fba',6);
+   stroke(c,-26-drive*10+pull*9,-5,
+     17+drive*22-pull*13,-5,'#7adeff',2.6);
+   stroke(c,-20-drive*10+pull*9,-6,
+     17+drive*22-pull*13,-6,'rgba(236,251,255,.9)',1.4);
+   c.shadowBlur=0;
  }
- // hit #1 at penetration, hit #2 on withdrawal: PURE PRESENTATION.
+ // First impact: blade penetrates. Second: the withdrawal tears it loose.
+ if(t>.185&&t<.32)hitBurst(c,0,0,(t-.185)/.095,true);
+ if(t>.405&&t<.57)hitBurst(c,-4,1,(t-.405)/.11,true);
+ for(var i=0;i<15;i++){
+   var age=t-.205-i*.011,prog=clamp(age/.38,0,1);
+   if(age<0||age>.44)continue;
+   var a=i*2.39996+o.angle,vel=12+(i%5)*4;
+   circle(c,Math.cos(a)*vel*prog+Math.sin(i*9)*5,
+     Math.sin(a)*vel*prog+prog*prog*(7+i%4*5),1+(i%3)*.45,
+     i%3?'#99152c':'#f15c69');
+ }
  c.restore();
 }
 function thief(c,o,t){
@@ -247,14 +259,48 @@ function necromancer(c,o,t){
 }
 function drawWorld(c,cam){
  if(!active)return;
- var o=active,t=now,fade=smooth(t/.055)*smooth((o.duration-t)/.12);
- if(fade<.003)return;
- var x=o.x-cam.x,y=o.y-cam.y;
- c.save();c.translate(x,y);c.globalAlpha=fade;
+ var o=active,t=now,fade=smooth(t/.095)*smooth((o.duration-t)/.18);
+ if(fade<.001)return;
+ c.save();
+ // Hide all other combatants and terrain under a true black cinematic veil.
+ // Smooth opacity eases in and out instead of flashing instant black.
+ c.globalAlpha=.995*fade;c.fillStyle='#000005';
+ c.fillRect(0,0,cam.w,cam.h);
+ c.globalAlpha=fade;
+ // Only participants actually struck by the crit, plus our original hero.
+ var E=CC.Enemies;
+ if(E&&E.drawCriticalTargets)E.drawCriticalTargets(c,cam,o.targets);
+ var cp={
+   heroClass:o.heroClass,sourceX:o.sourceX,sourceY:o.sourceY,
+   angle:o.angle,distance:Math.hypot(o.x-o.sourceX,o.y-o.sourceY),
+   kneel:smooth(t/.125)*(1-smooth((t-.54)/.15)),
+   drive:smooth((t-.13)/.145)*(1-smooth((t-.38)/.16)),
+   withdraw:smooth((t-.38)/.15)
+ };
+ if(CC.Classes&&CC.Classes.drawCriticalHero)CC.Classes.drawCriticalHero(c,cam,cp);
+ // Primary impact: sharp, hero-specific signature animation.
+ c.save();c.translate(o.x-cam.x,o.y-cam.y);c.globalAlpha=fade;
  if(o.heroClass==='swordsman')swordsman(c,o,t);
  else if(o.heroClass==='thief')thief(c,o,t);
  else if(o.heroClass==='necromancer')necromancer(c,o,t);
  else wizard(c,o,t);
+ c.restore();
+ // Every nearby target that was actually hit gets a synced shock/impact flash,
+ // while all unrelated monsters remain completely hidden.
+ for(var j=0;j<o.targets.length;j++){
+   var q=o.targets[j];
+   if(Math.hypot(q.x-o.x,q.y-o.y)<2)continue;
+   var age=o.kind==='slash'? t-.20 : t-.22;
+   if(age<0||age>.24)continue;
+   c.save();c.translate(q.x-cam.x,q.y-cam.y);
+   c.globalAlpha=fade;
+   var power=smooth(age/.13)*smooth((.24-age)/.12);
+   glow(c,0,0,13+power*25,o.kind==='slash'?'rgba(248,67,83,.58)':
+     o.heroClass==='necromancer'?'rgba(169,79,231,.55)':'rgba(70,181,255,.6)');
+   arc(c,0,0,7+power*23,0,TAU,o.kind==='slash'?'#e8324c':
+     o.heroClass==='necromancer'?'#ae77ed':'#8ddfff',2.5*(1-power)+.7);
+   c.restore();
+ }
  c.restore();
 }
 function drawScreen(c,W,H){
@@ -321,7 +367,8 @@ function drawProjectile(c,s,cam){
  c.restore();
 }
 CC.CriticalScene={
- trigger:trigger,update:update,reset:reset,view:view,rate:rate,
+ trigger:trigger,addTargets:addTargets,update:update,reset:reset,view:view,rate:rate,
+ isActive:function(){return !!active;},
  drawWorld:drawWorld,drawScreen:drawScreen,drawProjectile:drawProjectile,
  status:function(){return {active:!!active,kind:active&&active.kind,
   heroClass:active&&active.heroClass,queued:queue.length,time:now,duration:L()};}
