@@ -1055,6 +1055,8 @@
 
   // Critical cutscenes reuse the SAME enemy sprites and accumulated gore/wounds as
   // regular gameplay, but never redraw unrelated enemies, corpses, HUD or scenery.
+  // Plain sprite (no shadow/aura/threat ring) for the kill-shot finishers to slice or shatter.
+  E.drawSprite = function (ctx, e, x, y) { drawEnemy(ctx, e, x, y, this._time); };
   E.drawCriticalTargets = function (ctx, cam, participants, scene, time) {
     if(!Array.isArray(participants))return;
     var seen=[],t=this._time;
@@ -1175,18 +1177,20 @@
   }
 
   function drawEnemy(ctx, e, sx, sy, t) {
+    // A kill-shot victim is rendered by the finisher cinematic; its corpse never pops back in.
+    if (e.dead && e._finisher) return;
     ctx.save();
     var dead = e.dead, al = dead ? Math.max(0, 1 - e.deadT / 0.6) : 1, bob = Math.sin(e.anim * 8) * 1.2;
     ctx.globalAlpha = e.ghost ? al * (e.eth ? 0.3 : 0.8) : al;
     var sc = dead ? 1 - e.deadT * 0.5 : 1;
-    if (e.elite && !dead) { // elite aura
+    if (e.elite && !dead && !e._cine) { // elite aura
       var ac = AFFIX_COLOR[e.affixes[0]];
       ctx.strokeStyle = ac; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.6 + 0.3 * Math.sin(t * 5); ctx.beginPath(); ctx.arc(sx, sy, e.r + 4, 0, PI2); ctx.stroke(); ctx.globalAlpha = al;
     }
-    ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(sx, sy + e.r * 0.8, e.r * 0.9, e.r * 0.4, 0, 0, PI2); ctx.fill();
+    if (!e._cine) { ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(sx, sy + e.r * 0.8, e.r * 0.9, e.r * 0.4, 0, 0, PI2); ctx.fill(); }
     // Threat recognition: a restrained red floor circle only once the monster approaches.
     var nearHero=playerOf(), alertRange=e.r+(nearHero&&nearHero.r||9)+34;
-    if (!dead && nearHero && Math.hypot(nearHero.x-e.x,nearHero.y-e.y)<=alertRange) {
+    if (!dead && !e._cine && nearHero && Math.hypot(nearHero.x-e.x,nearHero.y-e.y)<=alertRange) {
       ctx.save();
       ctx.globalAlpha=.39+.15*Math.sin(t*7+e.anim);
       ctx.strokeStyle=e.state==='telegraph'?'#f66c61':'#c92838';

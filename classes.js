@@ -347,6 +347,12 @@
       if (back) { dmg *= p.flags.cutthroat ? 2.2 : 1.5; if (p.ambushT > 0) { p.ambushT = 0; crit = true; } }
     }
     if (crit) dmg *= p.stats.critDmg;
+    // PERFECT CRITICAL (kill shot): a basic-attack crit on a non-boss already at 1/3 health
+    // or less has a 1-in-10 chance to be an instant kill with a class finisher cinematic.
+    var killShot = !!(crit && opts.basicAttack && !opts.minion && !opts.splash && p && !e.boss &&
+      e.maxHp > 0 && e.hp <= e.maxHp / 3 && Math.random() < 0.1 &&
+      CC.CriticalScene && CC.CriticalScene.canFinish && CC.CriticalScene.canFinish());
+    if (killShot) { e.rose = true; dmg = Math.max(dmg, Math.ceil(((e.hp || 1) + (e.shield || 0)) / 0.2) + 1); }
     dmg = Math.max(1, Math.round(dmg));
     var viaEnemies = CC.Enemies && typeof CC.Enemies.damage === 'function';
     if (viaEnemies) { try { CC.Enemies.damage(e, dmg, type); } catch (err) { e.hp -= dmg; } }
@@ -374,13 +380,16 @@
       var attackGroup = opts.attackGroup;
       var participants = criticalGroup(p,e,dmg,type,opts);
       if (CC.CriticalScene) {
-        if (attackGroup && attackGroup.cinematicStarted && CC.CriticalScene.addTargets)
+        if (attackGroup && attackGroup.cinematicStarted && CC.CriticalScene.addTargets) {
           CC.CriticalScene.addTargets(participants);
-        else {
+          if (killShot && CC.CriticalScene.finish && CC.CriticalScene.finish(e)) e._finisher = true;
+        } else {
           CC.CriticalScene.trigger({ kind: opts.attackKind === 'projectile' ? 'projectile' : 'slash',
             heroClass: p.classId, x: e.x, y: e.y, r: e.r || 9, angle: opts.angle || 0,
             color: opts.color || '#e5c5b3', damage: dmg, sourceX: p.x, sourceY: p.y,
-            targets:participants, radius:critRadius(p.classId) });
+            targets:participants, radius:critRadius(p.classId),
+            finisher: killShot ? e.id : null });
+          if (killShot) e._finisher = true;
           if (attackGroup) attackGroup.cinematicStarted = true;
         }
       }
@@ -393,6 +402,8 @@
     if (back && !crit) fxText(e.x, e.y - (e.r || 8) - 14, 'Backstab', '#7de0b8', 9);
     if (p && p.flags.venom && !opts.minion && type !== 'poison' && type !== 'fire' && alive(e)) ignite(e, 3, p.stats.dmg * 0.4, '#7dff5a', 'poison');
     if (p && !opts.minion && p.stats.lifesteal > 0) heal(p, dmg * p.stats.lifesteal);
+    if (killShot && alive(e) && CC.Enemies && CC.Enemies._kill) { e.hp = 0; try { CC.Enemies._kill(e); } catch (err) { /* normal damage already applied */ } }
+    if (killShot && !alive(e)) fxText(e.x, e.y - (e.r || 8) - 18, 'KILL SHOT', '#ff4b5c', 11);
     if (!alive(e)) onKill(e);
     return dmg;
   }

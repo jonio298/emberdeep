@@ -4,7 +4,7 @@
  */
 (function(root){
 'use strict';
-var CC=root.CC=root.CC||{}, TAU=Math.PI*2, now=0, active=null, queue=[];
+var CC=root.CC=root.CC||{}, TAU=Math.PI*2, now=0, active=null, queue=[], held=false;
 var reduced=!!(root.matchMedia&&root.matchMedia('(prefers-reduced-motion: reduce)').matches);
 var LENGTHS={swordsman:.73,thief:.59,wizard:.67,necromancer:.73};
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
@@ -53,12 +53,23 @@ function trigger(hit){
  appendTargets(o,hit.targets);
  if(!o.targets.length)appendTargets(o,[{id:-1,x:o.x,y:o.y,r:o.r,anim:0,dead:false,face:1,
    type:'ghoul',color:'#917578',hp:1,maxHp:1}]);
+ if(hit.finisher!=null&&CC.Finisher){
+   o.fin={id:hit.finisher,sx:0,sy:0};o.duration=CC.Finisher.LEN[id];
+ }
  if(!active){active=o;now=0;}
  else if(queue.length<5)queue.push(o);
  return true;
 }
+// Kill shots only play inside the dungeon, where the cinematic stage exists.
+function canFinish(){return !!(CC.Finisher&&CC.state&&CC.state.mode==='dungeon');}
+// A swipe's cinematic may already be running when a second target is perfectly killed.
+function finish(enemy){
+ if(!active||!enemy||!CC.Finisher||active.fin)return false;
+ active.fin={id:enemy.id,sx:0,sy:0};active.duration=CC.Finisher.LEN[active.heroClass]||2.8;now=0;
+ return true;
+}
 function update(dt){
- if(!active)return;
+ if(!active||held)return;
  now+=clamp(dt||0,0,.12);
  if(now>=active.duration){active=queue.shift()||null;now=0;}
 }
@@ -71,7 +82,7 @@ function view(w,h){
    var q=o.targets[i];minX=Math.min(minX,q.x);maxX=Math.max(maxX,q.x);
    minY=Math.min(minY,q.y);maxY=Math.max(maxY,q.y);
  }
- var desired=1+.47*k,zoom=desired;
+ var desired=1+(o.fin?.62:.47)*k,zoom=desired;
  // Preserve the dramatic zoom but frame ALL actual participants, not just
  // the primary target. Avoid cropping the hero out on longer blade reaches.
  if(w&&h&&k>0){
@@ -79,7 +90,7 @@ function view(w,h){
    zoom=1+(Math.min(desired,Math.max(1,maxScale))-1)*k;
  }
  // Tiny camera compression at the two steel impacts, without harsh shakes.
- var impulse=o.heroClass==='swordsman'?
+ var impulse=o.heroClass==='swordsman'&&!o.fin?
     Math.exp(-Math.pow((now-.23)/.042,2))*.04+
     Math.exp(-Math.pow((now-.46)/.044,2))*.035:0;
  return {x:(minX+maxX)/2,y:(minY+maxY)/2,
@@ -266,6 +277,7 @@ function necromancer(c,o,t){
 function drawWorld(c,cam){
  if(!active)return;
  var o=active,t=now,fade=smooth(t/.095)*smooth((o.duration-t)/.18);
+ var fin=!!(o.fin&&CC.Finisher&&CC.Finisher.build(o).ok);
  if(fade<.001)return;
  c.save();
  // Hide all other combatants and terrain under a true black cinematic veil.
@@ -275,7 +287,12 @@ function drawWorld(c,cam){
  c.globalAlpha=fade;
  // Only participants actually struck by the crit, plus our original hero.
  var E=CC.Enemies;
- if(E&&E.drawCriticalTargets)E.drawCriticalTargets(c,cam,o.targets,o,t);
+ var others=o.targets,victim=null;
+ if(fin){
+   others=o.targets.filter(function(q){if(q.id===o.fin.id){victim=q;return false;}return true;});
+   if(victim){o.fin.sx=victim.x-cam.x;o.fin.sy=victim.y-cam.y;}
+ }
+ if(E&&E.drawCriticalTargets)E.drawCriticalTargets(c,cam,others,o,t);
  var cp={
    heroClass:o.heroClass,sourceX:o.sourceX,sourceY:o.sourceY,
    angle:o.angle,distance:Math.hypot(o.x-o.sourceX,o.y-o.sourceY),
@@ -283,7 +300,9 @@ function drawWorld(c,cam){
    drive:smooth((t-.13)/.145)*(1-smooth((t-.38)/.16)),
    withdraw:smooth((t-.38)/.15)
  };
+ if(fin){var hp=CC.Finisher.heroPose(o,t);cp.kneel=hp.kneel;cp.drive=hp.drive;cp.withdraw=hp.withdraw;}
  if(CC.Classes&&CC.Classes.drawCriticalHero)CC.Classes.drawCriticalHero(c,cam,cp);
+ if(fin&&victim){CC.Finisher.drawVictim(c,o,t);c.restore();return;}
  // Primary impact: sharp, hero-specific signature animation.
  c.save();c.translate(o.x-cam.x,o.y-cam.y);c.globalAlpha=fade;
  if(o.heroClass==='swordsman')swordsman(c,o,t);
@@ -317,6 +336,11 @@ function drawScreen(c,W,H){
  c.globalAlpha=reduced?.08*fade:.11*e;
  c.fillStyle=active.kind==='slash'?'#a52a42':'#193e68';
  c.fillRect(0,0,W,H);
+ var fin=!!(active.fin&&active.fx&&active.fx.ok&&CC.Finisher);
+ if(fin){ // brief white flash on the instant of the perfect blow
+   var fl=CC.Finisher.flash(active.heroClass,t);
+   if(fl>.01&&!reduced){c.globalAlpha=Math.min(.75,fl*.7);c.fillStyle='#ffffff';c.fillRect(0,0,W,H);}
+ }
  if(!reduced){
    var h=11*e;
    c.globalAlpha=.64*e;c.fillStyle='#05050a';
@@ -329,8 +353,9 @@ function drawScreen(c,W,H){
  c.font='bold '+Math.round(22*scale)+'px Georgia,serif';
  c.shadowColor='#27020b';c.shadowBlur=10;
  c.lineWidth=3.8;c.strokeStyle='#2a0712';
- c.strokeText('CRITICAL HIT',W/2,textY);
- c.fillStyle='#ff334e';c.fillText('CRITICAL HIT',W/2,textY);
+ var label=fin?CC.Finisher.TITLE[active.heroClass]:'CRITICAL HIT';
+ c.strokeText(label,W/2,textY);
+ c.fillStyle=fin?CC.Finisher.colors(active.heroClass):'#ff334e';c.fillText(label,W/2,textY);
  c.shadowBlur=0;
  c.restore();
 }
@@ -373,8 +398,9 @@ function drawProjectile(c,s,cam){
  c.restore();
 }
 CC.CriticalScene={
- trigger:trigger,addTargets:addTargets,update:update,reset:reset,view:view,rate:rate,
+ trigger:trigger,canFinish:canFinish,finish:finish,addTargets:addTargets,update:update,reset:reset,view:view,rate:rate,
  isActive:function(){return !!active;},
+ debugSeek:function(t,hold){now=t;held=!!hold;},
  drawWorld:drawWorld,drawScreen:drawScreen,drawProjectile:drawProjectile,
  status:function(){return {active:!!active,kind:active&&active.kind,
   heroClass:active&&active.heroClass,queued:queue.length,time:now,
