@@ -216,6 +216,7 @@
 
   function startGame(classId) {
     var s = CC.state;
+    call('Camp', 'clear'); // a fresh hero must not inherit a previous run's fence or checkpoint
     s.classId = classId; s.kills = 0; s.runGold = 0; s.floor = 1;
     var p = call('Classes', 'create', classId);
     if (!p || typeof p !== 'object') p = stubPlayer(classId);
@@ -641,6 +642,7 @@
       var dcam = { x: cam.x, y: cam.y, w: cam.w, h: cam.h, zoom: 1 };
       if (has('Dungeon', 'draw')) call('Dungeon', 'draw', ctx, dcam); else drawFallbackFloor();
       drawDecals();
+      call('Camp', 'drawWorldMarker', ctx, cam); // grounded below the hero, not painted over them
       call('Loot', 'draw', ctx, cam);
       call('Enemies', 'draw', ctx, cam);
       call('Classes', 'draw', ctx, cam);
@@ -651,7 +653,7 @@
       if (has('Town', 'draw')) call('Town', 'draw', ctx, cam);
       else { drawFallbackFloor(); call('Classes', 'drawPlayer', ctx, cam); }
     }
-    if (CC.Camp && CC.Camp.drawWorldMarker) call('Camp', 'drawWorldMarker', ctx, cam);
+    if (s.mode === 'town') call('Camp', 'drawWorldMarker', ctx, cam);
     drawFallbackPlayer();
     for (var a = 0; a < particles.length; a++) {
       var q = particles[a], qa = Math.max(0, q.life / q.max);
