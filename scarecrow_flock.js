@@ -5,7 +5,7 @@
 'use strict';
 var CC=root.CC=root.CC||{},E=CC.Enemies;
 if(!E)return;
-var TAU=Math.PI*2, PEEK_TIME=1.52, ORBIT_TIME=1.55, CARRY_TIME=4.25;
+var PI=Math.PI, TAU=PI*2, PEEK_TIME=1.52, ORBIT_TIME=1.55, CARRY_TIME=4.25;
 var oldThink=E._think,oldUpdate=E.update,oldDraw=E.draw;
 function alive(e){return !!(e&&!e.dead&&e.hp>0);}
 function release(e){
