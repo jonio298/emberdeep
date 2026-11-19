@@ -122,6 +122,7 @@ function drag(x,y){
  active.drag=dd<9?null:{x:dx,y:dy,distance:dd};
 }
 function cancel(){active=null;}
+function clear(){active=null;effects.length=0;}
 function isActive(){return !!active;}
 function info(){
  if(!active)return null;
@@ -416,7 +417,7 @@ function drawPreview(c,cam){
  c.restore();
  c.restore();
 }
-SC.begin=begin;SC.drag=drag;SC.release=release;SC.cancel=cancel;SC.update=update;
+SC.begin=begin;SC.drag=drag;SC.release=release;SC.cancel=cancel;SC.clear=clear;SC.update=update;
 SC.isActive=isActive;SC.info=info;SC.draw=function(c,cam){drawEffects(c,cam);drawPreview(c,cam);};
 SC.definitions=DEFINITIONS;SC.chargeThreshold=ARM;SC.holdDuration=FULL;
 })(window);
