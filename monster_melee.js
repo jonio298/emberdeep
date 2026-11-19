@@ -27,7 +27,7 @@ E.update=function(dt){
   t+=dt;
   if(!p||p.hp<=0)return result;
   for(var i=0;i<arr.length;i++){
-    var e=arr[i];if(!e||e.dead||e.asleep||e.collapsed||e.boss||e.stitched||e.type==='bear')continue;
+    var e=arr[i];if(!e||e.dead||e.asleep||e.collapsed||e.boss||e.miniBoss||e.stitched||e.type==='bear')continue;
     var theme=THEMES[e.type];if(!theme)continue;
     e.closeCD=Math.max(0,(e.closeCD||0)-dt);
     e.closeFx=Math.max(0,(e.closeFx||0)-dt);
