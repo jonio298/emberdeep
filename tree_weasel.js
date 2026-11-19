@@ -8,7 +8,7 @@
 var CC=root.CC=root.CC||{},E=CC.Enemies;if(!E)return;
 var TAU=Math.PI*2,PI=Math.PI;
 E.TYPES.weaselDemon={
- name:'Veyr, the Hollow Maw',hp:238,spd:67,dmg:13,r:17,xp:135,
+ name:'Veyr, the Hollow Maw',hp:154,spd:67,dmg:13,r:17,xp:135,
  color:'#4d3449',blood:'#8d1c37',bone:true,w:0,min:99
 };
 function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
@@ -243,7 +243,7 @@ function drawMonster(c,e,r,col,dark,t){
  c.bezierCurveTo(-29,-10+Math.sin(t*8)*5,-31,-26+Math.sin(t*6)*5,
    -17,-32+Math.sin(t*5)*3);c.stroke();
  c.strokeStyle=low?'#e24b65':'#836174';c.lineWidth=2;
- c.beginPath();c.moveTo(-29,-21,-14,-32);c.stroke();
+ c.beginPath();c.moveTo(-29,-21);c.lineTo(-14,-32);c.stroke();
  c.fillStyle='#c2ab99';c.beginPath();
  c.moveTo(-18,-32);c.lineTo(-12,-39);c.lineTo(-13,-29);c.closePath();c.fill();
  // Four sinewy split-toed paws; the near pair claws the ground.
@@ -335,6 +335,58 @@ function drawMonster(c,e,r,col,dark,t){
  c.restore();
  return true;
 }
+// Distinct combat choreography is drawn in world-space. The root-dive marker
+// shows the hero exactly where the weasel plans to emerge BEFORE the attack.
+function drawFx(c,cam){
+ var list=E.list||[];
+ for(var i=0;i<list.length;i++){
+  var e=list[i];
+  if(!e||e.dead||e.type!=='weaselDemon')continue;
+  var x=e.x-cam.x,y=e.y-cam.y,tt=E._time||0,phase=e.weaselPhase||1;
+  c.save();
+  if(e.state==='telegraph'&&e.weaselMove==='rootDive'&&e.weaselTarget){
+    var tx=e.weaselTarget.x-cam.x,ty=e.weaselTarget.y-cam.y;
+    var ratio=1-Math.max(0,e.t)/(e.tele&&e.tele.max||.9);
+    c.globalAlpha=.38+.32*ratio;c.strokeStyle=phase===3?'#ff4a69':'#ba7ad9';
+    c.lineWidth=2.5;
+    c.beginPath();c.ellipse(tx,ty+5,30-ratio*8,13-ratio*3,0,0,TAU);c.stroke();
+    for(var k=0;k<5;k++){
+      var a=k*TAU/5+tt*.9;
+      line(c,tx+Math.cos(a)*20,ty+Math.sin(a)*8+5,
+        tx+Math.cos(a)*31,ty+Math.sin(a)*14+5,'#c68eec',1.2);
+    }
+    c.fillStyle='rgba(170,76,206,.16)';
+    c.beginPath();c.ellipse(tx,ty+4,24,11,0,0,TAU);c.fill();
+  }
+  if(e.weaselFx&&e.weaselFx.t>0){
+    var remain=e.weaselFx.t,t0=e.weaselFx.type==='desperate'?1.7:1.4,
+        ratio2=1-clamp(remain/t0,0,1);
+    c.globalAlpha=.58*(1-ratio2);
+    c.strokeStyle=phase===3?'#ff4468':'#bd78da';c.lineWidth=2.6;
+    for(k=0;k<3;k++){
+      c.beginPath();c.arc(x,y,20+ratio2*(48+k*19),0,TAU);c.stroke();
+    }
+  }
+  if(e.weaselGlow>0&&e.weaselMove==='tailScythe'){
+    var power=e.weaselGlow/.48;
+    c.globalAlpha=.52*power;c.strokeStyle=phase===3?'#ff516c':'#e6b5d7';
+    c.lineWidth=2+power*2;
+    c.beginPath();c.arc(x,y,phase===3?99:phase===2?84:72,
+      -.7+tt*4,4.6+tt*4);c.stroke();
+  }
+  if(e.state==='act'&&
+      (e.weaselMove==='needlePounce'||e.weaselMove==='returnPounce')){
+    c.globalAlpha=.5;
+    for(k=0;k<4;k++){
+      var angle=e.weaselAngle+(k-2)*.18;
+      line(c,x-Math.cos(angle)*(e.r+9),y-Math.sin(angle)*(e.r+9)+k*2,
+        x-Math.cos(angle)*(e.r+25),y-Math.sin(angle)*(e.r+25)+k*3,
+        phase===3?'#ff536d':'#ca91cb',1.5);
+    }
+  }
+  c.restore();
+ }
+}
 var previousKill=E._kill;
 E._kill=function(e){
  var was=e&&e.type==='weaselDemon'&&!e.dead;
@@ -346,7 +398,7 @@ E._kill=function(e){
  return output;
 };
 CC.TreeWeasel={
- drawMonster:drawMonster,
+ drawMonster:drawMonster,drawFx:drawFx,
  status:function(){
    var b=(E.list||[]).find(function(x){return x.type==='weaselDemon'&&!x.dead;});
    return b?{hp:b.hp,maxHp:b.maxHp,phase:b.weaselPhase||1,
