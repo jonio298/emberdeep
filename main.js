@@ -564,10 +564,13 @@
         // Charged spells are press/hold/release, unlike instantaneous tap-ATK.
         // Track this pointer independently so dragging aims without moving.
         if(mode==='dungeon' && (action==='spell1'||action==='spell2'||action==='dash') &&
-           CC.SpellCharge && CC.SpellCharge.begin &&
-           CC.SpellCharge.begin(action,b.x,b.y)){
-          ptrs[e.pointerId]={kind:'charge',name:action};
-          held[action]++;return;
+           CC.SpellCharge){
+          if(CC.SpellCharge.begin(action,b.x,b.y)){
+            ptrs[e.pointerId]={kind:'charge',name:action};
+            held[action]++;
+          }
+          // Never fire another instant spell while one is being aimed.
+          return;
         }
         ptrs[e.pointerId] = { kind: 'btn', name: action };
         if (!held[action]) pressAction(action);
@@ -1027,7 +1030,7 @@
     ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fill();
     ctx.globalAlpha = 1;
 
-    var p = CC.state.player;
+    var p = CC.state.player,chargeHUD=call('SpellCharge','info');
     for (var name in btns) {
       var b = btns[name], contextual = name === 'attack' && nearbyAction();
       var on = held[contextual ? 'interact' : name] > 0 || (name === 'attack' && keys.Space);
@@ -1065,7 +1068,7 @@
         label(String(count),b.x+17,b.y+15,11,count>0?'#fff2e6':'#ad9394');
       } else label(txt, b.x, b.y, b.r > 35 ? 15 : 11, '#fff');
       // Charge ring grows under the thumb, independent of ordinary cooldown.
-      var charge=call('SpellCharge','info');
+      var charge=chargeHUD;
       if(charge&&charge.slot===name){
         var a=-Math.PI/2,part=charge.progress;
         ctx.save();ctx.beginPath();
