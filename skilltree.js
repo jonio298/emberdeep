@@ -37,9 +37,9 @@
       ['unbreakable', 'Unbreakable', 'Capstone: +20% max health and +3 armor', 1, both(mod('hpPct', 0.2), mod('armor', 3)), 20]
     ], [ // Utility
       ['swift', 'Swiftness', '+5% move speed per rank', 2, mod('speedPct', 0.05), 2],
-      ['focus', 'Focus', '-5% cooldowns per rank', 2, mod('cdrPct', 0.05), 5],
+      ['focus', 'Focus', '-5% cooldowns and +35% charged-Dash landing damage per rank', 2, mod('cdrPct', 0.05), 5],
       ['scholar', 'Scholar', '+15% experience', 1, mod('xpPct', 0.15), 9],
-      ['quickening', 'Quickening', 'Capstone: -10% cooldowns and +10% move speed', 1, both(mod('cdrPct', 0.1), mod('speedPct', 0.1)), 20]
+      ['quickening', 'Quickening', 'Capstone: -10% cooldowns, +10% speed, +30% charged-Dash landing damage and larger splash', 1, both(mod('cdrPct', 0.1), mod('speedPct', 0.1)), 20]
     ]
   ];
 
