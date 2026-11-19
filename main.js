@@ -683,7 +683,7 @@
   }
 
   function drawWorld() {
-    var s = CC.state, v = call('CriticalScene', 'view');
+    var s = CC.state, v = call('CriticalScene', 'view', cam.w, cam.h);
     var ox = shakeMag ? (Math.random() - 0.5) * shakeMag * 2 : 0;
     var oy = shakeMag ? (Math.random() - 0.5) * shakeMag * 2 : 0;
     var rx = cam.x, ry = cam.y, rw = cam.w, rh = cam.h;
@@ -725,7 +725,6 @@
     }
     if (s.mode === 'town') call('Camp', 'drawWorldMarker', ctx, cam);
     drawFallbackPlayer();
-    if (s.mode === 'dungeon') call('CriticalScene', 'drawWorld', ctx, cam);
     if (s.mode === 'dungeon') call('MonsterMelee', 'drawFx', ctx, cam);
     for (var a = 0; a < particles.length; a++) {
       var q = particles[a], qa = Math.max(0, q.life / q.max);
@@ -748,6 +747,9 @@
       ctx.fillStyle = t.c; ctx.fillText(t.s, t.x - cam.x, t.y - cam.y);
     }
     ctx.globalAlpha = 1;
+    // Draw isolation over ALL normal particles, damage popups and monsters.
+    // The critical scene itself redraws ONLY the hero and struck targets.
+    if(s.mode==='dungeon')call('CriticalScene','drawWorld',ctx,cam);
     ctx.restore();
     cam.x = rx; cam.y = ry; cam.w = rw; cam.h = rh;
   }
@@ -925,6 +927,8 @@
     drawWorld();
     if (m === 'town' || m === 'dungeon' || m === 'dead') drawScreenFx();
     if (m === 'dungeon') call('CriticalScene', 'drawScreen', ctx, W, H);
+    // No floating HUD/buttons/other overlays during the brief critical close-up.
+    if(m==='dungeon'&&call('CriticalScene','isActive'))return;
     if (tunnel && m === 'dungeon') drawTunnel();
     if (m === 'town' || m === 'dungeon') {
       drawHud(); drawControls();
