@@ -465,7 +465,7 @@
     time += dt;
     call('UI', 'update', dt);
     if (uiOpen() !== uiWas) { uiWas = uiOpen(); resetInputHeld(); }
-    if (paused || uiWas) return;
+    if (paused || uiWas || (p && p.perkOpen)) return;
     if (tunnel) { updateTunnel(dt); return; }
     pollInput();
     if (CC.input.interact && playing()) { interact(); return; }
@@ -804,8 +804,13 @@
     if (m === 'town' || m === 'dungeon') {
       drawHud(); drawControls();
       if (m === 'town') drawFallbackTownPanel();
+      var skillPts = CC.SkillTree && CC.state.player ? CC.SkillTree.points(CC.state.player) : 0;
+      if (skillPts > 0) {
+        addButton(W - 154, 78, 142, 28, skillPts + ' skill point' + (skillPts === 1 ? '' : 's'),
+          '#603b83', function () { call('UI', 'open', 'skills'); });
+      }
       addButton(W - 94, 112, 82, 28, paused ? 'Resume' : 'Pause', '#4a3a6a', togglePause);
-      if (paused) {
+      if (paused && !uiOpen()) {
         ctx.fillStyle = 'rgba(8,4,16,0.65)'; ctx.fillRect(0, H * 0.4, W, 80);
         label('PAUSED', W / 2, H * 0.4 + 40, 28, '#ffe08a');
       }
