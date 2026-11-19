@@ -505,6 +505,7 @@
   }
 
   function resetInputHeld() {
+    call('SpellCharge','cancel');
     held.attack = held.spell1 = held.spell2 = held.dash = held.interact = held.potion = 0;
     keys = {}; pending = {};
     joy.id = null; joy.x = joy.y = 0;
@@ -560,6 +561,14 @@
       var b = btns[name], dx = p.x - b.x, dy = p.y - b.y;
       if (dx * dx + dy * dy <= (b.r + 10) * (b.r + 10)) {
         var action = name === 'attack' && nearbyAction() ? 'interact' : name;
+        // Charged spells are press/hold/release, unlike instantaneous tap-ATK.
+        // Track this pointer independently so dragging aims without moving.
+        if(mode==='dungeon' && (action==='spell1'||action==='spell2'||action==='dash') &&
+           CC.SpellCharge && CC.SpellCharge.begin &&
+           CC.SpellCharge.begin(action,b.x,b.y)){
+          ptrs[e.pointerId]={kind:'charge',name:action};
+          held[action]++;return;
+        }
         ptrs[e.pointerId] = { kind: 'btn', name: action };
         if (!held[action]) pressAction(action);
         held[action]++;
@@ -573,6 +582,13 @@
   }, { passive: false });
 
   canvas.addEventListener('pointermove', function (e) {
+    var pressed=ptrs[e.pointerId];
+    if(pressed&&pressed.kind==='charge'){
+      e.preventDefault();
+      var thumb=pos(e);
+      call('SpellCharge','drag',thumb.x,thumb.y);
+      return;
+    }
     if (e.pointerId !== joy.id) return;
     e.preventDefault();
     var p = pos(e), dx = p.x - joy.bx, dy = p.y - joy.by;
@@ -590,6 +606,12 @@
     if (!r) return;
     delete ptrs[e.pointerId];
     if (r.kind === 'joy') { joy.id = null; joy.x = joy.y = 0; }
+    else if(r.kind==='charge'){
+      held[r.name]=Math.max(0,held[r.name]-1);
+      if(e.type==='pointerup' && !paused && playing() && !uiOpen())
+        call('SpellCharge','release',r.name);
+      else call('SpellCharge','cancel');
+    }
     else if (r.kind === 'btn') held[r.name] = Math.max(0, held[r.name] - 1);
   }
   canvas.addEventListener('pointerup', release);
@@ -611,9 +633,22 @@
     if (playing() && call('UI', 'key', e.code)) { resetInputHeld(); return; }
     if (e.code === 'Escape' || e.code === 'KeyP') { togglePause(); return; }
     if (e.code === 'KeyG') { call('Dungeon', 'toggleDebugGrid'); return; } // collision-grid overlay
-    if (actionKeys[e.code]) pressAction(actionKeys[e.code]);
+    if(actionKeys[e.code]){
+      var action=actionKeys[e.code];
+      if((action==='spell1'||action==='spell2'||action==='dash') &&
+         CC.state.mode==='dungeon'&&!paused && !uiOpen()){
+        call('SpellCharge','begin',action,0,0);
+      }else pressAction(action);
+    }
   });
-  window.addEventListener('keyup', function (e) { keys[e.code] = false; });
+  window.addEventListener('keyup', function (e) {
+    if(keys[e.code] && actionKeys[e.code]){
+      var action=actionKeys[e.code];
+      if(action==='spell1'||action==='spell2'||action==='dash')
+        call('SpellCharge','release',action);
+    }
+    keys[e.code] = false;
+  });
   window.addEventListener('blur', function () { keys = {}; resetInputHeld(); });
 
   /* ---------- sizing ---------- */
@@ -729,6 +764,7 @@
       } else {
         call('Classes', 'update', dt);
         call('Enemies', 'update', dt);
+        call('SpellCharge','update',dt);
         call('Charge', 'update', dt, !!(keys.Space || held.attack > 0)); // hold attack to charge; a tap is the normal attack
         call('Loot', 'update', dt);
         call('Breakables','update',dt);
@@ -903,6 +939,7 @@
       call('Charge', 'draw', ctx, cam);
       if (CC.Dungeon && typeof CC.Dungeon.drawFront === 'function') CC.Dungeon.drawFront(ctx, dcam); // trees and props in front of the hero redraw over the entities
       if (CC.Dungeon && CC.Dungeon.realm) CC.Dungeon.drawLighting(ctx, dcam); // open-air maps light the whole scene after the entities
+      call('SpellCharge','draw',ctx,cam); // illuminated aiming circle overlays the ground
     } else {
       if (has('Town', 'draw')) call('Town', 'draw', ctx, cam);
       else { drawFallbackFloor(); call('Classes', 'drawPlayer', ctx, cam); }
@@ -1027,6 +1064,16 @@
         ctx.strokeStyle='#b96367';ctx.strokeRect(b.x+7,b.y+7,20,16);
         label(String(count),b.x+17,b.y+15,11,count>0?'#fff2e6':'#ad9394');
       } else label(txt, b.x, b.y, b.r > 35 ? 15 : 11, '#fff');
+      // Charge ring grows under the thumb, independent of ordinary cooldown.
+      var charge=call('SpellCharge','info');
+      if(charge&&charge.slot===name){
+        var a=-Math.PI/2,part=charge.progress;
+        ctx.save();ctx.beginPath();
+        ctx.arc(b.x,b.y,b.r+5,a,a+6.2832*Math.max(.01,part));
+        ctx.strokeStyle=charge.affordable?charge.color:'#f06b75';
+        ctx.lineWidth=3.6;ctx.shadowColor=charge.color;ctx.shadowBlur=charge.ready?10:3;
+        ctx.stroke();ctx.restore();
+      }
     }
   }
 
