@@ -35,9 +35,76 @@ function tearPoints(p,r,slot){
     [x-a*.06,y+b*.71],[x-a*.45,y+b*.96],
     [x-a*.55,y+b*.52],[x-a*1.07,y+b*.45],[x-a*.71,y+b*.07]];
 }
+// Each landed basic hit removes a fresh asymmetric sliver of the actual sprite.
+// Cuts are deterministic after creation and accumulate as real missing pixels.
+function impact(e,angle,type){
+  if(!e||e.ghost||e.collapsed||!e.r||e.dead)return;
+  e.hitWounds=e.hitWounds||[];
+  e.hitIndex=(e.hitIndex||0)+1;
+  var index=e.hitIndex,r=e.r,side=index%2?1:-1;
+  var a=(index*2.39996+((angle||0)*.31))%TAU,edge=.37+rand(index,e.id||1)*.35;
+  // Bias slivers toward exposed shoulders, haunches and rump; not a square patch.
+  var xx=Math.cos(a)*r*(e.type==='bear'?.96:.70)*edge*1.65;
+  var yy=Math.sin(a)*r*.60;
+  if(e.type==='bear')yy+=r*.07;
+  var sz=(e.type==='bear'?.19:.15)+rand(index+43,e.id||1)*.075;
+  e.hitWounds.push({x:xx,y:yy,r:r*sz,seed:index,age:0,
+    side:side,angle:a,type:type});
+  if(e.hitWounds.length>7)e.hitWounds.shift();
+  // Loose tissue and occasional splintered bone are actual airborne world debris.
+  var amount=e.type==='bear'?4:2;
+  if(E&&E._gorePart){
+    for(var i=0;i<amount;i++){
+      var ang=a+(rand(index*19+i,e.id||1)-.5)*1.8,spd=60+rand(index*31+i,e.id||3)*125;
+      var isBone=i===0&&(e.type==='bear'||e.type==='skeleton'||e.type==='direwolf')&&index%3===0;
+      var skin=e.type==='scarecrow'?'#ae944c':e.type==='horror'?'#84285e':
+        isBone?'#efe2c7':e.color||'#a43b3a';
+      var frag=E._gorePart(e.x,e.y,Math.cos(ang)*spd,
+        Math.sin(ang)*spd,70+rand(index*17+i,e.id||1)*80,
+        isBone?'bone':'chunk',skin,.38+rand(index+i,e.id||5)*.42,0);
+      if(frag){frag.source=e.type;frag.partSlot='chip';frag.nopile=true;}
+    }
+  }
+}
+function chipPoints(c,w){
+  var x=w.x,y=w.y,r=w.r,seed=w.seed;
+  var n=11;
+  c.moveTo(x+r*Math.cos(-PI/4),y+r*Math.sin(-PI/4));
+  for(var j=1;j<=n;j++){
+    var a=-PI/4+j*TAU/n,rr=r*(.58+rand(seed*23+j,seed)*.66);
+    c.lineTo(x+Math.cos(a)*rr,y+Math.sin(a)*rr);
+  }
+  c.closePath();
+}
+function chipPaint(c,w,e,t){
+  var r=w.r,x=w.x,y=w.y;
+  c.save();
+  c.shadowColor='#550a16';c.shadowBlur=2;
+  c.beginPath();chipPoints(c,w);
+  c.fillStyle=e.type==='scarecrow'?'#3d301f':e.type==='skeleton'?'#292521':'#4b0816';
+  c.fill();c.shadowBlur=0;
+  c.strokeStyle=e.type==='scarecrow'?'#bb9b52':'#b12f3e';
+  c.lineWidth=1.4;c.stroke();
+  // Wound fibers and exposed pale bone, visible at partial damage.
+  for(var k=0;k<4;k++){
+    var off=(k-1.5)*r*.28;
+    stroke(c,x+off,y-r*.22,x+off+Math.sin(t*6+k)*1.2,y+r*.42,
+      e.type==='scarecrow'?'#e0c779':k%2?'#d8565d':'#8a1526',.9);
+  }
+  if(e.type==='bear'&&w.seed%3===0){
+    stroke(c,x-r*.35,y-r*.18,x+r*.44,y+r*.28,'#efdec2',2.5);
+    stroke(c,x-r*.24,y-r*.22,x+r*.36,y+r*.15,'#fff4dd',.8);
+  }
+  var drip=(t*14+w.seed*5)%(r*2.8+11);
+  if(e.type!=='scarecrow'&&e.type!=='skeleton'){
+    dot(c,x+r*.15,y+r*.5+drip,1.15,1.8,'#bf1c34');
+    stroke(c,x+r*.14,y+r*.33,x+r*.15,y+r*.6+drip*.32,'#8a1329',1);
+  }
+  c.restore();
+}
 function clip(c,e,look,r){
   var missing=e.missing||{},names=Object.keys(missing).filter(function(k){return missing[k];});
-  if(!names.length)return;
+  if(!names.length&&!(e.hitWounds&&e.hitWounds.length))return;
   c.beginPath();c.rect(-r*5,-r*5,r*10,r*10);
   for(var i=0;i<names.length;i++){
     if(names[i]==='chunk')continue;
@@ -45,6 +112,7 @@ function clip(c,e,look,r){
     var pts=tearPoints(p,r,names[i]);
     outline(c,pts);
   }
+  if(e.hitWounds)for(var j=0;j<e.hitWounds.length;j++)chipPoints(c,e.hitWounds[j]);
   c.clip('evenodd');
 }
 function stroke(c,x,y,x2,y2,col,w){
@@ -122,7 +190,10 @@ function drawWound(c,e,p,r,slot,t,i){
   c.restore();
 }
 function paint(c,e,look,r,t){
-  if(!e||e.dead||e.collapsed||!e.nubs)return;
+  if(!e||e.dead||e.collapsed)return;
+  if(e.hitWounds)for(var hi=0;hi<e.hitWounds.length;hi++)
+    chipPaint(c,e.hitWounds[hi],e,t);
+  if(!e.nubs)return;
   var saw={};
   for(var i=0;i<e.nubs.length;i++){
     var slot=e.nubs[i].slot;if(saw[slot])continue;saw[slot]=true;
@@ -253,5 +324,5 @@ if(E){
     }
   };
 }
-CC.WoundArt={clip:clip,paint:paint,flying:flying,drawMonster:drawMonster};
+CC.WoundArt={clip:clip,paint:paint,impact:impact,flying:flying,drawMonster:drawMonster};
 })(window);
