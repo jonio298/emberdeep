@@ -39,7 +39,17 @@
   /* Toughness: every base monster HP is multiplied by HP_MULT (basic enemies took ~2 hits of 10 damage before, ~4 now). */
   var HP_MULT = 2;
   /* Dismemberment: parts that fly off in this order as HP falls (one per equal slice of the HP bar). The enemy keeps fighting. */
-  var PARTS = ['limb', 'armor', 'limb', 'head'];
+  // Anatomy profiles: each detached piece is also hidden from the still-living sprite.
+  var PARTS = ['armLeft', 'armRight', 'head', 'legLeft'];
+  var ANATOMY = {
+    charger: ['hornLeft', 'armLeft', 'hornRight', 'legLeft'], goblin: ['hornLeft', 'armLeft', 'head', 'legLeft'],
+    demon: ['hornLeft', 'armLeft', 'hornRight', 'head'], dragon: ['hornLeft', 'hornRight', 'legLeft', 'head'],
+    scorpion: ['armLeft', 'armRight', 'legLeft', 'legRight'], spider: ['legLeft', 'legRight', 'armLeft', 'armRight'],
+    snake: ['tail', 'tail', 'head', 'tail'], bat: ['armLeft', 'armRight', 'head', 'legLeft'],
+    slime: ['chunk', 'chunk', 'chunk', 'chunk'], spitter: ['chunk', 'chunk', 'chunk', 'chunk'],
+    ghoul: ['armLeft', 'armRight', 'head', 'legLeft'], skeleton: ['armLeft', 'armRight', 'head', 'legLeft'],
+    archer: ['armLeft', 'armRight', 'head', 'legLeft']
+  };
   var ARMOR_LOOK = { skeleton: 1, archer: 1, charger: 1, demon: 1, dragon: 1, scorpion: 1 };
   /* Bone piles: every bone/skull left by a death or a torn-off part adds to the pile within PILE_R px. A pile that stays untouched for
      PILE_DELAY s rolls once to rise as a skeleton: chance = 0 below 6 bones, then +5% per bone above 5, capped at 70%. */
@@ -456,16 +466,56 @@
       if (GORE <= 0 || e.ghost || e.collapsed || e.dead || e.hp <= 0) return;
       var n = PARTS.length, want = Math.min(n, Math.floor((1 - e.hp / e.maxHp) * (n + 1)));
       e.lostN = e.lostN || 0;
-      while (e.lostN < want) this._detach(e, PARTS[e.lostN++]);
+      var parts = ANATOMY[e.type] || PARTS;
+      while (e.lostN < want) this._detach(e, parts[e.lostN++]);
     },
-    _detach: function (e, name) {
-      var d = TYPES[e.type] || {}, boney = this._boney(e), limbless = e.type === 'slime' || e.type === 'spitter';
-      var kind = limbless ? 'chunk' : name === 'armor' && !(ARMOR_LOOK[e.type] || e.armored || e.boss) ? 'limb' : name;
-      var col = kind === 'armor' ? '#8a8a96' : boney && kind !== 'chunk' ? BONE : e.color, a = R() * PI2, sp = 80 + R() * 90;
-      var q = this._gorePart(e.x, e.y, Math.cos(a) * sp, Math.sin(a) * sp, 110 + R() * 80, kind, col, 0.9 + R() * 0.5, 0);
-      if (q && boney && (kind === 'limb' || kind === 'head')) q.pileN = 2; // torn-off bones count toward the pile they land on
+    _detach: function (e, slot) {
+      var d = TYPES[e.type] || {}, boney = this._boney(e);
+      var kind = slot === 'head' ? 'head' : slot.indexOf('horn') === 0 ? 'horn' :
+        slot.indexOf('leg') === 0 ? 'hoof' : slot === 'chunk' || slot === 'tail' ? 'chunk' : 'limb';
+      e.missing = e.missing || {};
+      if (slot !== 'chunk' && slot !== 'tail' && e.missing[slot]) return;
+      if (slot !== 'chunk') e.missing[slot] = true;
+      e.nubs = e.nubs || [];
+      if (!e.ghost && !e.collapsed && slot !== 'chunk') e.nubs.push({ slot: slot, t: 0, next: 0 });
+      var col = boney && kind !== 'horn' && kind !== 'hoof' ? BONE : e.color;
+      var a = R() * PI2, sp = 80 + R() * 90;
+      var q = this._gorePart(e.x, e.y, Math.cos(a) * sp, Math.sin(a) * sp,
+        110 + R() * 80, kind, col, 0.9 + R() * 0.5, 0);
+      if (q && boney && (kind === 'limb' || kind === 'head')) q.pileN = 2;
       if (!(d.bone && !d.blood)) this._spurt(e, a, 5, 120, this._bloodOf(e));
-      if (CC.fx && CC.fx.burst) CC.fx.burst(e.x, e.y, kind === 'armor' ? '#b0b0be' : this._bloodOf(e), 5, 70);
+      if (CC.fx && CC.fx.burst) CC.fx.burst(e.x, e.y, this._bloodOf(e), 5, 70);
+    },
+    // Anatomy-local position of the severed joint (facing is handled by the sprite).
+    _nubPosition: function (e, slot) {
+      var r = e.r;
+      if (slot === 'head') return { x: 0, y: -r * 0.23 };
+      if (slot === 'hornLeft') return { x: -r * 0.55, y: -r * 0.75 };
+      if (slot === 'hornRight') return { x: r * 0.55, y: -r * 0.75 };
+      if (slot === 'armLeft') return { x: -r * 0.73, y: r * 0.12 };
+      if (slot === 'armRight') return { x: r * 0.73, y: r * 0.12 };
+      if (slot === 'legLeft') return { x: -r * 0.42, y: r * 0.63 };
+      if (slot === 'legRight') return { x: r * 0.42, y: r * 0.63 };
+      return { x: -r, y: r * 0.3 };
+    },
+    _bleedNubs: function (e, dt) {
+      if (!e.nubs || !e.nubs.length || GORE <= 0 || e.collapsed || e.dead) return;
+      var bone = (TYPES[e.type] || {}).bone && !(TYPES[e.type] || {}).blood;
+      if (bone) return;
+      for (var i = 0; i < e.nubs.length; i++) {
+        var nub = e.nubs[i];
+        nub.t += dt; nub.next -= dt;
+        if (nub.next > 0) continue;
+        nub.next = nub.t < 2 ? 0.13 + R() * 0.16 : 0.7 + R() * 0.7;
+        var pt = this._nubPosition(e, nub.slot), face = e.face || 1;
+        var ang = Math.atan2(pt.y, pt.x * face) + (R() - 0.5) * 0.4;
+        var bx = e.x + pt.x * face, by = e.y + pt.y;
+        for (var k = 0; k < (nub.t < 2 ? 3 : 1); k++) {
+          var a = ang + (R() - 0.5) * 0.6, v = 75 + R() * 80;
+          this._gorePart(bx, by, Math.cos(a) * v, Math.sin(a) * v, 40 + R() * 55,
+            'blood', this._bloodOf(e), 0.7 + R() * 0.5, 0);
+        }
+      }
     },
     // ---------- bone piles ----------
     pileChance: function (bones) { return bones < 6 ? 0 : Math.min(0.7, (bones - 5) * 0.05); },
@@ -548,6 +598,11 @@
           ctx.save(); ctx.translate(sx, py); ctx.rotate(q.rot); ctx.fillStyle = BONE; ctx.fillRect(-3.5 * q.s - 1, -1, 7 * q.s + 2, 2); ctx.fillRect(-3.5 * q.s - 2, -2, 2, 4); ctx.fillRect(3.5 * q.s, -2, 2, 4); ctx.restore();
         } else if (q.kind === 'skull') {
           ctx.fillStyle = BONE; ctx.beginPath(); ctx.arc(sx, py, 3.5, 0, PI2); ctx.fill(); ctx.fillStyle = '#10080a'; ctx.fillRect(sx - 2, py - 1, 1.5, 1.5); ctx.fillRect(sx + 0.5, py - 1, 1.5, 1.5);
+        } else if (q.kind === 'horn' || q.kind === 'hoof') {
+          ctx.save(); ctx.translate(sx, py); ctx.rotate(q.rot); ctx.fillStyle = q.col;
+          ctx.beginPath(); ctx.moveTo(-4 * q.s, 2 * q.s); ctx.lineTo(4 * q.s, 0);
+          ctx.lineTo(-3 * q.s, -2 * q.s); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = BLOOD; ctx.fillRect(-4 * q.s, -1, 2, 3); ctx.restore();
         } else if (q.kind === 'limb') {
           ctx.save(); ctx.translate(sx, py); ctx.rotate(q.rot); ctx.fillStyle = q.col; ctx.fillRect(-4 * q.s, -1.5, 8 * q.s, 3); ctx.fillStyle = BLOOD; ctx.fillRect(-4 * q.s - 1, -1.5, 2, 3); ctx.restore();
         } else if (q.kind === 'head') {
@@ -634,6 +689,7 @@
         if (e.dead) { e.deadT += dt; if (e.deadT > 0.6) this.list.splice(i, 1); continue; }
         e.anim += dt; if (e.flash > 0) e.flash -= dt; if (e.contact > 0) e.contact -= dt;
         this._bleed(e, dt);
+        this._bleedNubs(e, dt);
         if (e.invuln > 0) e.invuln -= dt;
         if (e.burn > 0) { e.burn -= dt; e.hp -= (e.burnDps || 1) * dt; if (e.hp <= 0) { this._kill(e); continue; } this._dismember(e); }
         var slowF = e.slow > 0 ? 0.5 : 1; if (e.slow > 0) e.slow -= dt;
@@ -979,6 +1035,9 @@
         ctx.rotate(rr() * PI2); ctx.fillStyle = m.col; ctx.globalAlpha = 0.95 * al;
         ctx.beginPath(); ctx.moveTo(-3 * m.s * 0.6, -2); ctx.lineTo(3 * m.s * 0.6, -1); ctx.lineTo(2 * m.s * 0.6, 2.5); ctx.lineTo(-2.5, 2); ctx.fill();
         ctx.fillStyle = 'rgba(255,140,140,0.35)'; ctx.fillRect(-1, -1, 2, 1); break;
+      case 'horn': case 'hoof':
+        ctx.rotate(rr() * PI2); ctx.fillStyle = m.col; ctx.globalAlpha = 0.95 * al;
+        ctx.beginPath(); ctx.moveTo(-4 * m.s, 2); ctx.lineTo(4 * m.s, 0); ctx.lineTo(-3 * m.s, -2); ctx.fill(); break;
       case 'limb':
         ctx.rotate(rr() * PI2); ctx.fillStyle = m.col; ctx.globalAlpha = 0.95 * al; ctx.fillRect(-4 * m.s, -1.5, 8 * m.s, 3); ctx.fillStyle = '#7a0f14'; ctx.fillRect(-4 * m.s - 1, -1.5, 2, 3); break;
       case 'head':
@@ -1028,6 +1087,22 @@
     if (tele && Math.floor(t * 14) % 2 === 0 && e.flash <= 0) col = '#ff8a7a';
     var dark = shadeC(col, 0.6);
     var look = e.boss ? e.def.look : e.type;
+    // Clip away detached anatomy before drawing both base art and horror details.
+    // The hole is genuine transparency, not a dark patch painted over the sprite.
+    var missing = e.missing || {}, cuts = [], rr0 = r;
+    if (missing.head) cuts.push([-r * 0.67, -r * 1.6, r * 1.34, r * 1.37]);
+    if (missing.hornLeft) cuts.push([-r * 1.45, -r * 1.65, r * 0.95, r * 0.8]);
+    if (missing.hornRight) cuts.push([r * 0.5, -r * 1.65, r * 0.95, r * 0.8]);
+    if (missing.armLeft) cuts.push([-r * 2, -r * 0.13, r * 1.35, r * 0.9]);
+    if (missing.armRight) cuts.push([r * 0.65, -r * 0.13, r * 1.35, r * 0.9]);
+    if (missing.legLeft) cuts.push([-r * 1.1, r * 0.62, r * 0.95, r * 1.1]);
+    if (missing.legRight) cuts.push([r * 0.15, r * 0.62, r * 0.95, r * 1.1]);
+    ctx.save();
+    if (cuts.length) {
+      ctx.beginPath(); ctx.rect(-r * 4, -r * 4, r * 8, r * 8);
+      for (var ci = 0; ci < cuts.length; ci++) ctx.rect(cuts[ci][0], cuts[ci][1], cuts[ci][2], cuts[ci][3]);
+      ctx.clip('evenodd');
+    }
     switch (look) {
       case 'bat': // wings flap
         var fl = Math.sin(e.anim * 22) * 5;
@@ -1136,6 +1211,27 @@
         ctx.fillStyle = col; ctx.beginPath(); ctx.arc(0, 0, r, 0, PI2); ctx.fill();
     }
     if (!e.collapsed) horrorArt(ctx, e, look, r, col, dark, t);
+    ctx.restore(); // restore anatomy clipping
+    if (!e.collapsed && e.nubs) {
+      var bc = (TYPES[e.type] || {}).blood || BLOOD;
+      var bone = (TYPES[e.type] || {}).bone && !(TYPES[e.type] || {}).blood;
+      for (var ni = 0; ni < e.nubs.length; ni++) {
+        var n = e.nubs[ni], pt = { x: 0, y: 0 };
+        if (n.slot === 'head') { pt.y = -r * 0.23; }
+        else if (n.slot.indexOf('horn') === 0) { pt.x = n.slot === 'hornLeft' ? -r * 0.55 : r * 0.55; pt.y = -r * 0.75; }
+        else if (n.slot.indexOf('arm') === 0) { pt.x = n.slot === 'armLeft' ? -r * 0.73 : r * 0.73; pt.y = r * 0.12; }
+        else if (n.slot.indexOf('leg') === 0) { pt.x = n.slot === 'legLeft' ? -r * 0.42 : r * 0.42; pt.y = r * 0.63; }
+        else { pt.x = -r; pt.y = r * 0.3; }
+        ctx.fillStyle = bone ? '#605c53' : '#3a080c';
+        ctx.beginPath(); ctx.ellipse(pt.x, pt.y, Math.max(2, r * 0.20), Math.max(1.8, r * 0.13), 0, 0, PI2); ctx.fill();
+        if (!bone) {
+          ctx.fillStyle = bc; ctx.beginPath(); ctx.ellipse(pt.x, pt.y, Math.max(1.5, r * 0.14), Math.max(1.3, r * 0.10), 0, 0, PI2); ctx.fill();
+          var pulse = n.t < 2 ? 1 + 0.5 * Math.sin(n.t * 31) : 0.5;
+          ctx.strokeStyle = bc; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.moveTo(pt.x, pt.y);
+          ctx.lineTo(pt.x + (pt.x < 0 ? -1 : 1) * pulse * 3, pt.y + 2 + pulse * 3); ctx.stroke();
+        }
+      }
+    }
     ctx.restore();
     if (dead) return;
     if (e.shield > 0) { ctx.strokeStyle = 'rgba(120,160,255,0.8)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(sx, sy, e.r + 2, 0, PI2); ctx.stroke(); }
