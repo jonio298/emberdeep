@@ -726,8 +726,8 @@
         if (!e.ghost) ang = steer(e, p, ang); // ghosts float straight through walls, no pathing
         // walk the tile path around walls; equals the direct angle when the line is clear
         if (e.boss) this._boss(e, dt, p, d, ang, f); else this._think(e, dt * (e.frenzy ? 1.25 : 1), p, d, ang, f);
-        if (!e.boss && d < 420) this._spurtAI(e, dt, ang);
-        if (!e.boss && !e.stitched) this._special(e, dt, p, d, ang); // Patchwork uses dedicated boss attacks
+        if (!e.boss && !e.miniBoss && d < 420) this._spurtAI(e, dt, ang);
+        if (!e.boss && !e.miniBoss && !e.stitched) this._special(e, dt, p, d, ang); // Patchwork uses dedicated boss attacks
         // contact damage while dangerous
         if (e.dangerous && e.contact <= 0 && d < e.r + (p.r || 10)) {
           if (hurtPlayer(p, e.dmg, e, e.poison ? 'poison' : e.fireproof ? 'fire' : null)) e.contact = 0.7;
@@ -1278,6 +1278,8 @@
         ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(0, 1, r * (e.boss ? 1.0 : 0.9), r * 0.8, 0, 0, PI2); ctx.fill();
         ctx.fillStyle = e.boss ? '#ff7ad0' : '#ff3a3a'; ctx.fillRect(-4, -3, 2, 2); ctx.fillRect(-1, -4, 2, 2); ctx.fillRect(2, -3, 2, 2); break;
       default: // Area-specific monsters are rendered by their own scene modules.
+        if (CC.TreeWeasel && CC.TreeWeasel.drawMonster &&
+            CC.TreeWeasel.drawMonster(ctx,e,r,col,dark,t)) break;
         if (CC.WoundArt && CC.WoundArt.drawMonster &&
             CC.WoundArt.drawMonster(ctx,e,r,col,dark,t)) break;
         if (CC.TreeTunnel && CC.TreeTunnel.drawMonster &&
