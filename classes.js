@@ -234,7 +234,7 @@
       fxText(p.x, p.y - 14, 'Dodge', '#7de0b8', 11);
       return 0;
     }
-    var a = p.stats ? p.stats.armor : 0;
+    var a = (p.stats ? p.stats.armor : 0) * (p.bearRoarT>0?.7:1);
     var dealt = Math.max(1, Math.round(amount * (1 - a / (a + 20))));
     p.hp = Math.max(0, p.hp - dealt);
     p.invuln = 0.35;
