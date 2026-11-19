@@ -2,6 +2,28 @@
 
 This update adds a multiplayer lobby, public room browser, six-character private invite codes, two-player movement, host-controlled enemy state, shared cave generation, chat, XP notifications, item pickup requests, and voluntary single-item transfers. Solo mode and its saved game remain separate.
 
+## Direct play (default): one link, no server, no install
+
+The lobby's **Connection** defaults to **Direct (no server)**. The host's phone acts as the room server (it already runs the
+whole game); a friend connects straight to it with WebRTC, over the same Wi-Fi when they share one. This works from a plain
+static deployment such as Vercel: no npm, no Redis, no WebSocket function.
+
+1. Everyone opens the same game link.
+2. The host picks Multiplayer, enters a name, and taps CREATE. A 6-letter code appears. Inside the game, **SESSION -> INVITE A
+   FRIEND** shares a link like `https://your-site/?join=ABC123`.
+3. The friend opens that link (or types the code) and taps JOIN BY CODE.
+
+How it works: PeerJS's free public broker (0.peerjs.com) only introduces the two browsers. After that, game data goes directly
+between them, encrypted. The PeerJS script is vendored in `vendor/peerjs.min.js`, so the page loads nothing from a third party;
+only the brief introduction uses their broker.
+
+Limits to know about:
+* Both phones need internet for the first connection (the broker). A game already running does not need it.
+* The host must keep the game open and in the foreground: phones throttle background tabs, which stalls the shared world.
+* Two players per room. Open-games browsing needs the optional game server (set Connection to "Game server").
+* Some strict networks (school or work Wi-Fi) block direct phone-to-phone links; use the game server or Redis setup below there.
+* If the host's connection to the friend drops, the friend reconnects automatically while the host's page stays open.
+
 ## Quick start (no Redis, no Vercel)
 
 Rooms live in memory on a single running server, which is all two players need.

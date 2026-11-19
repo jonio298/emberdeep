@@ -10,7 +10,7 @@ var chat=[],trade=null,positionClock=0,snapshotClock=0,roomClock=0,pickupClock=0
 var lastScene='',lastRemote=0,pendingPickups={};
 // Partner motion: samples arrive ~20x/s; we draw ~110 ms in the past and blend between them,
 // so movement is smooth on any connection instead of stepping from packet to packet.
-var optClock=0,samples=[],lastViewAt=0,minionClock=0,remoteMinions=[],remoteMinionsAt=0,INTERP_MS=110;
+var linkKind='ws',joinCode='',optClock=0,samples=[],lastViewAt=0,minionClock=0,remoteMinions=[],remoteMinionsAt=0,INTERP_MS=110;
 var colors={wizard:'#75caff',necromancer:'#b98eff',thief:'#e6809f',swordsman:'#f3bf78'};
 var el=function(id){return document.getElementById(id);};
 // The game page and the room server are normally the same host. To point a page hosted
@@ -33,21 +33,47 @@ function setError(t){message(t);if(el('mp-server'))el('mp-server').textContent=t
 function safeName(){return (el('mp-name').value||'').trim().slice(0,22);}
 function sessionSave(){try{sessionStorage.setItem('emberdeep-room',JSON.stringify(session));}catch(_){}}
 function sessionClear(){session=null;try{sessionStorage.removeItem('emberdeep-room');}catch(_){}}
+function direct(){return linkKind==='p2p-host'||linkKind==='p2p-join';}
+function useLink(kind,code){ // switch how we are connected; an old link of another kind is dropped first
+ if(ws&&linkKind!==kind){ws.onclose=null;try{ws.close();}catch(_){}ws=null;MP.connected=false;}
+ linkKind=kind;joinCode=code||joinCode;
+}
+function p2pProblem(type){
+ if(type==='notfound')return 'No game found with that code. Is the host still online?';
+ if(type==='timeout')return 'Could not reach the host. Both phones need internet to connect the first time.';
+ if(type==='nopeer')return 'Direct play is not available in this browser.';
+ if(type==='unavailable-id')return 'Could not create the room code. Try again.';
+ return 'Could not connect ('+type+'). Check your internet connection and try again.';
+}
 function connect(){
  if(ws&&(ws.readyState===0||ws.readyState===1))return;
- try{ws=new WebSocket(URL());}catch(e){setError('Unable to connect: '+e.message);return;}
- message('Connecting to server...');
- ws.onopen=function(){
-  MP.connected=true;reconnectDelay=800;message('Server connected');
-  if(session)send({type:'resume',code:session.code,token:session.token});
+ try{
+  if(linkKind==='p2p-host')ws=new CC.P2P.HostTransport();
+  else if(linkKind==='p2p-join')ws=new CC.P2P.GuestTransport(joinCode);
+  else ws=new WebSocket(URL());
+ }catch(e){setError('Unable to connect: '+e.message);return;}
+ var mine=ws,kind=linkKind;
+ message(kind==='ws'?'Connecting to server...':kind==='p2p-host'?'Opening your room...':'Finding the host...');
+ mine.onopen=function(){
+  MP.connected=true;reconnectDelay=800;message(kind==='ws'?'Server connected':'Connected');
+  if(session&&kind!=='p2p-host')send({type:'resume',code:session.code,token:session.token});
   else if(pending){var action=pending;pending=null;send(action);}
-  else send({type:'list'});
+  else if(kind==='ws')send({type:'list'});
  };
- ws.onmessage=function(e){
+ mine.onmessage=function(e){
   try{handle(JSON.parse(e.data));}catch(err){console.warn('Co-op message:',err);}
  };
- ws.onclose=function(){
+ mine.onclose=function(){
+  if(ws!==mine)return;
   ws=null;MP.connected=false;
+  if(kind==='p2p-host')return; // the host's room lives in this page; there is nothing to reconnect to
+  if(kind==='p2p-join'){
+   if(!session||!MP.active)return; // a failed first attempt just reports its error
+   message('Connection lost. Reconnecting to the host...');
+   var d2=reconnectDelay;reconnectDelay=Math.min(8000,Math.round(d2*1.7));
+   setTimeout(function(){if(!ready()&&session)connect();},d2);
+   return;
+  }
   if(MP.active)message('Disconnected. Trying to reconnect...');
   else if(opened)message('Server disconnected. Retrying...');
   if(session||opened){
@@ -55,12 +81,20 @@ function connect(){
    setTimeout(function(){if(!ready())connect();},delay);
   }
  };
- ws.onerror=function(){message('WebSocket connection failed. Check deployment and Redis settings.');};
+ mine.onerror=function(ev){
+  if(kind==='ws')message('WebSocket connection failed. Check deployment and Redis settings.');
+  else setError(p2pProblem(ev&&ev.type));
+ };
 }
 function emit(data){if(!send(data)){pending=data;connect();}}
 function identity(){return {name:safeName(),hero:el('mp-hero').value};}
+function netChoice(){return el('mp-net')&&el('mp-net').value==='server'?'server':'direct';}
 function startRoom(isPrivate){
  var i=identity();if(!i.name)return message('Enter your name to create a game');
+ if(netChoice()==='direct'){
+  if(!(CC.P2P&&CC.P2P.available()))return setError('Direct play is not available in this browser. Choose "Game server".');
+  sessionClear();useLink('p2p-host');
+ }else useLink('ws');
  message('Creating room...');
  emit({type:'create',name:i.name,hero:i.hero,private:!!isPrivate,mode:el('mp-mode').value});
 }
@@ -68,6 +102,12 @@ function joinRoom(code){
  var i=identity();if(!i.name)return message('Enter your name to join a game');
  code=String(code||'').trim().toUpperCase();
  if(!/^[0-9A-F]{6}$/.test(code))return message('Enter a six-character room code');
+ if(netChoice()==='direct'){
+  if(!(CC.P2P&&CC.P2P.available()))return setError('Direct play is not available in this browser. Choose "Game server".');
+  sessionClear();
+  if(ws){ws.onclose=null;try{ws.close();}catch(_){}ws=null;MP.connected=false;}
+  useLink('p2p-join',code);
+ }else useLink('ws');
  message('Joining '+code+'...');
  emit({type:'join',code:code,name:i.name,hero:i.hero});
 }
@@ -81,7 +121,7 @@ function rooms(items){
   h.textContent=(room.mode==='defense'?'🛡 ':'')+room.title;s.textContent=(room.mode==='defense'?'Town Defense · ':'Cave Co-op · ')+room.host.name+' · '+room.host.hero+' · 1 / 2 players';
   left.appendChild(h);left.appendChild(s);row.appendChild(left);
   var button=document.createElement('button');button.textContent='JOIN';
-  button.onclick=function(){joinRoom(room.code);};row.appendChild(button);box.appendChild(row);
+  button.onclick=function(){useLink('ws');joinRoom(room.code);};row.appendChild(button);box.appendChild(row);
  });
 }
 function hud(){
@@ -454,7 +494,9 @@ function initialize(){
       <label>Choose hero<select id="mp-hero"><option value="wizard">Wizard</option><option value="necromancer">Necromancer</option>
         <option value="swordsman">Swordsman</option><option value="thief">Thief</option></select></label></div>
     <div class="mp-line"><label>Game mode<select id="mp-mode"><option value="defense">Town Defense (waves)</option>
-        <option value="cave">Cave Co-op (explore)</option></select></label></div>
+        <option value="cave">Cave Co-op (explore)</option></select></label>
+      <label>Connection<select id="mp-net"><option value="direct">Direct (no server)</option>
+        <option value="server">Game server</option></select></label></div>
     <div class="mp-actions"><button id="mp-create">CREATE OPEN GAME</button>
       <button id="mp-private">CREATE PRIVATE</button></div>
     <div class="mp-join"><input id="mp-join-code" maxlength="6" placeholder="INVITE CODE" aria-label="Room invite code">
@@ -462,7 +504,7 @@ function initialize(){
     <div class="mp-section"><div class="mp-between"><strong>OPEN GAMES</strong>
       <button id="mp-refresh" class="mp-quiet">REFRESH</button></div><div id="mp-rooms"></div></div>
     <div id="mp-status" role="status">Connecting...</div>
-    <small id="mp-server">Rooms last up to four hours. Invite codes let friends enter private rooms.</small>
+    <small id="mp-server">Direct games run on the host's phone, so the host keeps the game open. Share the 6-letter code, or use INVITE inside the game.</small>
    </div>
  </section>
  <div id="mp-hud" class="mp-hidden">
@@ -470,6 +512,7 @@ function initialize(){
    <div id="mp-menu" class="mp-hidden" role="menu">
      <div class="mp-hud-top"><span>CO-OP · <b id="mp-code">------</b></span><span id="mp-online">● ONLINE</span></div>
      <div id="mp-peer">Waiting for player 2</div>
+     <div class="mp-hud-actions" style="margin-bottom:7px"><button id="mp-invite" role="menuitem">INVITE A FRIEND</button></div>
      <div class="mp-hud-actions"><button id="mp-chat-open" role="menuitem">CHAT</button>
        <button id="mp-trade-open" role="menuitem">TRADE</button>
        <button id="mp-leave" role="menuitem">LEAVE</button></div>
@@ -493,7 +536,8 @@ function initialize(){
  el('mp-create').onclick=function(){startRoom(false);};
  el('mp-private').onclick=function(){startRoom(true);};
  el('mp-join').onclick=function(){joinRoom(el('mp-join-code').value);};
- el('mp-refresh').onclick=function(){emit({type:'list'});};
+ el('mp-refresh').onclick=function(){useLink('ws');emit({type:'list'});};
+ el('mp-net').onchange=syncNet;
  function menu(open){
   el('mp-menu').classList.toggle('mp-hidden',!open);
   el('mp-session').setAttribute('aria-expanded',open?'true':'false');
@@ -503,6 +547,13 @@ function initialize(){
  document.addEventListener('pointerdown',function(e){
   var m=el('mp-menu');if(m&&!m.classList.contains('mp-hidden')&&!el('mp-hud').contains(e.target))menu(false);
  },true);
+ el('mp-invite').onclick=function(){
+  var url=location.origin+location.pathname+'?join='+(MP.code||''),text='Join my Emberdeep game! Code: '+(MP.code||'')+'  '+url,b=el('mp-invite');
+  function copied(){b.textContent='LINK COPIED';setTimeout(function(){b.textContent='INVITE A FRIEND';},1800);}
+  if(navigator.share){navigator.share({title:'Emberdeep',text:'Join my Emberdeep game! Code: '+MP.code,url:url}).catch(function(){});return;}
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(copied,function(){window.prompt('Copy this invite:',text);});}
+  else window.prompt('Copy this invite:',text);
+ };
  el('mp-chat-open').onclick=function(){menu(false);el('mp-trade').classList.add('mp-hidden');
   el('mp-chat').classList.remove('mp-hidden');el('mp-chat-input').focus();};
  el('mp-chat-close').onclick=function(){el('mp-chat').classList.add('mp-hidden');};
@@ -523,13 +574,30 @@ function initialize(){
  function editing(e){var t=e.target;return t&&(t.tagName==='INPUT'||t.tagName==='SELECT'||t.tagName==='TEXTAREA');}
  root.addEventListener('keydown',function(e){if(editing(e))e.stopImmediatePropagation();},true);
  root.addEventListener('keyup',function(e){if(editing(e))e.stopImmediatePropagation();},true);
+ try{var jm=location.search.match(/[?&]join=([0-9A-Fa-f]{6})/);if(jm){setTimeout(function(){MP.openLobby(jm[1]);},400);}}catch(_){}
  try{var raw=sessionStorage.getItem('emberdeep-room');if(raw){session=JSON.parse(raw);if(session&&session.code)message('Previous room found. Open Multiplayer to reconnect.');}}
  catch(_){}
 }
-MP.openLobby=function(){
- opened=true;el('mp-lobby').classList.remove('mp-hidden');
- if(ready())send({type:'list'});else connect();
+MP.openLobby=function(code){
+ el('mp-lobby').classList.remove('mp-hidden');
+ if(typeof code==='string'&&/^[0-9A-Fa-f]{6}$/.test(code)){el('mp-join-code').value=code.toUpperCase();el('mp-net').value='direct';}
+ syncNet();
 };
+// Direct mode has no room browser (friends join by code); Game server mode lists open games as before.
+function syncNet(){
+ var server=netChoice()==='server';
+ opened=server;
+ el('mp-refresh').style.visibility=server?'':'hidden';
+ if(server){useLink('ws');message('Connecting to server...');if(ready())send({type:'list'});else connect();}
+ else{
+  if(linkKind==='ws'&&ws&&!MP.active){ws.onclose=null;try{ws.close();}catch(_){}ws=null;MP.connected=false;}
+  var box=el('mp-rooms');box.textContent='';
+  var hint=document.createElement('div');hint.className='mp-empty';
+  hint.textContent='Create a game and send your friend the 6-letter code (or the invite link). To browse open games, switch Connection to "Game server".';
+  box.appendChild(hint);
+  message(CC.P2P&&CC.P2P.available()?'Ready. Direct play connects phone to phone.':'Direct play is not available in this browser.');
+ }
+}
 MP.leave=function(){stop(true);};MP.tick=tick;MP.drawWorld=drawWorld;
 MP.isHost=function(){return MP.active&&MP.role==='host';};
 MP.isGuest=function(){return MP.active&&MP.role==='guest';};
