@@ -193,6 +193,21 @@ function info(){
 function effect(kind,opts){
  if(effects.length>=32)effects.shift();
  effects.push(Object.assign({kind:kind,t:0,life:1,interval:.12,pulse:0},opts));
+ // Co-op: the partner sees the landed spell (never the aiming preview). 'impact' sparks are re-made on their side.
+ if(kind!=='impact'&&!(opts&&opts.visual)&&CC.Multiplayer&&CC.Multiplayer.sendFx){
+   var d={kind:kind,own:opts&&opts.owner?1:0};
+   for(var k in opts){var v=opts[k];if(k!=='owner'&&(typeof v==='number'||typeof v==='string'||typeof v==='boolean'))d[k]=v;}
+   CC.Multiplayer.sendFx('sc',d);
+ }
+}
+// A landed charged spell from the other player: draw only, no damage.
+function addRemote(d,owner){
+ if(!d||typeof d.kind!=='string'||d.kind==='impact'||effects.length>=32)return;
+ var o={kind:d.kind,t:0,life:1,interval:.12,pulse:0,hits:0,visual:true};
+ for(var k in d)if(k!=='own'&&k!=='kind')o[k]=d[k];
+ if(d.own&&owner)o.owner=owner;
+ if(!(o.life>0&&o.life<5))o.life=1;
+ effects.push(o);
 }
 function doCone(p,a,range,half,base,type,slow){
  var hits=0;
@@ -368,6 +383,16 @@ function combatTick(dt){
    if(e.pulse>0)continue;
    e.pulse=e.interval;
    var j,foe,affected,px=e.owner?e.owner.x:e.x,py=e.owner?e.owner.y:e.y;
+   if(e.visual){ // partner's spell: sparks only, never touches monsters on this screen
+     if(e.kind==='icicles'||e.kind==='razor'){
+       for(j=0;j<(e.kind==='icicles'?3:4);j++){
+         var va=(e.hits*2.399+j*2.14),vr=(e.r||30)*Math.sqrt(((e.hits+j)%13+1)/13);
+         effect('impact',{x:px+Math.cos(va)*vr,y:py+Math.sin(va)*vr,color:e.color,life:.32,style:e.kind,visual:true});
+       }
+       e.hits++;
+     }
+     continue;
+   }
    if(e.kind==='flame'){
      if(!e.owner||e.owner.hp<=0){e.life=e.t;continue;}
      doCone(e.owner,Math.atan2(e.dy,e.dx),e.range,.48,e.damage,'fire',.35);
@@ -621,7 +646,7 @@ function drawPreview(c,cam){
  if(inf.ready)ring(c,x,y,r+7+Math.sin(frameTime*6)*1.3,col,1.1);
  c.restore();
 }
-SC.begin=begin;SC.drag=drag;SC.worldAim=worldAim;SC.release=release;SC.cancel=cancel;SC.clear=clear;SC.update=update;SC.land=landing;
+SC.begin=begin;SC.drag=drag;SC.worldAim=worldAim;SC.release=release;SC.cancel=cancel;SC.clear=clear;SC.update=update;SC.land=landing;SC.addRemote=addRemote;
 SC.isActive=isActive;SC.info=info;SC.draw=function(c,cam){drawEffects(c,cam);drawPreview(c,cam);};
 SC.definitions=DEFINITIONS;SC.chargeThreshold=ARM;SC.holdDuration=FULL;
 })(window);

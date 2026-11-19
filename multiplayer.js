@@ -4,10 +4,13 @@
 (function(root){
 'use strict';
 var CC=root.CC=root.CC||{};
-var MP=CC.Multiplayer={active:false,role:null,room:null,remote:null,connected:false};
+var MP=CC.Multiplayer={active:false,role:null,room:null,remote:null,connected:false,options:{guestInvuln:false}};
 var ws=null,session=null,reconnectDelay=800,pending=null,opened=false,playing=false;
 var chat=[],trade=null,positionClock=0,snapshotClock=0,roomClock=0,pickupClock=0;
 var lastScene='',lastRemote=0,pendingPickups={};
+// Partner motion: samples arrive ~20x/s; we draw ~110 ms in the past and blend between them,
+// so movement is smooth on any connection instead of stepping from packet to packet.
+var optClock=0,samples=[],lastViewAt=0,minionClock=0,remoteMinions=[],remoteMinionsAt=0,INTERP_MS=110;
 var colors={wizard:'#75caff',necromancer:'#b98eff',thief:'#e6809f',swordsman:'#f3bf78'};
 var el=function(id){return document.getElementById(id);};
 // The game page and the room server are normally the same host. To point a page hosted
@@ -59,7 +62,7 @@ function identity(){return {name:safeName(),hero:el('mp-hero').value};}
 function startRoom(isPrivate){
  var i=identity();if(!i.name)return message('Enter your name to create a game');
  message('Creating room...');
- emit({type:'create',name:i.name,hero:i.hero,private:!!isPrivate});
+ emit({type:'create',name:i.name,hero:i.hero,private:!!isPrivate,mode:el('mp-mode').value});
 }
 function joinRoom(code){
  var i=identity();if(!i.name)return message('Enter your name to join a game');
@@ -75,7 +78,7 @@ function rooms(items){
  items.forEach(function(room){
   var row=document.createElement('div');row.className='mp-room';
   var left=document.createElement('div'),h=document.createElement('strong'),s=document.createElement('small');
-  h.textContent=room.title;s.textContent=room.host.name+' · '+room.host.hero+' · 1 / 2 players';
+  h.textContent=(room.mode==='defense'?'🛡 ':'')+room.title;s.textContent=(room.mode==='defense'?'Town Defense · ':'Cave Co-op · ')+room.host.name+' · '+room.host.hero+' · 1 / 2 players';
   left.appendChild(h);left.appendChild(s);row.appendChild(left);
   var button=document.createElement('button');button.textContent='JOIN';
   button.onclick=function(){joinRoom(room.code);};row.appendChild(button);box.appendChild(row);
@@ -86,6 +89,7 @@ function hud(){
  el('mp-code').textContent=MP.code||'------';
  el('mp-peer').textContent=other?other.name+' · '+other.hero:'Waiting for adventurer';
  el('mp-online').textContent=MP.connected?'● ONLINE':'● RECONNECTING';
+ el('mp-dot').style.color=MP.connected?'#81daaa':'#ff9a7a';
  el('mp-hud').classList.toggle('mp-hidden',!MP.active||!playing);
 }
 function start(scene){
@@ -94,6 +98,7 @@ function start(scene){
  if(!player||!CC.beginCoop)return setError('Game not ready');
  // Joining never loads the owner's local save; the game creates a fresh hero.
  playing=true;
+ if(!scene&&MP.room&&MP.room.mode==='defense')scene={area:'defense',floor:1};
  CC.beginCoop(player.hero,scene);
  el('mp-lobby').classList.add('mp-hidden');
  el('mp-hud').classList.remove('mp-hidden');
@@ -101,16 +106,16 @@ function start(scene){
  if(MP.role==='host')broadcastScene();
 }
 function broadcastScene(){
- if(!MP.active||MP.role!=='host'||!CC.state||CC.state.area!=='cave')return;
+ if(!MP.active||MP.role!=='host'||!CC.state||(CC.state.area!=='cave'&&CC.state.area!=='defense'))return;
  var s=CC.state,d=CC.Dungeon;
  if(!d||!Number.isFinite(d.seed))return;
- var scene={area:'cave',floor:s.floor,seed:d.seed};
+ var scene={area:s.area,floor:s.floor,seed:d.seed};
  lastScene=scene.area+':'+scene.floor+':'+scene.seed;
  send({type:'scene',scene:scene});
  var data=snapshot();if(data)send({type:'snapshot',snapshot:data});
 }
 function incomingScene(scene){
- if(!scene||scene.area!=='cave'||MP.role!=='guest')return;
+ if(!scene||(scene.area!=='cave'&&scene.area!=='defense')||MP.role!=='guest')return;
  var key=scene.area+':'+scene.floor+':'+scene.seed;
  if(!playing){start(scene);lastScene=key;return;}
  if(key===lastScene)return;
@@ -249,7 +254,34 @@ function handle(m){
   var hero=m.player,prev=MP.remote;
   MP.remote=Object.assign(prev||{r:8},hero);
   MP.remote.color=colors[MP.remote.classId]||'#ddd';
-  lastRemote=Date.now();return;
+  lastRemote=Date.now();
+  if(Number.isFinite(hero.x)&&Number.isFinite(hero.y)){
+   samples.push({t:performance.now(),x:hero.x,y:hero.y,s:hero});
+   if(samples.length>14)samples.shift();
+  }
+  return;
+ }
+ if(m.type==='fx'){
+  if(m.from===MP.role||!playing)return;
+  var d=m.d,C=CC.Classes;
+  if(m.k==='fx'&&C&&C.addRemoteFx)C.addRemoteFx(d);
+  else if(m.k==='pr'&&C&&C.addRemoteProjectile)C.addRemoteProjectile(d);
+  else if(m.k==='sc'&&CC.SpellCharge&&CC.SpellCharge.addRemote){updateView(performance.now());CC.SpellCharge.addRemote(d,MP.view);}
+  else if(m.k==='df'&&CC.Defense&&CC.Defense.applyState&&MP.role==='guest')CC.Defense.applyState(d);
+  else if(m.k==='tb'&&CC.Defense&&CC.Defense.applyBolt&&MP.role==='guest')CC.Defense.applyBolt(d);
+  else if(m.k==='opt'&&MP.role==='guest'&&d){
+   var gi=!!d.gi;
+   if(gi!==MP.options.guestInvuln&&CC.state.player&&CC.fx&&CC.fx.text)
+    CC.fx.text(CC.state.player.x,CC.state.player.y-30,gi?'INVULNERABLE':'VULNERABLE',gi?'#9fe3ff':'#ffb0a0',11);
+   MP.options.guestInvuln=gi;
+  }
+  else if(m.k==='tc'&&CC.Defense&&CC.Defense.onCommand&&MP.role==='host')CC.Defense.onCommand(d);
+  else if(m.k==='mn'&&d&&Array.isArray(d.l)){
+   remoteMinions=d.l.map(function(q,i){var old=remoteMinions[i]||{};
+    return {x:q.x,y:q.y,face:q.f>=0?1:-1,hp:q.h,maxHp:q.m||1,life:9,anim:old.anim||0,spawn:0,atkCd:0,charged:!!q.c};});
+   remoteMinionsAt=performance.now();
+  }
+  return;
  }
  if(m.type==='scene'){incomingScene(m.scene);return;}
  if(m.type==='snapshot'){applySnapshot(m.snapshot);return;}
@@ -267,6 +299,7 @@ function handle(m){
  if(m.type==='pickup_request'&&MP.role==='host'){guestPickup(m.id);return;}
  if(m.type==='pickup_grant'&&m.to===MP.role){reward(m.reward);delete pendingPickups[m.id];return;}
  if(m.type==='damage_guest'&&MP.role==='guest'){
+  if(MP.options.guestInvuln)return;
   if(CC.state.player&&CC.Classes&&CC.Classes.damage)CC.Classes.damage(CC.state.player,m.damage);
   return;
  }
@@ -278,10 +311,10 @@ function handle(m){
 }
 function stop(notify){
  if(notify)send({type:'leave'});
- MP.active=false;MP.connected=false;MP.role=null;MP.code=null;MP.room=null;MP.remote=null;
+ MP.active=false;MP.connected=false;MP.role=null;MP.code=null;MP.room=null;MP.remote=null;MP.view=null;samples=[];remoteMinions=[];MP.options.guestInvuln=false;
  playing=false;opened=false;lastScene='';trade=null;pendingPickups={};sessionClear();
  el('mp-lobby').classList.add('mp-hidden');el('mp-hud').classList.add('mp-hidden');
- el('mp-chat').classList.add('mp-hidden');el('mp-trade').classList.add('mp-hidden');
+ el('mp-chat').classList.add('mp-hidden');el('mp-trade').classList.add('mp-hidden');el('mp-menu').classList.add('mp-hidden');
  if(ws){ws.onclose=null;ws.close();ws=null;}
  if(CC.state)CC.state.mode='title';
 }
@@ -289,10 +322,12 @@ function posData(){
  var p=CC.state.player;
  return p?{x:p.x,y:p.y,hp:p.hp,maxHp:p.maxHp,mana:p.mana,maxMana:p.maxMana,
   classId:p.classId,level:p.level,face:p.face||1,anim:p.anim||0,
-  moving:!!p.moving,atkAnim:p.atkAnim||0,swingAng:p.swingAng||0}:null;
+  moving:!!p.moving,atkAnim:p.atkAnim||0,swingAng:p.swingAng||0,swingSign:p.swingSign||1,
+  castFlash:p.castFlash||0,whirlT:p.whirlT||0,dashT:p.dashT||0,
+  pwb:p.pw?((p.pw.rapid>0?1:0)|(p.pw.explode>0?2:0)|(p.pw.shield>0?4:0)):0}:null;
 }
 function tick(dt){
- if(!playing||!MP.active||CC.state.mode!=='dungeon')return;
+ if(!playing||!MP.active||(CC.state.mode!=='dungeon'&&!(CC.state.mode==='dead'&&CC.state.area==='defense')))return;
  positionClock+=dt;snapshotClock+=dt;roomClock+=dt;pickupClock+=dt;
  if(MP.role==='host'&&MP.remote&&MP.remote.invuln>0)
   MP.remote.invuln=Math.max(0,MP.remote.invuln-dt);
@@ -305,7 +340,16 @@ function tick(dt){
   });
  }
  if(!ready())return;
- if(positionClock>.075){positionClock=0;send({type:'position',player:posData()});}
+ if(positionClock>.05){positionClock=0;send({type:'position',player:posData()});}
+ optClock+=dt;
+ if(MP.role==='host'&&optClock>2){optClock=0;if(MP.room&&MP.room.guest)sendFx('opt',{gi:MP.options.guestInvuln?1:0});}
+ minionClock+=dt;
+ if(minionClock>.12){minionClock=0;
+  var mm=(CC.Classes&&CC.Classes.minions)||[];
+  if(mm.length||MP._sentMinions){MP._sentMinions=mm.length>0;
+   sendFx('mn',{l:mm.slice(0,8).map(function(q){return {x:Math.round(q.x*10)/10,y:Math.round(q.y*10)/10,f:q.face||1,
+    h:Math.round(q.hp),m:Math.round(q.maxHp),c:q.charged?1:0};})});}
+ }
  if(MP.role==='host'){
   if(roomClock>.5){roomClock=0;
    var sceneKey=CC.state.area+':'+CC.state.floor+':'+(CC.Dungeon&&CC.Dungeon.seed);
@@ -323,22 +367,81 @@ function tick(dt){
    }
   });
  }
- if(MP.remote&&Date.now()-lastRemote>8000)MP.remote=null;
+ if(MP.remote&&Date.now()-lastRemote>8000){MP.remote=null;MP.view=null;samples=[];}
+}
+// Smoothed view of the partner (also used as the owner of their following spells).
+function updateView(now){
+ if(!samples.length)return null;
+ var rt=now-INTERP_MS,n=samples.length,a=null,b=null,i;
+ for(i=n-1;i>=0;i--)if(samples[i].t<=rt){a=samples[i];b=samples[i+1]||null;break;}
+ var x,y;
+ if(!a){a=samples[0];x=a.x;y=a.y;}
+ else if(b){
+  var k=Math.max(0,Math.min(1,(rt-a.t)/Math.max(1,b.t-a.t)));
+  // blink / teleport: a huge jump inside one packet gap is a jump, not a sprint
+  if(Math.hypot(b.x-a.x,b.y-a.y)>56&&b.t-a.t<160)k=k<.5?0:1;
+  x=a.x+(b.x-a.x)*k;y=a.y+(b.y-a.y)*k;
+ }else{
+  // newest sample is older than render time: coast on the last velocity for a moment
+  var p0=samples[n-2],ext=Math.min(rt-a.t,140);
+  if(p0&&a.t>p0.t){var vx=(a.x-p0.x)/(a.t-p0.t),vy=(a.y-p0.y)/(a.t-p0.t);
+   if(Math.hypot(a.x-p0.x,a.y-p0.y)>56)vx=vy=0;
+   x=a.x+vx*ext;y=a.y+vy*ext;}
+  else{x=a.x;y=a.y;}
+ }
+ var latest=samples[n-1].s,v=MP.view,dt=Math.min(.1,Math.max(0,(now-lastViewAt)/1000));
+ lastViewAt=now;
+ if(!v){v=MP.view={r:8,anim:0,moving:false,movingT:0,whirlT:0,atkAnim:0,castFlash:0,bloodTime:0,
+  invuln:0,flags:{},dashT:0,swingAng:0,swingSign:1,face:1,x:x,y:y};}
+ var moved=Math.hypot(x-v.x,y-v.y),speed=dt>0?moved/dt:0;
+ v.x=x;v.y=y;
+ if(speed>14&&speed<900)v.movingT=.14;else v.movingT=Math.max(0,v.movingT-dt);
+ v.moving=v.movingT>0;
+ v.anim+=dt*(v.moving?1:1);
+ // attack / cast timers are re-armed by each packet that reports a fresher one, then run out locally
+ if(latest.atkAnim>v.atkAnim+.02){v.atkAnim=latest.atkAnim;v.swingAng=latest.swingAng||0;v.swingSign=latest.swingSign||1;}
+ else v.atkAnim=Math.max(0,v.atkAnim-dt);
+ if(latest.castFlash>v.castFlash+.02)v.castFlash=latest.castFlash;else v.castFlash=Math.max(0,v.castFlash-dt);
+ v.whirlT=latest.whirlT>0?latest.whirlT:Math.max(0,v.whirlT-dt);
+ v.dashT=latest.dashT||0;v.pwb=latest.pwb|0;
+ v.face=latest.face>=0?1:-1;
+ v.classId=latest.classId||v.classId;v.hp=latest.hp;v.maxHp=latest.maxHp;v.level=latest.level;
+ return v;
 }
 function drawWorld(c,cam){
  if(!playing||!MP.remote||!MP.active)return;
- var p=MP.remote,x=p.x-cam.x,y=p.y-cam.y;
+ var now=performance.now(),p=updateView(now);
+ if(!p)return;
+ // partner's skeletons, drawn like our own
+ if(remoteMinions.length&&now-remoteMinionsAt<1500&&CC.Classes&&CC.Classes.drawMinion){
+  remoteMinions.forEach(function(m){m.anim+=.016;CC.Classes.drawMinion(c,m,cam);});
+ }
+ var x=p.x-cam.x,y=p.y-cam.y;
  if(x<-40||y<-40||x>cam.w+40||y>cam.h+40)return;
  c.save();
- var C=CC.Classes;
- if(C&&C.drawHero)C.drawHero(c,Object.assign({r:8,anim:0,moving:false,whirlT:0,atkAnim:0,bloodTime:0},p),x,y);
- else{c.fillStyle=p.color||'#fff';c.beginPath();c.arc(x,y,9,0,6.283);c.fill();}
+ var C=CC.Classes,col=colors[p.classId]||'#ddd',act=Math.max(p.castFlash,p.atkAnim*2,p.whirlT>0?.4:0);
+ c.save();c.globalAlpha=.14+act*.5;c.fillStyle=col;c.beginPath();
+ c.ellipse(x,y+9,12+act*12,4.5+act*4,0,0,6.2832);c.fill();c.restore();
+ var sq=p.moving?1+Math.sin(p.anim*14)*.04:1+Math.sin(p.anim*3)*.015,st=p.atkAnim>0?1.08:1;
+ if(p.pwb){c.save();var pt=now/1000;
+  if(p.pwb&4){c.globalAlpha=.35+.15*Math.sin(pt*6);c.strokeStyle='#8fd8ff';c.lineWidth=2;c.beginPath();c.ellipse(x,y-2,15,19,0,0,6.2832);c.stroke();c.globalAlpha=.1;c.fillStyle='#8fd8ff';c.fill();}
+  if(p.pwb&1){c.globalAlpha=.5;c.strokeStyle='#ffd84a';c.lineWidth=1.5;c.beginPath();c.ellipse(x,y+9,16+Math.sin(pt*12)*1.5,6,0,0,6.2832);c.stroke();}
+  if(p.pwb&2){c.globalAlpha=.5;c.strokeStyle='#ff8a3a';c.lineWidth=1.5;c.beginPath();c.ellipse(x,y+9,12,4.5,0,0,6.2832);c.stroke();}
+  c.restore();}
+ if(MP.role==='host'&&MP.options.guestInvuln){c.save();c.globalAlpha=.28+.12*Math.sin(now/180);c.strokeStyle='#9fe3ff';c.lineWidth=1.5;
+  c.beginPath();c.ellipse(x,y-2,13,17,0,0,6.2832);c.stroke();c.restore();}
+ c.save();c.translate(x,y+10);c.scale(st/sq,sq*(2-st));c.translate(-x,-(y+10));
+ if(C&&C.drawHero)C.drawHero(c,p,x,y);
+ else{c.fillStyle=col;c.beginPath();c.arc(x,y,9,0,6.283);c.fill();}
+ c.restore();
  c.font='bold 8px Georgia';c.textAlign='center';c.textBaseline='middle';
  c.fillStyle='#fff1cd';c.fillText((MP.role==='host'?MP.room?.guest?.name:MP.room?.host?.name)||'PARTNER',x,y-24);
  c.fillStyle='rgba(0,0,0,.8)';c.fillRect(x-16,y-19,32,4);
  c.fillStyle='#7fd7ab';c.fillRect(x-16,y-19,32*Math.max(0,Math.min(1,p.hp/Math.max(1,p.maxHp))),4);
  c.restore();
 }
+function sendFx(k,d){if(playing&&MP.active&&ready())ws.send(JSON.stringify({type:'fx',k:k,d:d}));}
+MP.sendFx=sendFx;
 function initialize(){
  var div=document.createElement('div');div.id='emberdeep-mp';
  div.innerHTML=String.raw`
@@ -350,6 +453,8 @@ function initialize(){
     <div class="mp-line"><label>Your name<input id="mp-name" maxlength="22" placeholder="Adventurer" autocomplete="nickname"></label>
       <label>Choose hero<select id="mp-hero"><option value="wizard">Wizard</option><option value="necromancer">Necromancer</option>
         <option value="swordsman">Swordsman</option><option value="thief">Thief</option></select></label></div>
+    <div class="mp-line"><label>Game mode<select id="mp-mode"><option value="defense">Town Defense (waves)</option>
+        <option value="cave">Cave Co-op (explore)</option></select></label></div>
     <div class="mp-actions"><button id="mp-create">CREATE OPEN GAME</button>
       <button id="mp-private">CREATE PRIVATE</button></div>
     <div class="mp-join"><input id="mp-join-code" maxlength="6" placeholder="INVITE CODE" aria-label="Room invite code">
@@ -361,10 +466,14 @@ function initialize(){
    </div>
  </section>
  <div id="mp-hud" class="mp-hidden">
-   <div class="mp-hud-top"><span>CO-OP · <b id="mp-code">------</b></span><span id="mp-online">● ONLINE</span></div>
-   <div id="mp-peer">Waiting for player 2</div>
-   <div class="mp-hud-actions"><button id="mp-chat-open">CHAT</button><button id="mp-trade-open">TRADE</button>
-     <button id="mp-leave">LEAVE</button></div>
+   <button id="mp-session" aria-haspopup="true" aria-expanded="false"><span id="mp-dot">●</span> SESSION</button>
+   <div id="mp-menu" class="mp-hidden" role="menu">
+     <div class="mp-hud-top"><span>CO-OP · <b id="mp-code">------</b></span><span id="mp-online">● ONLINE</span></div>
+     <div id="mp-peer">Waiting for player 2</div>
+     <div class="mp-hud-actions"><button id="mp-chat-open" role="menuitem">CHAT</button>
+       <button id="mp-trade-open" role="menuitem">TRADE</button>
+       <button id="mp-leave" role="menuitem">LEAVE</button></div>
+   </div>
  </div>
  <section id="mp-chat" class="mp-popup mp-hidden"><header>PARTY CHAT<button id="mp-chat-close">×</button></header>
    <div id="mp-chat-lines"></div><form id="mp-chat-form">
@@ -385,16 +494,31 @@ function initialize(){
  el('mp-private').onclick=function(){startRoom(true);};
  el('mp-join').onclick=function(){joinRoom(el('mp-join-code').value);};
  el('mp-refresh').onclick=function(){emit({type:'list'});};
- el('mp-chat-open').onclick=function(){el('mp-chat').classList.remove('mp-hidden');el('mp-chat-input').focus();};
+ function menu(open){
+  el('mp-menu').classList.toggle('mp-hidden',!open);
+  el('mp-session').setAttribute('aria-expanded',open?'true':'false');
+ }
+ el('mp-session').onclick=function(e){e.stopPropagation();menu(el('mp-menu').classList.contains('mp-hidden'));};
+ // tapping anywhere else closes the menu
+ document.addEventListener('pointerdown',function(e){
+  var m=el('mp-menu');if(m&&!m.classList.contains('mp-hidden')&&!el('mp-hud').contains(e.target))menu(false);
+ },true);
+ el('mp-chat-open').onclick=function(){menu(false);el('mp-trade').classList.add('mp-hidden');
+  el('mp-chat').classList.remove('mp-hidden');el('mp-chat-input').focus();};
  el('mp-chat-close').onclick=function(){el('mp-chat').classList.add('mp-hidden');};
  el('mp-chat-form').onsubmit=function(e){e.preventDefault();var input=el('mp-chat-input');
   var t=input.value.trim();if(t)send({type:'chat',text:t});input.value='';};
- el('mp-trade-open').onclick=function(){showTrade();};
+ el('mp-trade-open').onclick=function(){menu(false);el('mp-chat').classList.add('mp-hidden');showTrade();};
  el('mp-trade-close').onclick=function(){el('mp-trade').classList.add('mp-hidden');};
  el('mp-trade-offer').onclick=offer;
  el('mp-trade-accept').onclick=function(){if(trade)send({type:'trade_accept',id:trade.id});};
  el('mp-trade-decline').onclick=function(){if(trade)send({type:'trade_decline',id:trade.id});};
- el('mp-leave').onclick=function(){if(confirm('Leave the multiplayer adventure?'))stop(true);};
+ el('mp-leave').onclick=function(){menu(false);if(confirm('Leave the multiplayer adventure?'))stop(true);};
+ // The SESSION button would cover the journal's tab row, so it steps aside while the journal is open.
+ setInterval(function(){
+  var u=CC.UI&&CC.UI._state?CC.UI._state():null,h=el('mp-hud');
+  if(h)h.style.visibility=u&&u.target?'hidden':'';
+ },150);
  // Text input must not also trigger gameplay key bindings or scroll the canvas.
  function editing(e){var t=e.target;return t&&(t.tagName==='INPUT'||t.tagName==='SELECT'||t.tagName==='TEXTAREA');}
  root.addEventListener('keydown',function(e){if(editing(e))e.stopImmediatePropagation();},true);
@@ -410,7 +534,16 @@ MP.leave=function(){stop(true);};MP.tick=tick;MP.drawWorld=drawWorld;
 MP.isHost=function(){return MP.active&&MP.role==='host';};
 MP.isGuest=function(){return MP.active&&MP.role==='guest';};
 MP.remotePlayerForAI=function(){return MP.isHost()?MP.remote:null;};
-MP.onGuestDamage=function(amount){if(MP.isHost()&&amount>0)
+MP.setGuestInvuln=function(on){
+ if(!MP.isHost())return false;
+ MP.options.guestInvuln=!!on;optClock=0;
+ sendFx('opt',{gi:on?1:0});
+ if(CC.fx&&CC.fx.text&&CC.state.player)CC.fx.text(CC.state.player.x,CC.state.player.y-30,
+  on?'GUEST INVULNERABLE':'GUEST VULNERABLE',on?'#9fe3ff':'#ffb0a0',10);
+ return true;
+};
+MP.guestInvulnerable=function(){return !!MP.options.guestInvuln;};
+MP.onGuestDamage=function(amount){if(MP.isHost()&&amount>0&&!MP.options.guestInvuln)
  send({type:'damage_guest',damage:Math.min(250,amount)});};
 MP.sendHit=function(id,amount,kind){
  if(MP.isGuest()&&Number.isFinite(amount)&&amount>0)

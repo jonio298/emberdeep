@@ -113,7 +113,7 @@ async function publish(code, data) {
 }
 function publicRoom(r) {
   return {
-    code: r.code, title: r.title, private: r.private,
+    code: r.code, title: r.title, private: r.private, mode: r.mode === 'defense' ? 'defense' : 'cave',
     host: { name: r.host.name, hero: r.host.hero },
     guest: r.guest ? { name: r.guest.name, hero: r.guest.hero } : null,
     players: r.guest ? 2 : 1, capacity: 2,
@@ -165,7 +165,7 @@ async function create(ws, data) {
   if (duplicate) return fail(ws, 'Unable to create game; retry');
   const secret = token(), now = Date.now(), room = {
     code, created: now, updated: now, title: safeText(data.title, 42) || name + "'s Adventure",
-    private: !!data.private,
+    private: !!data.private, mode: data.mode === 'defense' ? 'defense' : 'cave',
     host: { name, hero: validHero(data.hero), hash: digest(secret) },
     guest: null
   };
@@ -215,6 +215,23 @@ async function resume(ws, data) {
   if (!role) return fail(ws, 'Session expired or invalid');
   await attach(ws, room, role, secret);
 }
+// Keep only plain numbers, booleans, short strings, small arrays and shallow objects.
+function cleanFx(v, depth) {
+  if (typeof v === 'number') return Number.isFinite(v) ? Math.max(-30000, Math.min(30000, v)) : undefined;
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'string') return v.slice(0, 32);
+  if (depth > 3 || !v || typeof v !== 'object') return undefined;
+  if (Array.isArray(v)) {
+    return v.slice(0, 12).map((x) => cleanFx(x, depth + 1)).filter((x) => x !== undefined);
+  }
+  const out = {};
+  for (const k of Object.keys(v).slice(0, 40)) {
+    if (!/^[A-Za-z0-9_]{1,16}$/.test(k)) continue;
+    const c = cleanFx(v[k], depth + 1);
+    if (c !== undefined) out[k] = c;
+  }
+  return out;
+}
 async function relay(ws, data) {
   const info = wsClients.get(ws);
   if (!info) return fail(ws, 'Join a game first');
@@ -245,12 +262,24 @@ async function relay(ws, data) {
     if (!rate(ws, 'position', 24)) return;
     const p = data.player || {};
     const clean = {};
-    for (const k of ['x','y','hp','maxHp','mana','maxMana','level','face','anim','atkAnim','swingAng']) {
+    for (const k of ['x','y','hp','maxHp','mana','maxMana','level','face','anim','atkAnim','swingAng',
+                     'swingSign','castFlash','whirlT','dashT','pwb']) {
       if (Number.isFinite(p[k])) clean[k] = Math.max(-20000, Math.min(20000, p[k]));
     }
     clean.classId = room[role].hero;
     clean.moving = !!p.moving;
     await publish(code, packet('position', { from: role, player: clean }));
+    return;
+  }
+  if (data.type === 'fx') {
+    // Visual-only combat effects (slashes, spells, projectiles, minions) mirrored to the partner.
+    if (!rate(ws, 'fx', 70)) return;
+    if (!['fx', 'pr', 'sc', 'mn', 'df', 'tb', 'tc', 'opt'].includes(data.k)) return;
+    if ((data.k === 'df' || data.k === 'tb' || data.k === 'opt') && role !== 'host') return; // wave state and crossbow fire come from the host
+    if (data.k === 'tc' && role !== 'guest') return; // crossbow requests come from the guest
+    const d = cleanFx(data.d, 0);
+    if (d === undefined || JSON.stringify(d).length > 2500) return;
+    await publish(code, packet('fx', { from: role, k: data.k, d }));
     return;
   }
   if (data.type === 'kill' && role === 'host') {
@@ -290,9 +319,9 @@ async function relay(ws, data) {
   if (data.type === 'scene' && role === 'host') {
     if (!rate(ws, 'scene', 4)) return;
     const scene = data.scene || {};
-    if (scene.area !== 'cave' || !Number.isFinite(scene.seed) ||
+    if (!['cave', 'defense'].includes(scene.area) || !Number.isFinite(scene.seed) ||
         !Number.isInteger(scene.floor) || scene.floor < 1 || scene.floor > 200) return;
-    const clean = { area: 'cave', seed: scene.seed, floor: scene.floor };
+    const clean = { area: scene.area, seed: scene.seed, floor: scene.floor };
     await put('scene:' + code, clean);
     await publish(code, packet('scene', { scene: clean }));
     return;

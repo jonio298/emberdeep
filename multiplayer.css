@@ -39,16 +39,19 @@
 .mp-empty{font-size:12px;color:#b4a8b4;padding:16px;text-align:center;border:1px dashed #4f3c4c}
 #mp-status{font-size:12px;min-height:20px;color:#b0f0cb;margin-top:14px}
 #mp-server{font-size:10px;color:#897989;line-height:1.4}
-#mp-hud{position:absolute;pointer-events:auto;left:50%;transform:translateX(-50%);
- bottom:calc(188px + env(safe-area-inset-bottom));padding:6px 8px;background:#100d1de9;
- border:1px solid #6e4f6b;border-radius:9px;box-shadow:0 4px 18px #050309aa;
- width:min(258px,calc(100vw - 28px));text-align:center;backdrop-filter:blur(6px)}
+#mp-hud{position:absolute;pointer-events:none;left:50%;transform:translateX(-50%);
+ top:calc(8px + env(safe-area-inset-top));display:flex;flex-direction:column;align-items:center;gap:6px;z-index:2}
+#mp-session{pointer-events:auto;min-height:32px!important;padding:5px 16px!important;border-radius:16px!important;
+ background:linear-gradient(#4a2b3b,#241528)!important;box-shadow:0 3px 14px #050309bb;font-size:11px!important;letter-spacing:.12em!important}
+#mp-dot{color:#81daaa;font-size:9px;margin-right:3px}
+#mp-menu{pointer-events:auto;padding:8px;background:#100d1df2;border:1px solid #6e4f6b;border-radius:10px;
+ box-shadow:0 6px 22px #050309cc;width:min(250px,calc(100vw - 28px));text-align:center;backdrop-filter:blur(6px)}
 .mp-hud-top{display:flex;justify-content:space-between;font-size:11px;color:#f8c88e}
 #mp-code{letter-spacing:.16em}#mp-online{color:#81daaa;font-size:10px}
 #mp-peer{font-size:11px;color:#b9b1c9;margin:3px 0 7px}
 .mp-hud-actions{display:flex;gap:7px;justify-content:center}
 .mp-hud-actions button{flex:1;padding:6px 6px;min-height:31px}
-.mp-popup{pointer-events:auto;position:absolute;bottom:calc(260px + env(safe-area-inset-bottom));
+.mp-popup{pointer-events:auto;position:absolute;top:calc(52px + env(safe-area-inset-top));
  left:50%;transform:translateX(-50%);width:min(380px,calc(100vw - 22px));padding:12px;
  background:linear-gradient(#25182d,#0c0b17);border:1px solid #a37858;border-radius:11px;
  box-shadow:0 10px 36px #08050bee;font-size:12px}
@@ -67,4 +70,4 @@
 @media(max-width:390px){.mp-panel{padding:12px}.mp-title h2{font-size:21px}
  .mp-join button{font-size:10px}.mp-line{flex-direction:column}.mp-panel>p{margin:6px 0 10px}}
 @media(max-height:560px){#mp-lobby{align-items:flex-start}.mp-panel{max-height:none}
- #mp-hud{bottom:112px}#mp-trade,#mp-chat{bottom:172px}}
+}

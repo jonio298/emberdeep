@@ -112,6 +112,11 @@
 
   function playerOf() { return CC.state && CC.state.player; }
   function hurtPlayer(p, amt, e, kind) {
+    if (p && p.isDefenseBox) return CC.Defense.damageBox(amt, e, kind); // Town Defense: monsters chew on the supply box
+    if (p && p.pw && p.pw.shield > 0 && !(CC.Multiplayer && CC.Multiplayer.remote === p)) { // shield power-up: the blow is turned aside
+      if (CC.fx && CC.fx.text && Math.random() < 0.25) CC.fx.text(p.x, p.y - 16, 'BLOCKED', '#9fe3ff', 10);
+      return 1;
+    }
     if (!p || p.hp <= 0 || (p.invuln > 0)) return 0;
     if(CC.Multiplayer&&CC.Multiplayer.isHost&&CC.Multiplayer.isHost()&&
        p===CC.Multiplayer.remote){
@@ -179,12 +184,16 @@
     return max;
   }
   // tile flow field: BFS distance from the player's tile over walkable tiles; rebuilt when the player changes tile
-  var field = null;
+  var field = null, flowSpare = [];
   function flowFor(p) {
     var D = CC.Dungeon;
     if (!D || !D.tiles || !D.isSolidTile) return null;
     var T = CC.TILE || 32, W = D.w, H = D.h, tx = Math.floor(p.x / T), ty = Math.floor(p.y / T);
     if (field && field.tiles === D.tiles && field.tx === tx && field.ty === ty) return field;
+    // Town Defense: monsters flip between the supply box and nearby heroes all frame long, so keep a few fields around
+    // instead of rebuilding the same breadth-first search over and over.
+    var spare = flowSpare;
+    for (var fi = 0; fi < spare.length; fi++) if (spare[fi].tiles === D.tiles && spare[fi].tx === tx && spare[fi].ty === ty) { field = spare[fi]; return field; }
     var dist = new Int16Array(W * H).fill(-1), q = new Int32Array(W * H), h = 0, t = 0, i;
     if (!D.isSolidTile(tx, ty)) {
       i = ty * W + tx; dist[i] = 0; q[t++] = i;
@@ -199,6 +208,7 @@
       }
     }
     field = { tiles: D.tiles, tx: tx, ty: ty, dist: dist, W: W, H: H, T: T };
+    spare.unshift(field); if (spare.length > 5) spare.length = 5;
     return field;
   }
   // angle an enemy should walk to reach the player: straight when the way is clear, else along the tile path
@@ -376,6 +386,7 @@
         return;
       }
       e.dead = true; e.hp = 0; e.deadT = 0;
+      if (CC.Defense && CC.Defense.onKill) CC.Defense.onKill(e); // Town Defense: monsters can drop power-ups
       this._remains(e); this._goreBurst(e, false);
       if (CC.fx && CC.fx.burst) CC.fx.burst(e.x, e.y, (TYPES[e.type] && TYPES[e.type].blood) || BLOOD, e.boss ? 30 : 8, e.boss ? 180 : 80);
       if (CC.fx && CC.fx.burst) CC.fx.burst(e.x, e.y, e.color, e.boss ? 40 : 10, e.boss ? 200 : 100);
@@ -691,6 +702,7 @@
     _blast: function (x, y, rad, dmg) {
       var p = playerOf();
       this.projectiles.push({ x: x, y: y, vx: 0, vy: 0, r: 0, life: 0.35, ring: rad, color: '#ff9a2a', fx: true });
+      if (dmg > 0 && CC.Defense && CC.Defense.active && CC.Defense.active()) CC.Defense.blast(x, y, rad, dmg);
       if (dmg > 0 && p && Math.hypot(p.x - x, p.y - y) < rad + (p.r || 10) && clearLine(x, y, p.x, p.y, 1)) hurtPlayer(p, dmg, null);
       var guest=CC.Multiplayer&&CC.Multiplayer.remotePlayerForAI&&CC.Multiplayer.remotePlayerForAI();
       if(dmg>0&&guest&&guest.hp>0&&Math.hypot(guest.x-x,guest.y-y)<rad+(guest.r||10)&&
@@ -735,10 +747,12 @@
         if (e.burn > 0) { e.burn -= dt; e.hp -= (e.burnDps || 1) * dt; if (e.hp <= 0) { this._kill(e); continue; } this._dismember(e); }
         var slowF = e.slow > 0 ? 0.5 : 1; if (e.slow > 0) e.slow -= dt;
         var guest=CC.Multiplayer&&CC.Multiplayer.remotePlayerForAI&&CC.Multiplayer.remotePlayerForAI();
-        if ((!p || p.hp<=0)&&(!guest||guest.hp<=0))continue;
+        var defending=CC.Defense&&CC.Defense.active&&CC.Defense.active();
+        if (!defending&&(!p || p.hp<=0)&&(!guest||guest.hp<=0))continue;
         var focus=p;
         if(guest&&guest.hp>0&&(!p||p.hp<=0||
            Math.hypot(guest.x-e.x,guest.y-e.y)<Math.hypot(p.x-e.x,p.y-e.y)))focus=guest;
+        if(defending)focus=CC.Defense.pickFocus(e,focus,p,guest); // heroes in reach, otherwise the supply box
         var dx=focus.x-e.x,dy=focus.y-e.y,d=Math.hypot(dx,dy)||1,ang=Math.atan2(dy,dx);
         if (e.asleep) { if (d < WAKE) { e.asleep = false; if (e.group) for (var g = 0; g < this.list.length; g++) if (this.list[g].group === e.group) this.list[g].asleep = false; } else continue; }
         if (e.boss && !e.introDone) { // intro when the boss wakes: name banner, shake, brief invulnerable pause
@@ -776,6 +790,7 @@
             if (CC.fx && CC.fx.burst) CC.fx.burst(q.x, q.y, q.color, 3, 40);
           }
           else if (p && q.hostile && Math.hypot(p.x - q.x, p.y - q.y) < q.r + (p.r || 10)) { hurtPlayer(p, q.dmg, null, PROJ_KIND[q.kind] || null); q.life = 0; }
+          else if (CC.Defense && CC.Defense.active && CC.Defense.active() && CC.Defense.projHitsBox(q)) q.life = 0;
           else {
             var gp=CC.Multiplayer&&CC.Multiplayer.remotePlayerForAI&&CC.Multiplayer.remotePlayerForAI();
             if(gp&&q.hostile&&Math.hypot(gp.x-q.x,gp.y-q.y)<q.r+(gp.r||10)){

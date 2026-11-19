@@ -22,6 +22,8 @@
   var FONT = 'Georgia, "Palatino Linotype", "Book Antiqua", serif';
   var mouse = { cx: 0, cy: 0, on: false, x: -1, y: -1, bound: false }, hoverInfo = null, canvasEl = null;
   var TABS = [{ id: 'inv', key: 'KeyI', name: 'Inventory' }, { id: 'skills', key: 'KeyK', name: 'Skills' }, { id: 'quests', key: 'KeyJ', name: 'Quests' }, { id: 'map', key: 'KeyM', name: 'Map' }, { id: 'stats', key: 'KeyC', name: 'Stats' }];
+  var PARTY_TAB = { id: 'party', name: 'Party' }; // only while in a co-op session
+  function tabs() { return CC.Multiplayer && CC.Multiplayer.active ? TABS.concat([PARTY_TAB]) : TABS; }
   var BAG_MAX = 40, FRACT = { crit: 1, speed: 1, cdr: 1, lifesteal: 1 };
 
   var cur = null, target = false, t = 0, clock = 0, hovering = false;
@@ -440,6 +442,24 @@
     tx(c, 'Floor ' + s.floor, x + 8, y + 10, 12, COL.accent);
   }
 
+  // PARTY tab: session options. The host decides whether the guest can be hurt.
+  function drawParty(c, hit, x, y, w, h) {
+    var MP = CC.Multiplayer, host = MP && MP.isHost && MP.isHost(), on = !!(MP && MP.options && MP.options.guestInvuln), yy = y + 14;
+    tx(c, 'PARTY OPTIONS', x + w / 2, yy, 16, COL.accent, 'center'); yy += 34;
+    var room = MP && MP.room, partner = room && (host ? room.guest : room.host);
+    tx(c, partner ? (host ? 'Guest: ' : 'Host: ') + partner.name + '  -  ' + partner.hero : 'Waiting for your partner...', x + w / 2, yy, 12, COL.text, 'center'); yy += 34;
+    rr(c, x + 6, yy, w - 12, 92, 8); c.fillStyle = 'rgba(255,255,255,0.05)'; c.fill(); c.lineWidth = 1.5; c.strokeStyle = COL.line; c.stroke();
+    tx(c, 'Guest invulnerability', x + 18, yy + 20, 14, '#fff', 'left');
+    if (host) {
+      tx(c, 'When ON, your guest cannot take damage.', x + 18, yy + 42, 11, COL.dim, 'left');
+      button(c, hit, x + 18, yy + 54, w - 36, 28, on ? 'ON  -  tap to turn off' : 'OFF  -  tap to turn on', true,
+        function () { MP.setGuestInvuln(!on); }, on ? '#2a6a8a' : '#6a2a2a');
+    } else {
+      tx(c, 'Only the host can change this.', x + 18, yy + 42, 11, COL.dim, 'left');
+      tx(c, on ? 'The host has made you INVULNERABLE' : 'You can take damage', x + 18, yy + 66, 13, on ? '#9fe3ff' : COL.text, 'left');
+    }
+  }
+
   /* ---------- main draw ---------- */
   function draw(c, W, H, addHit) {
     var e = ease(t);
@@ -455,13 +475,14 @@
         addHit(px, py, pw, ph, function () { /* absorb taps inside the panel */ });
       }
       frame(c, px, py, pw, ph);
-      var tw = (pw - 20 - 36 - (TABS.length - 1) * 4) / TABS.length;
-      TABS.forEach(function (tb, i) {
+      var TT = tabs(), tw = (pw - 20 - 36 - (TT.length - 1) * 4) / TT.length;
+      if (cur === 'party' && TT.length === TABS.length) cur = 'inv'; // left the session while the tab was open
+      TT.forEach(function (tb, i) {
         var bx = px + 10 + i * (tw + 4), by = py + 10, on = tb.id === cur;
         rr(c, bx, by, tw, 28, 6); c.fillStyle = on ? 'rgba(224,168,74,0.2)' : (target && mouse.x >= bx && mouse.x < bx + tw && mouse.y >= by && mouse.y < by + 28 ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.05)'); c.fill();
         c.lineWidth = on ? 2 : 1; c.strokeStyle = on ? COL.accent : COL.line; c.stroke();
-        tx(c,pw<425?tb.name:tb.name+' ['+tb.key.slice(3)+']',bx+tw/2,by+14.5,
-           pw<350?10:12,on?COL.accent:COL.dim,'center');
+        tx(c,pw<425||!tb.key?tb.name:tb.name+' ['+tb.key.slice(3)+']',bx+tw/2,by+14.5,
+           pw<350||TT.length>5&&pw<460?10:12,on?COL.accent:COL.dim,'center');
         if (target) addHit(bx, by, tw, 28, function () { open(tb.id); });
       });
       var cx0 = px + pw - 34;
@@ -475,6 +496,7 @@
       else if (cur === 'map') drawMap(c, ax, ay, aw, ah);
       else if (cur === 'quests' && CC.EggQuest) CC.EggQuest.drawJournal(c,ax,ay,aw,ah);
       else if (cur === 'stats') drawStats(c, ax, ay, aw, ah, p);
+      else if (cur === 'party') drawParty(c, hit, ax, ay, aw, ah);
       c.restore();
       if (target && e > 0.9 && cur === 'inv') drawTip(c, W, H, p);
     }
@@ -525,12 +547,12 @@
     var p = hero();
     if (!p || p.perkOpen) return;
     var s = CC.state, mm = CC.Minimap, left = mm ? mm.margin + mm.size + 8 : 12;
-    var pw = Math.min(214, Math.max(150, W - 8 - left)), px = W - 8 - pw, py = 8, ph = 104, bw = pw - 20, pts = CC.SkillTree ? CC.SkillTree.points(p) : 0, i;
+    var pw = Math.min(214, Math.max(150, W - 8 - left)), px = W - 8 - pw, py = 8 + (CC.Multiplayer && CC.Multiplayer.active ? 22 : 0), ph = 104, bw = pw - 20, pts = CC.SkillTree ? CC.SkillTree.points(p) : 0, i;
     frame(c, px, py, pw, ph, false);
     hudBar(c, px + 10, py + 9, bw, 15, p.hp / (p.maxHp || 1), '#ff6b6b', '#b01e3a', Math.ceil(p.hp) + ' / ' + Math.ceil(p.maxHp));
     hudBar(c, px + 10, py + 27, bw, 11, p.mana / (p.maxMana || 1), '#6bb8ff', '#2a56c8', null);
     hudBar(c, px + 10, py + 41, bw, 8, p.xp / (p.xpNext || 1), '#9be36b', '#4a9a2a', null);
-    var where = s.mode === 'dungeon' ? (s.area === 'forest' ? 'Giant Forest' : s.area === 'plains' ? 'Rolling Plains' : s.area === 'tree-ascent' ? 'Tree Bough '+(s.treeFloor||1) : 'Floor ' + s.floor) : 'Town';
+    var where = s.mode === 'dungeon' ? (s.area === 'forest' ? 'Giant Forest' : s.area === 'plains' ? 'Rolling Plains' : s.area === 'defense' ? 'Defense' : s.area === 'tree-ascent' ? 'Tree Bough '+(s.treeFloor||1) : 'Floor ' + s.floor) : 'Town';
     tx(c, 'LV ' + (p.level || 1), px + 12, py + 61, 13, COL.accent);
     tx(c, where, px + pw / 2, py + 61, 11, COL.text, 'center');
     tx(c, Math.floor(s.gold || 0) + ' G', px + pw - 12, py + 61, 13, COL.gold, 'right');

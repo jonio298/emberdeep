@@ -149,6 +149,7 @@
     else drawTreeRaw(ctx, bx, by, hv, big, Math.ceil(110 * (big ? 1.5 : 1)));
   }
   F.drawTree = drawTree;
+  F.art = { ground: ground, detail: detail, drawSolid: drawSolid, drawLamp: drawLamp }; // reused by the Town Defense arena
   function drawLog(ctx, sx, sy, hv, ruined) {
     if (ruined) {
       var hh = 18 + Math.floor(hv * 12);

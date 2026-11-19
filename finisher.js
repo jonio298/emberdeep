@@ -145,7 +145,7 @@ function pool(c,fx,tc,t0,gy){
  ell(c,fx.cx-fx.w*.1*k,gy-.4,fx.w*.2*k,fx.h*.04*k,0,'rgba(255,90,100,.3)');
  c.restore();
 }
-function ground(c,fx,a){
+function groundShadow(c,fx,a){
  c.save();c.globalAlpha=BASE*(a);
  ell(c,fx.cx,fx.bottom-1,fx.w*.5,fx.h*.1,0,'rgba(0,0,0,.45)');
  c.restore();
@@ -197,7 +197,7 @@ function swordsman(c,o,fx,t){
  var tc=t-T_CUT,right=fx.facing>0;
  var phi=right?-.3:Math.PI+.3,L=lineSpec(fx,phi);
  var upper=L.n[1]<0?1:-1,lower=-upper,rd=right?1:-1;
- ground(c,fx,.5);
+ groundShadow(c,fx,.5);
  var seamA=1-smooth((tc-.1)/.6);
  if(tc<.05){
    c.drawImage(fx.img,-HALF,-HALF,N,N);
@@ -250,7 +250,7 @@ function swordsman(c,o,fx,t){
 function thief(c,o,fx,t){
  var tc=t-T_B,right=fx.facing>0;
  var LA=lineSpec(fx,Math.PI/4),LB=lineSpec(fx,-Math.PI/4),lines=[LA,LB];
- ground(c,fx,.5);
+ groundShadow(c,fx,.5);
  var specs=[ // sigmas relative to (LA,LB), outward direction, spin, pivot, rest drop
   {sg:[-1,-1],dir:[0,-1],spin:right?.85:-.85,piv:[fx.cx,fx.cy-fx.h*.3],drop:fx.h*.36},   // top
   {sg:[1,1],dir:[0,1],spin:right?-.3:.3,piv:[fx.cx,fx.cy+fx.h*.3],drop:fx.h*.04},          // bottom
@@ -306,12 +306,15 @@ function thief(c,o,fx,t){
  if(f2>.02)glow(c,fx.cx,fx.cy,fx.r*2.1,'rgba(255,200,205,'+(.8*f2)+')');
 }
 
-/* ---------- rupture (wizard / necromancer) ---------- */
+/* ---------- rupture (wizard / necromancer) ----------
+ * Performance notes: the hole frames and every flying chunk are baked to small canvases ONCE and then only blitted,
+ * and nothing uses shadowBlur on big canvases, so the cinematic stays smooth on phones. */
 var THEMES={
- wizard:{main:[64,168,255],light:'#d6f3ff',mid:'#5cc8ff',deep:'#1741c8',dark:'#050c2a',tint:'rgba(70,170,255,'},
- necromancer:{main:[70,230,120],light:'#d4ffd9',mid:'#5ee889',deep:'#16803a',dark:'#02140a',tint:'rgba(70,230,130,'}
+ wizard:{main:[64,168,255],light:'#d6f3ff',mid:'#5cc8ff',deep:'#1741c8',dark:'#050c2a',tint:'rgba(70,170,255,',goo:'#6fd2ff',gooHi:'#e6f9ff'},
+ necromancer:{main:[70,230,120],light:'#d4ffd9',mid:'#5ee889',deep:'#16803a',dark:'#02140a',tint:'rgba(70,230,130,',goo:'#6dff9a',gooHi:'#eaffee'}
 };
 function rgba(a,al){return 'rgba('+a[0]+','+a[1]+','+a[2]+','+al+')';}
+function A(c,a){c.globalAlpha=BASE*a;}
 function ragged(g,R,seed,wob){
  var n=24;g.beginPath();
  for(var i=0;i<n;i++){
@@ -320,23 +323,24 @@ function ragged(g,R,seed,wob){
  }
  g.closePath();
 }
-function holeImage(fx,th,R,tint,crack,pulse){
- if(!fx.tmp){fx.tmp=document.createElement('canvas');fx.tmp.width=fx.tmp.height=fx.W;}
- var g=fx.tmp.getContext('2d'),hx=(HALF+fx.cx)*S,hy=(HALF+fx.cy)*S;
- g.setTransform(1,0,0,1,0,0);g.globalCompositeOperation='source-over';g.globalAlpha=1;
- g.clearRect(0,0,fx.W,fx.W);
+// the monster with a glowing, ragged hole punched through it (cached per stage of the opening)
+function holeImage(fx,th,R,tint,crack){
+ var key=Math.round(R*1.5)+'|'+Math.round(tint*8)+'|'+Math.round(crack*5);
+ fx.hc=fx.hc||{};fx.hk=fx.hk||[];
+ if(fx.hc[key])return fx.hc[key];
+ var cv=document.createElement('canvas');cv.width=cv.height=fx.W;
+ var g=cv.getContext('2d'),hx=(HALF+fx.cx)*S,hy=(HALF+fx.cy)*S;
  g.drawImage(fx.img,0,0);
  g.globalCompositeOperation='source-atop';
  g.fillStyle=th.tint+(.7*tint)+')';g.fillRect(0,0,fx.W,fx.W);
  if(R>0){
    var gr=g.createRadialGradient(hx,hy,R*S*.75,hx,hy,R*S*2.1);
-   gr.addColorStop(0,'rgba(255,255,255,'+(.95*pulse)+')');
-   gr.addColorStop(.18,rgba(th.main,.95*pulse));
-   gr.addColorStop(.55,rgba(th.main,.4*pulse));
+   gr.addColorStop(0,'rgba(255,255,255,.95)');
+   gr.addColorStop(.18,rgba(th.main,.95));
+   gr.addColorStop(.55,rgba(th.main,.4));
    gr.addColorStop(1,rgba(th.main,0));
    g.fillStyle=gr;g.fillRect(0,0,fx.W,fx.W);
-   // radial fracture lines of light spreading through the body
-   if(crack>0){
+   if(crack>0){ // fracture lines of light spreading through the body
      g.save();g.translate(hx,hy);g.scale(S,S);g.lineCap='round';
      for(var i=0;i<11;i++){
        var a=i*TAU/11+H(i,3)*.5,len=(R*1.1+H(i,8)*fx.r*.9)*crack,px=Math.cos(a)*R*.9,py=Math.sin(a)*R*.9;
@@ -353,28 +357,133 @@ function holeImage(fx,th,R,tint,crack,pulse){
    g.globalCompositeOperation='destination-out';
    g.save();g.translate(hx,hy);g.scale(S,S);ragged(g,R,Math.floor(fx.w+fx.h),0);g.fillStyle='#000';g.fill();g.restore();
  }
- g.globalCompositeOperation='source-over';
- return fx.tmp;
+ fx.hc[key]=cv;fx.hk.push(key);
+ if(fx.hk.length>22)delete fx.hc[fx.hk.shift()];
+ return cv;
+}
+/* ----- chunks: Voronoi cells of the frozen, holed monster; each baked once with blood and glowing goo on its torn edges ----- */
+function clipPoly(poly,nx,ny,c){ // keep the side where dot(p,n)<=c
+ var out=[],n=poly.length,i;
+ for(i=0;i<n;i++){
+   var a=poly[i],b=poly[(i+1)%n],da=a[0]*nx+a[1]*ny-c,db=b[0]*nx+b[1]*ny-c;
+   if(da<=0)out.push(a);
+   if((da<0&&db>0)||(da>0&&db<0)){var t=da/(da-db);out.push([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t]);}
+ }
+ return out;
+}
+function inPoly(poly,x,y){
+ var inside=false,n=poly.length;
+ for(var i=0,j=n-1;i<n;j=i++){
+   var xi=poly[i][0],yi=poly[i][1],xj=poly[j][0],yj=poly[j][1];
+   if((yi>y)!==(yj>y)&&x<(xj-xi)*(y-yi)/(yj-yi)+xi)inside=!inside;
+ }
+ return inside;
+}
+// plan the cells cheaply (no canvas work), so baking can be spread over several frames
+function planChunks(fx,Rmax){
+ var pts=[],gx=3,gy=3,i,j,cells=[];
+ var x0=fx.left-2,x1=fx.right+2,y0=fx.top-2,y1=fx.bottom+2,sw=(x1-x0)/gx,sh=(y1-y0)/gy;
+ for(j=0;j<gy;j++)for(i=0;i<gx;i++)pts.push([x0+(i+.5+(H(i*7+j,1)-.5)*.8)*sw,y0+(j+.5+(H(i,j*5+2)-.5)*.8)*sh]);
+ pts.forEach(function(p,k){
+   var poly=[[x0,y0],[x1,y0],[x1,y1],[x0,y1]];
+   for(var m=0;m<pts.length&&poly.length>2;m++){
+     if(m===k)continue;
+     var q=pts[m],nx=q[0]-p[0],ny=q[1]-p[1],c=(q[0]*q[0]+q[1]*q[1]-p[0]*p[0]-p[1]*p[1])/2;
+     poly=clipPoly(poly,nx,ny,c);
+   }
+   if(poly.length<3)return;
+   var mnx=1e9,mny=1e9,mxx=-1e9,mxy=-1e9,cx=0,cy=0;
+   poly.forEach(function(v){mnx=Math.min(mnx,v[0]);mny=Math.min(mny,v[1]);mxx=Math.max(mxx,v[0]);mxy=Math.max(mxy,v[1]);cx+=v[0];cy+=v[1];});
+   cx/=poly.length;cy/=poly.length;
+   // does real monster (outside the hole) lie in this cell? sample the original sprite, no pixel read-back
+   var solid=0,x,y;
+   for(y=mny;y<=mxy;y+=1.3)for(x=mnx;x<=mxx;x+=1.3)
+     if(inPoly(poly,x,y)&&alphaAt(fx,x,y)>60&&Math.hypot(x-fx.cx,y-fx.cy)>Rmax*.95)solid++;
+   if(solid<5)return;
+   cells.push({k:k,poly:poly,mnx:mnx,mny:mny,w:mxx-mnx,h:mxy-mny,cx:cx,cy:cy});
+ });
+ return cells;
+}
+function bakeChunk(fx,th,cell,src){
+ var pad=3,poly=cell.poly,k=cell.k,w=cell.w+pad*2,h=cell.h+pad*2,cv=document.createElement('canvas');
+ cv.width=Math.max(2,Math.ceil(w*S));cv.height=Math.max(2,Math.ceil(h*S));
+ var g=cv.getContext('2d');g.scale(S,S);g.translate(-cell.mnx+pad,-cell.mny+pad);
+ g.save();g.beginPath();poly.forEach(function(v,n){if(n)g.lineTo(v[0],v[1]);else g.moveTo(v[0],v[1]);});g.closePath();g.clip();
+ g.drawImage(src,-HALF,-HALF,N,N);
+ g.globalCompositeOperation='source-atop';
+ g.fillStyle=th.tint+'.22)';g.fillRect(cell.mnx-pad,cell.mny-pad,w,h);
+ // torn edge: dark blood first, a wet red line, then a thread of glowing goo through the middle
+ g.lineJoin='round';
+ var sc=clamp(Math.min(cell.w,cell.h)/9,.3,1);
+ var tracePoly=function(){g.beginPath();poly.forEach(function(v,n){if(n)g.lineTo(v[0],v[1]);else g.moveTo(v[0],v[1]);});g.closePath();};
+ tracePoly();g.strokeStyle='#6c0816';g.lineWidth=3.2*sc;g.stroke();
+ tracePoly();g.strokeStyle='#c91f38';g.lineWidth=1.7*sc;g.stroke();
+ tracePoly();g.strokeStyle=th.goo;g.lineWidth=.9*sc;g.stroke();
+ tracePoly();g.strokeStyle=th.gooHi;g.lineWidth=.35*sc;g.stroke();
+ poly.forEach(function(v,n){ // blood clots on the corners
+   if(H(k,n+40)<.6)return;
+   g.fillStyle='#8c0f20';g.beginPath();g.arc(v[0],v[1],.9+H(k,n)*1.3,0,TAU);g.fill();
+ });
+ g.restore();
+ var dir=Math.atan2(cell.cy-fx.cy,cell.cx-fx.cx)+(H(k,9)-.5)*.7;
+ return {cv:cv,ox:cell.mnx-pad,oy:cell.mny-pad,w:w,h:h,cx:cell.cx,cy:cell.cy,dir:dir,
+   dist:20+H(k,2)*34,up:6+H(k,3)*16,spin:(H(k,4)-.5)*6,delay:H(k,5)*.07,rest:H(k,6)*5,id:k};
+}
+// bake a few chunks per call; call with n=99 to finish at once
+function bakeSome(fx,th,Rmax,n){
+ if(!fx.plan){fx.plan=planChunks(fx,Rmax);fx.chunks=[];}
+ if(fx.chunks.length>=fx.plan.length)return;
+ if(!fx.src)fx.src=holeImage(fx,th,Rmax,.85,1);
+ while(n-->0&&fx.chunks.length<fx.plan.length)fx.chunks.push(bakeChunk(fx,th,fx.plan[fx.chunks.length],fx.src));
+}
+function chunkPos(ch,lt,ground){
+ var m=easeOut(lt/1.05),x=ch.cx+Math.cos(ch.dir)*ch.dist*m,y=ch.cy+Math.sin(ch.dir)*ch.dist*m*.8-ch.up*Math.sin(Math.min(1,lt/.6)*Math.PI)*.8;
+ var fall=Math.max(0,lt-.35),yy=y+60*fall*fall,floor=ground-ch.h*.25+ch.rest*.4;
+ if(yy>floor)yy=floor-Math.abs(Math.sin((lt-.6)*9))*Math.exp(-5*Math.max(0,lt-.6))*2;
+ return {x:x,y:Math.min(yy,floor),rot:ch.spin*easeOut(lt/1.1)};
+}
+// glowing goo / blood drops falling to the ground, with a puddle where they land (pure function of time)
+function dropAt(c,th,sx,sy,age,ground,kind,seedv){
+ if(age<0)return;
+ var g=130,vy=H(seedv,1)*8,y=sy+vy*age+.5*g*age*age,landT=(-vy+Math.sqrt(vy*vy+2*g*Math.max(0,ground-sy)))/g;
+ var goo=kind==='goo';
+ if(age<landT){
+   var speed=vy+g*age,stretch=1.6+Math.min(3.5,speed*.04),x=sx+Math.sin(age*7+seedv)*.25;
+   if(goo){A(c,.9);dot(c,x,y,1.8,rgba(th.main,.3));A(c,1);}
+   // a thread of liquid still joining the drop to where it came from
+   if(age<.22){A(c,(1-age/.22)*.8);stroke(c,sx,sy,x,y,goo?th.goo:'#a3162b',.7);}
+   A(c,1);ell(c,x,y,.75,stretch*.7,0,goo?th.goo:'#a3162b');
+   if(goo)ell(c,x-.2,y-.3,.3,stretch*.35,0,th.gooHi);
+ }else{
+   var pa=age-landT,k=easeOut(pa/.4),fade=1-smooth((pa-1.1)/1.2);
+   if(fade<=0)return;
+   A(c,fade*(goo?.85:.8));
+   var px=sx+Math.sin(landT*7+seedv)*.25;
+   ell(c,px,ground+.4,(1.2+H(seedv,4)*2)*k,(.5+H(seedv,5)*.8)*k,0,goo?rgba(th.main,.75):'#6c0816');
+   if(goo){A(c,fade*.9);ell(c,px,ground+.3,.6*k,.25*k,0,th.gooHi);}
+   A(c,1);
+ }
 }
 function rupture(c,o,fx,t,necro){
  var th=necro?THEMES.necromancer:THEMES.wizard;
- var hx=fx.cx,hy=fx.cy,Rmax=Math.max(7,(fx.w+fx.h)*.165);
+ var hx=fx.cx,hy=fx.cy,Rmax=Math.max(7,(fx.w+fx.h)*.165),floorY=fx.bottom+1;
  var charge=smooth(t/T_HOLE),open=easeOut((t-T_HOLE)/.55),R=Rmax*open;
- var burst=t-T_BURST,pulse=.78+.22*Math.sin(t*17);
- var i,a;
- ground(c,fx,burst<0?.5:clamp(.5-burst*.4,0,.5));
- // inbound energy gathering at the point of impact
+ var burst=t-T_BURST,pulse=.78+.22*Math.sin(t*17),i;
+ groundShadow(c,fx,burst<0?.5:clamp(.5-burst*.4,0,.5));
+ // bake the chunks a beat before the burst so nothing hitches when it goes off
+ if(t>T_HOLE+.2&&burst<0)bakeSome(fx,th,Rmax,3);
+ // energy gathering at the point of impact
  if(t<T_HOLE+.1){
    var side=o.sourceX<o.x?-1:1;
    glow(c,hx,hy,fx.r*(.5+charge*1.1),rgba(th.main,.5*charge));
-   for(i=0;i<16;i++){
+   for(i=0;i<14;i++){
      var ph=(t*1.6+H(i,1))%1,ang=H(i,2)*TAU,dist=fx.r*2.6*(1-ph);
      var px=hx+Math.cos(ang)*dist,py=hy+Math.sin(ang)*dist*.8;
-     c.globalAlpha=BASE*(Math.sin(ph*Math.PI)*charge);
+     A(c,Math.sin(ph*Math.PI)*charge);
      stroke(c,px,py,hx+Math.cos(ang)*(dist-6),hy+Math.sin(ang)*(dist-6)*.8,th.light,1.4);
    }
-   c.globalAlpha=BASE*(1);
-   if(side&&t<T_HOLE){ // the bolt itself driving in from the hero's side
+   A(c,1);
+   if(side&&t<T_HOLE){
      var bt=easeIn(t/T_HOLE),bx=hx+side*fx.r*3.2*(1-bt),by=hy-fx.r*.4*(1-bt);
      glow(c,bx,by,18,rgba(th.main,.9));dot(c,bx,by,4,'#fff');
    }
@@ -382,19 +491,16 @@ function rupture(c,o,fx,t,necro){
  if(burst<0){
    var shake=t>T_HOLE&&t<T_HOLE+.18?Math.sin(t*140)*1.5*(1-(t-T_HOLE)/.18):0;
    c.save();c.translate(shake,0);
-   var crack=smooth((t-(T_HOLE+.3))/.4);
-   var img=holeImage(fx,th,R,smooth(t/(T_BURST*.8))*(necro?.55:.7)+.1*charge,crack,pulse);
-   c.save();
-   c.shadowColor=rgba(th.main,1);c.shadowBlur=10+8*pulse;
-   c.drawImage(img,-HALF,-HALF,N,N);
-   c.restore();
+   var crack=smooth((t-(T_HOLE+.3))/.4),tint=smooth(t/(T_BURST*.8))*(necro?.55:.7)+.1*charge;
+   var img=holeImage(fx,th,R,tint,crack);
+   glow(c,hx,hy,fx.r*1.7,rgba(th.main,(.3+.12*pulse)*Math.min(1,t/.5))); // soft aura (no shadowBlur)
+   A(c,1);c.drawImage(img,-HALF,-HALF,N,N);
    if(R>1){
-     // the hole: black void rimmed with fire, swirling energy inside
      c.save();c.translate(hx,hy);
      ragged(c,R*.96,Math.floor(fx.w+fx.h),0);
      c.fillStyle=th.dark;c.fill();c.save();c.clip();
      var g2=c.createRadialGradient(0,0,0,0,0,R);
-     g2.addColorStop(0,rgba(th.main,.0));g2.addColorStop(.6,rgba(th.main,.12));g2.addColorStop(1,rgba(th.main,.7));
+     g2.addColorStop(0,rgba(th.main,0));g2.addColorStop(.6,rgba(th.main,.12));g2.addColorStop(1,rgba(th.main,.7));
      c.fillStyle=g2;c.fillRect(-R,-R,R*2,R*2);
      for(i=0;i<5;i++){
        var a0=i*TAU/5+t*(necro?-3:4);
@@ -407,119 +513,100 @@ function rupture(c,o,fx,t,necro){
      }
      glow(c,0,0,R*.5,'rgba(255,255,255,'+(.45*pulse)+')');
      c.restore();
-     c.shadowColor=rgba(th.main,1);c.shadowBlur=16;
      ragged(c,R*.98,Math.floor(fx.w+fx.h),t);c.strokeStyle=th.light;c.lineWidth=1.6;c.stroke();
-     c.shadowBlur=0;ragged(c,R*1.04,Math.floor(fx.w+fx.h),t);c.strokeStyle=rgba(th.main,.9);c.lineWidth=2.4;c.stroke();
-     // sparks leaping from the rim
-     for(i=0;i<18;i++){
+     ragged(c,R*1.04,Math.floor(fx.w+fx.h),t);c.strokeStyle=rgba(th.main,.9);c.lineWidth=2.4;c.stroke();
+     glow(c,0,0,R*1.5,rgba(th.main,.22*pulse));
+     for(i=0;i<14;i++){ // sparks leaping from the rim
        var s0=(t*1.3+H(i,5))%1,ga=H(i,6)*TAU,rr2=R*(1+s0*1.1);
-       c.globalAlpha=BASE*((1-s0)*.9);
+       A(c,(1-s0)*.9);
        if(necro)dot(c,Math.cos(ga)*rr2,Math.sin(ga)*rr2-s0*8,1.3,i%2?th.light:th.mid);
        else{var sx=Math.cos(ga)*rr2,sy=Math.sin(ga)*rr2;stroke(c,sx,sy,sx+Math.cos(ga)*5,sy+Math.sin(ga)*5,th.light,1.2);}
      }
-     c.globalAlpha=BASE*(1);
+     A(c,1);
      c.restore();
+     // liquid already dripping off the lower lip of the hole, with blood among it
+     for(i=0;i<7;i++){
+       var born=T_HOLE+.45+i*.11,ax=hx+(i-3)*R*.3,ay=hy+R*.82-Math.abs(i-3)*.4;
+       dropAt(c,th,ax,ay,t-born,floorY,i%3===1?'blood':'goo',i+11);
+     }
    }
    c.restore();
-   // impact flash
    var fl=Math.exp(-Math.pow((t-T_HOLE-.03)/.07,2));
    if(fl>.02)glow(c,hx,hy,fx.r*2.6,'rgba(255,255,255,'+(.9*fl)+')');
    if(t>T_HOLE&&t<T_HOLE+.7){
-     var rk=(t-T_HOLE)/.7;c.globalAlpha=BASE*(1-rk);
+     var rk=(t-T_HOLE)/.7;A(c,1-rk);
      c.strokeStyle=th.light;c.lineWidth=3*(1-rk)+.6;c.beginPath();c.arc(hx,hy,fx.r*(.3+rk*2.4),0,TAU);c.stroke();
-     c.globalAlpha=BASE*(1);
+     A(c,1);
    }
-   // the freeze: the whole body hums with light, rune ring turning around it
-   if(t>.95){
+   if(t>.95){ // the freeze: rune ring turning around the humming body
      var hum=smooth((t-.95)/.2);
-     c.save();c.translate(hx,hy);c.globalAlpha=BASE*(hum*.9);
+     c.save();c.translate(hx,hy);A(c,hum*.9);
      c.strokeStyle=rgba(th.main,.8);c.lineWidth=1.2;c.setLineDash([3,4]);
      c.rotate(t*(necro?-2:3));c.beginPath();c.arc(0,0,fx.r*1.55,0,TAU);c.stroke();c.setLineDash([]);
      for(i=0;i<8;i++){var ra=i*TAU/8;dot(c,Math.cos(ra)*fx.r*1.55,Math.sin(ra)*fx.r*1.55,1.6,th.light);}
-     c.restore();
+     A(c,1);c.restore();
    }
  }else{
-   // BURST: glowing fragments tear free of the hole and fly apart
-   var src=fx.frozen||(fx.frozen=(function(){
-     var im=holeImage(fx,th,Rmax,.85,1,1);
-     var cp=document.createElement('canvas');cp.width=cp.height=fx.W;cp.getContext('2d').drawImage(im,0,0);return cp;})());
-   var bands=[0,Rmax*1.3,Rmax*2.1,400],wedges=8,id=0,age=burst;
-   var fade=1-smooth((age-1.0)/.55);
-   var shock=easeOut(age/.55);
+   // BURST: bloody monster chunks fly apart, glowing goo and blood streaming off them
+   bakeSome(fx,th,Rmax,99);
+   var age=burst,chunks=fx.chunks;
+   var fade=1-smooth((age-1.5)/.8),shock=easeOut(age/.55);
    if(age<.6){
-     c.globalAlpha=BASE*(1-age/.6);c.strokeStyle=th.light;c.lineWidth=4*(1-age/.6)+.8;
+     A(c,1-age/.6);c.strokeStyle=th.light;c.lineWidth=4*(1-age/.6)+.8;
      c.beginPath();c.arc(hx,hy,Rmax*(1+shock*4.5),0,TAU);c.stroke();
      c.strokeStyle=rgba(th.main,.9);c.lineWidth=2;c.beginPath();c.arc(hx,hy,Rmax*(.8+shock*3.2),0,TAU);c.stroke();
-     c.globalAlpha=BASE*(1);
+     A(c,1);
      glow(c,hx,hy,Rmax*(2+shock*3),rgba(th.main,.6*(1-age/.6)));
      glow(c,hx,hy,Rmax*1.8,'rgba(255,255,255,'+(.9*Math.exp(-age*9))+')');
    }
+   // pool of glowing liquid and blood where the monster stood
+   var pk=easeOut((age-.35)/1.2);
+   if(pk>0&&fade>0){A(c,.8*fade);ell(c,hx,floorY+.5,fx.w*.5*pk+1,fx.h*.1*pk+.5,0,'#5c0814');
+     A(c,.75*fade);ell(c,hx+1,floorY+.4,fx.w*.38*pk,fx.h*.07*pk,0,rgba(th.main,.7));A(c,1);}
    if(fade>.01){
-     for(var b=0;b<3;b++)for(var w=0;w<wedges;w++,id++){
-       var a0=w/wedges*TAU+H(b,w)*.2,a1=(w+1)/wedges*TAU+H(b,w+1)*.2;
-       var am=(a0+a1)/2,rmid=Math.min(bands[b]+(bands[b+1]-bands[b])*.5,Rmax*3.3);
-       var dirx=Math.cos(am),diry=Math.sin(am);
-       var speed=(5+H(id,1)*9)*(.8+b*.4),mv=easeOut(age/1.5)*speed*2.6;
-       var delay=H(id,4)*.08,lt=clamp((age-delay)/1.3,0,1);
-       var cxp=hx+dirx*rmid,cyp=hy+diry*rmid*.9;
-       var dx=dirx*mv,dy=diry*mv*.9-(necro?easeIn(age/1.6)*10:0)+(necro?0:easeIn(age/2)*7);
-       var rot=(H(id,2)-.5)*3.2*easeOut(age/1.4),sc=1-.35*smooth((age-.7)/.8);
-       c.save();
-       c.globalAlpha=BASE*(fade);
-       c.translate(cxp+dx,cyp+dy);c.rotate(rot);c.scale(sc,sc);c.translate(-cxp,-cyp);
-       c.shadowColor=rgba(th.main,1);c.shadowBlur=9;
-       c.save();
-       c.translate(hx,hy);c.beginPath();
-       c.arc(0,0,bands[b+1],a0,a1);c.arc(0,0,bands[b],a1,a0,true);c.closePath();c.clip();
-       c.translate(-hx,-hy);
-       c.drawImage(src,-HALF,-HALF,N,N);
-       c.globalCompositeOperation='lighter';c.globalAlpha=BASE*(fade*.5*(1-smooth(age/1.3)));
-       c.drawImage(src,-HALF,-HALF,N,N);
+     chunks.forEach(function(ch){
+       var lt=Math.max(0,age-ch.delay),p=chunkPos(ch,lt,floorY);
+       c.save();A(c,fade);
+       c.translate(p.x,p.y);c.rotate(p.rot);
+       c.drawImage(ch.cv,ch.ox-ch.cx,ch.oy-ch.cy,ch.w,ch.h);
+       c.globalCompositeOperation='lighter';A(c,fade*.4*(1-smooth(age/1.5)));
+       c.drawImage(ch.cv,ch.ox-ch.cx,ch.oy-ch.cy,ch.w,ch.h);
        c.restore();
-       // glowing broken edges
-       c.shadowBlur=0;c.globalAlpha=BASE*(fade*(1-smooth(age/1.2))*.9);
-       c.strokeStyle=th.light;c.lineWidth=1.1;
-       c.beginPath();c.moveTo(hx+Math.cos(a0)*Math.max(R*.9,bands[b]),hy+Math.sin(a0)*Math.max(R*.9,bands[b]));
-       c.lineTo(hx+Math.cos(a0)*Math.min(bands[b+1],Rmax*5),hy+Math.sin(a0)*Math.min(bands[b+1],Rmax*5));c.stroke();
-       c.restore();
-       // trailing motes behind each flying chunk
-       if(age<1.4&&b<2){
-         c.globalAlpha=BASE*(fade*.7*(1-lt));
-         for(var m=1;m<=3;m++){
-           var back=m*.045,mvb=easeOut(Math.max(0,age-back)/1.5)*speed*2.6;
-           dot(c,cxp+dirx*mvb,cyp+diry*mvb*.9,1.8-m*.35,m%2?th.light:th.mid);
-         }
-         c.globalAlpha=BASE*(1);
+     });
+     // drips leaving each chunk as it flies: goo (glowing) and blood
+     chunks.forEach(function(ch){
+       for(var d=0;d<4;d++){
+         var te=ch.delay+.05+d*.16+H(ch.id,d+30)*.1,lt=age-te;
+         if(lt<0||lt>3)continue;
+         var pp=chunkPos(ch,te,floorY),ox=(H(ch.id,d+50)-.5)*ch.w*.6,oy=ch.h*.2;
+         dropAt(c,th,pp.x+ox,pp.y+oy,lt,floorY,(d+ch.id)%5<3?'goo':'blood',ch.id*5+d);
        }
-     }
+     });
    }
-   // motes, shards / soul wisps
-   for(i=0;i<46;i++){
-     var ma=H(i,1)*TAU,mv2=(28+H(i,2)*100)*easeOut(age/1.8),life=.9+H(i,3)*1.3;
+   // light motes / soul wisps
+   for(i=0;i<12;i++){
+     var ma=H(i,1)*TAU,mv2=(28+H(i,2)*90)*easeOut(age/1.8),life=.9+H(i,3)*1.3;
      if(age>life)continue;
      var mx=hx+Math.cos(ma)*mv2,my=hy+Math.sin(ma)*mv2*.85-(necro?age*age*16:-age*age*10);
-     c.globalAlpha=BASE*(1-age/life);
+     A(c,1-age/life);
      if(necro){
        dot(c,mx,my,1+H(i,4)*1.4,i%3?th.mid:th.light);
-       if(i%9===0){ // little ghostly skulls drifting up
-         c.save();c.translate(mx,my-age*8);c.scale(.5,.5);
-         ell(c,0,0,5,6,0,th.light);dot(c,-2,-1,1.4,th.dark);dot(c,2,-1,1.4,th.dark);
-         c.restore();
-       }
+       if(i%9===0){c.save();c.translate(mx,my-age*8);c.scale(.5,.5);
+         ell(c,0,0,5,6,0,th.light);dot(c,-2,-1,1.4,th.dark);dot(c,2,-1,1.4,th.dark);c.restore();}
      }else{
        c.save();c.translate(mx,my);c.rotate(age*4+i);
        c.fillStyle=i%3?th.mid:th.light;c.beginPath();c.moveTo(0,-3);c.lineTo(1.5,0);c.lineTo(0,3);c.lineTo(-1.5,0);c.closePath();c.fill();
        c.restore();
      }
    }
-   c.globalAlpha=BASE*(1);
-   if(necro&&age>.3){ // rising green smoke from where the body was
-     for(i=0;i<7;i++){
+   A(c,1);
+   if(necro&&age>.3){ // green smoke rising from where the body was
+     for(i=0;i<5;i++){
        var sa2=clamp((age-.3-i*.05)/1.4,0,1);if(sa2<=0)continue;
-       c.globalAlpha=BASE*((1-sa2)*.35);
+       A(c,(1-sa2)*.35);
        glow(c,hx+Math.sin(i*2.3+age*3)*8,hy-sa2*36-i*2,10+sa2*14,rgba(th.main,.8));
      }
-     c.globalAlpha=BASE*(1);
+     A(c,1);
    }
  }
 }

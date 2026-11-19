@@ -175,7 +175,6 @@
   function gainXp(n, p) {
     p = p || hero();
     if (!p || !(n > 0)) return;
-    var previousPoints=CC.SkillTree&&CC.SkillTree.points?CC.SkillTree.points(p):0;
     p.xp += n * (1 + p.mods.xpPct);
     while (p.xp >= p.xpNext && p.level < 50) {
       p.xp -= p.xpNext;
@@ -196,12 +195,7 @@
       if (p.level % 3 === 0) { p.perkQueue++; if (!p.perkOpen) openPerk(p); }
     }
     if (p.level >= 50) p.xp = Math.min(p.xp, p.xpNext - 1);
-    if(CC.SkillTree&&CC.SkillTree.points&&CC.SkillTree.points(p)>previousPoints){
-      p._pendingSkillTree=true;
-      if(!p.perkOpen&&CC.UI&&CC.UI.open){
-        CC.UI.open('skills');p._pendingSkillTree=false;
-      }
-    }
+    // Levelling up no longer throws the skill tree open: the LEVEL UP button in the HUD (main.js) shows the unspent points.
   }
 
   function openPerk(p) {
@@ -223,10 +217,6 @@
     p.perkQueue = Math.max(0, p.perkQueue - 1);
     fxText(p.x, p.y - 20, pk.name + '!', '#9be36b', 12);
     if (p.perkQueue > 0) openPerk(p);
-    // Resolve the perk queue first, then open the skill tree once.
-    if(!p.perkOpen&&p._pendingSkillTree&&CC.UI&&CC.UI.open){
-      CC.UI.open('skills');p._pendingSkillTree=false;
-    }
     return true;
   }
 
@@ -253,6 +243,7 @@
       p.invuln=.35;CC.Multiplayer.onGuestDamage(amount);return amount;
     }
     if (!p || p.hp <= 0 || p.invuln > 0 || p.iframes > 0 || !(amount > 0)) return 0;
+    if (p.pw && p.pw.shield > 0) return 0; // Town Defense shield power-up
     if (p.flags && p.flags.evade && Math.random() < 0.15) {
       p.invuln = 0.2;
       fxText(p.x, p.y - 14, 'Dodge', '#7de0b8', 11);
@@ -335,6 +326,18 @@
     return participants;
   }
 
+  // EXPLODING SHOTS power-up: splash around the struck monster (shots and slashes alike)
+  function explodeAt(e, dmg) {
+    var l = foes(), n = 0, i, o, r = 46;
+    for (i = 0; i < l.length && n < 12; i++) {
+      o = l[i]; if (o === e || !alive(o)) continue;
+      if (Math.hypot(o.x - e.x, o.y - e.y) > r + (o.r || 8)) continue;
+      n++; hitEnemy(o, Math.max(1, Math.round(dmg * 0.55)), 'fire', { noCrit: true, splash: true });
+    }
+    addFx({ kind: 'ring', x: e.x, y: e.y, r: r, t: 0.28, max: 0.28, col: '#ff9a3a' });
+    fxBurst(e.x, e.y, '#ffb050', 8, 100);
+  }
+  var KILL_SHOT_CHANCE = 0.2; // a crit on a monster at 1/3 health or less: 1 in 5 is a perfect critical
   function hitEnemy(e, dmg, type, opts) {
     var p = hero();
     if (!alive(e)) return 0;
@@ -349,8 +352,8 @@
     if (crit) dmg *= p.stats.critDmg;
     // PERFECT CRITICAL (kill shot): a basic-attack crit on a non-boss already at 1/3 health
     // or less has a 1-in-10 chance to be an instant kill with a class finisher cinematic.
-    var killShot = !!(crit && opts.basicAttack && !opts.minion && !opts.splash && p && !e.boss &&
-      e.maxHp > 0 && e.hp <= e.maxHp / 3 && Math.random() < 0.1 &&
+    var killShot = !!(crit && opts.basicAttack && !opts.minion && !opts.splash && p && !e.boss && !(p.pw && p.pw.rapid > 0) &&
+      e.maxHp > 0 && e.hp <= e.maxHp / 3 && Math.random() < KILL_SHOT_CHANCE &&
       CC.CriticalScene && CC.CriticalScene.canFinish && CC.CriticalScene.canFinish());
     if (killShot) { e.rose = true; dmg = Math.max(dmg, Math.ceil(((e.hp || 1) + (e.shield || 0)) / 0.2) + 1); }
     dmg = Math.max(1, Math.round(dmg));
@@ -376,7 +379,9 @@
       e._hitFlash = crit ? 0.16 : 0.09;
       fxBlood(e.x, e.y, crit ? 10 : 4, p ? e.x - p.x : 0, p ? e.y - p.y : 0);
     }
-    if (crit && opts.basicAttack && !opts.minion && !opts.splash) {
+    if (p && p.pw && p.pw.explode > 0 && (opts.basicAttack || opts.pw) && !opts.splash && !opts.minion)
+      explodeAt(e, dmg); // exploding power-up: every basic hit bursts into splash damage
+    if (crit && opts.basicAttack && !opts.minion && !opts.splash && !(p && p.pw && p.pw.rapid > 0)) {
       var attackGroup = opts.attackGroup;
       var participants = criticalGroup(p,e,dmg,type,opts);
       if (CC.CriticalScene) {
@@ -456,7 +461,30 @@
     return Math.abs(d);
   }
 
-  function addFx(f) { if (fxs.length < 120) fxs.push(f); }
+  function addFx(f) {
+    if (fxs.length < 120) fxs.push(f);
+    // Co-op: show this slash arc / spell ring / beam to the partner (trail puffs are too small to bother).
+    if (!f.remote && CC.Multiplayer && CC.Multiplayer.sendFx &&
+        (f.kind === 'arc' || f.kind === 'ring' || f.kind === 'beam' || (f.kind === 'puff' && f.r >= 10)))
+      CC.Multiplayer.sendFx('fx', { kind: f.kind, x: f.x, y: f.y, a: f.a, half: f.half, r: f.r,
+        t: f.t, max: f.max, col: f.col, x2: f.kind === 'beam' ? (f.ref ? f.ref.x : f.x2) : undefined,
+        y2: f.kind === 'beam' ? (f.ref ? f.ref.y : f.y2) : undefined });
+  }
+  // Effects and projectiles cast by the other player: purely visual, never damage anything here.
+  function addRemoteFx(d) {
+    if (!d || !isFinite(d.x) || !isFinite(d.y) || !(d.t > 0)) return;
+    var f = { kind: String(d.kind), x: d.x, y: d.y, a: d.a || 0, half: d.half || 0.5, r: d.r || 10,
+      t: Math.min(1, d.t), max: Math.min(1, d.max || d.t), col: typeof d.col === 'string' ? d.col : '#fff', remote: true };
+    if (f.kind === 'beam') { f.x2 = isFinite(d.x2) ? d.x2 : d.x; f.y2 = isFinite(d.y2) ? d.y2 : d.y; }
+    else if (f.kind !== 'arc' && f.kind !== 'ring' && f.kind !== 'puff') return;
+    addFx(f);
+  }
+  function addRemoteProjectile(d) {
+    if (!d || !isFinite(d.x) || !isFinite(d.y) || !isFinite(d.vx) || !isFinite(d.vy) || projs.length >= 80) return;
+    projs.push({ x: d.x, y: d.y, vx: d.vx, vy: d.vy, life: Math.min(2, d.life || 0.8), dmg: 0, r: d.r || 4,
+      kind: String(d.kind || 'bolt'), type: 'visual', col: typeof d.col === 'string' ? d.col : '#fff',
+      a: d.a || 0, hit: [], visual: true, preRolledCrit: !!d.preRolledCrit, critHero: d.critHero, critAge: 0 });
+  }
 
   function knock(e, fromX, fromY, dist) {
     var dx = e.x - fromX, dy = e.y - fromY, l = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -551,7 +579,11 @@
         pr.critAge = 0;
       }
     }
+    if (p.pw && p.pw.rapid > 0 && !pr.aoe) pr.pierce = true; // rapid fire power-up: shots pass through monsters
     if (projs.length < 80) projs.push(pr);
+    if (CC.Multiplayer && CC.Multiplayer.sendFx)
+      CC.Multiplayer.sendFx('pr', { x: pr.x, y: pr.y, vx: pr.vx, vy: pr.vy, life: pr.life, r: pr.r, kind: pr.kind,
+        col: pr.col, a: pr.a, preRolledCrit: !!pr.preRolledCrit, critHero: pr.critHero });
     return pr;
   }
 
@@ -585,6 +617,7 @@
         p.combo = 0; p.comboT = 0; p.comboDisplayT = 0;
       }
       p.cd.attack = p.cdMax.attack * (fin && hits ? 1.25 : 0.9);
+      if (p.pw && p.pw.rapid > 0) shoot(p, dir.a, 330, 0.5, 0.5, 6, 'wave', 'slash', '#cfe8ff', { pierce: true });
     } else if (cls === 'wizard') {
       dir = aimDir(p, 170);
       var twin = p.flags.twin ? [-0.1, 0.1] : [0];
@@ -619,6 +652,7 @@
         p.combo = 0; p.comboT = 0; p.comboDisplayT = 0;
       }
       p.cd.attack = p.cdMax.attack * (finish && strikes ? 1.35 : 0.82);
+      if (p.pw && p.pw.rapid > 0) shoot(p, dir.a, 360, 0.5, 0.45, 5, 'wave', 'slash', '#ffd0d8', { pierce: true });
     } else {
       dir = aimDir(p, 170);
       var fan = p.flags.volley ? [-0.2, 0, 0.2] : [0];
@@ -804,7 +838,7 @@
         }
         s.x = nx; s.y = ny;
         // Basic bolts and shards can shatter the same destructibles as slashes.
-        if (!end && CC.Breakables && CC.Breakables.hitProjectile(s)) {
+        if (!end && !s.visual && CC.Breakables && CC.Breakables.hitProjectile(s)) {
           end=true;
           addFx({kind:'puff',x:s.x,y:s.y,r:9,t:.24,max:.24,col:s.col});
           break;
@@ -814,10 +848,23 @@
       for (var j = 0; j < l.length && !end; j++) {
         var e = l[j]; if (!alive(e)) continue;
         var dx = e.x - s.x, dy = e.y - s.y, rr = (e.r || 8) + s.r;
-        if (dx * dx + dy * dy <= rr * rr) { target = e; end = true; }
+        if (dx * dx + dy * dy <= rr * rr) {
+          if (s.pierce && !s.aoe) { // pass through, hitting each monster once
+            if (!s.visual && s.hit.indexOf(e) < 0) {
+              s.hit.push(e);
+              hitEnemy(e, s.dmg, s.type, { basicAttack: s.kind === 'bolt' || s.kind === 'shard', pw: s.kind === 'wave', attackKind: 'projectile',
+                angle: s.a, color: s.col, preRolledCrit: s.hit.length === 1 ? s.preRolledCrit : false });
+              fxBurst(s.x, s.y, s.col, 4, 60);
+            }
+          } else { target = e; end = true; }
+        }
       }
       if (Math.random() < 0.6) addFx({ kind: 'puff', x: s.x, y: s.y, r: s.r, t: 0.2, max: 0.2, col: s.col });
       if (s.life <= 0) end = true;
+      if (s.visual) { // partner's shot: fly and vanish, no damage here
+        if (end) { fxBurst(s.x, s.y, s.col, 5, 60); projs.splice(i, 1); }
+        continue;
+      }
       if (!end) continue;
       if (s.aoe) {
         radial(p, s.x, s.y, s.aoe, s.dmg / p.stats.dmg, s.type);
@@ -1168,7 +1215,7 @@
       c.globalAlpha = a; c.strokeStyle = f.col; c.lineWidth = 2 + 2 * a; c.beginPath(); c.arc(x, y, rad, 0, 6.2832); c.stroke();
     } else if (f.kind === 'beam') {
       var tx = (f.ref && alive(f.ref) ? f.ref.x : f.x2) - cam.x, ty = (f.ref && alive(f.ref) ? f.ref.y : f.y2) - cam.y;
-      var px = hero() ? hero().x - cam.x : x, py = hero() ? hero().y - cam.y : y;
+      var px = !f.remote && hero() ? hero().x - cam.x : x, py = !f.remote && hero() ? hero().y - cam.y : y;
       c.strokeStyle = f.col; c.lineWidth = 1 + 3 * a; c.beginPath(); c.moveTo(px, py);
       for (var i = 1; i < 6; i++) c.lineTo(px + (tx - px) * i / 6 + rnd(-3, 3), py + (ty - py) * i / 6 + rnd(-3, 3));
       c.lineTo(tx, ty); c.stroke();
@@ -1184,6 +1231,13 @@
       return;
     }
     var x = s.x - cam.x, y = s.y - cam.y;
+    if (s.kind === 'wave') { // a crescent of cutting light
+      c.save(); c.translate(x, y); c.rotate(s.a);
+      c.strokeStyle = s.col; c.lineCap = 'round'; c.globalAlpha = 0.35; c.lineWidth = 6; c.beginPath(); c.arc(-6, 0, 11, -1.0, 1.0); c.stroke();
+      c.globalAlpha = 1; c.lineWidth = 2.6; c.beginPath(); c.arc(-6, 0, 11, -1.0, 1.0); c.stroke();
+      c.strokeStyle = '#ffffff'; c.lineWidth = 1; c.beginPath(); c.arc(-6, 0, 11, -0.8, 0.8); c.stroke(); c.restore();
+      return;
+    }
     if (s.kind === 'shard') {
       c.save(); c.translate(x, y); c.rotate(s.a);
       poly(c, [-5, 0, 0, -2, 6, 0, 0, 2], '#e8e6d0'); c.restore();
@@ -1312,6 +1366,7 @@
     gainXp: gainXp, xpToNext: xpToNext, damage: damage, heal: heal, damageMinion: damageMinion,
     applyItemStats: applyItemStats, choosePerk: choosePerk, hitEnemy: hitEnemy, status: status,
     tapAction:tapAction,summonCharged:summonCharged,
+    addRemoteFx: addRemoteFx, addRemoteProjectile: addRemoteProjectile, drawMinion: drawMinion,
     get player() { return hero(); }
   };
 })();
