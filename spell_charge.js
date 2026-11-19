@@ -12,7 +12,7 @@ var DEFINITIONS={
   swordsman:{
     spell1:{name:'EARTHBREAKER',shape:'cone',range:92,radius:58,color:'#f2b264',mult:1.8},
     spell2:{name:'VORTEX CLEAVE',shape:'circle',range:0,radius:72,color:'#c7a5ee',mult:1.75},
-    dash:{name:'VANGUARD RUSH',shape:'dash',range:184,radius:18,color:'#d6c9a7'}
+    dash:{name:'VANGUARD RUSH',shape:'dash',range:184,radius:18,color:'#73c6ff'}
   },
   wizard:{
     spell1:{name:'FLAMETHROWER',shape:'cone',range:129,radius:72,color:'#ff8749',mult:1.8},
@@ -22,12 +22,12 @@ var DEFINITIONS={
   necromancer:{
     spell1:{name:'GRAVE CHOIR',shape:'circle',range:153,radius:63,color:'#9bd99f',mult:1.8},
     spell2:{name:'SOUL WELL',shape:'circle',range:161,radius:74,color:'#a47cf0',mult:1.8},
-    dash:{name:'WRAITH STRIDE',shape:'dash',range:184,radius:18,color:'#ba8ff9'}
+    dash:{name:'WRAITH STRIDE',shape:'dash',range:184,radius:18,color:'#8bd6a7'}
   },
   thief:{
     spell1:{name:'RAZOR RAIN',shape:'circle',range:171,radius:75,color:'#fa687e',mult:1.8},
     spell2:{name:'PHANTOM SHROUD',shape:'circle',range:142,radius:74,color:'#a796ce',mult:1.8},
-    dash:{name:'PHANTOM RUSH',shape:'dash',range:184,radius:18,color:'#e08baa'}
+    dash:{name:'PHANTOM RUSH',shape:'dash',range:184,radius:18,color:'#ee657b'}
   }
 };
 function hero(){var s=CC.state;return s&&s.mode==='dungeon'&&s.player&&s.player.hp>0&&!s.player.perkOpen?s.player:null;}
@@ -79,6 +79,24 @@ function unlocked(p,slot){
  if(slot==='spell2'&&p.level<4)return false;
  return true;
 }
+function standable(p,x,y){
+ var D=CC.Dungeon,r=Math.max(3,(p.r||8)*.78);
+ if(!D||!D.isSolid)return true;
+ return !D.isSolid(x,y)&&!D.isSolid(x-r,y-r)&&
+  !D.isSolid(x+r,y-r)&&!D.isSolid(x-r,y+r)&&!D.isSolid(x+r,y+r);
+}
+function dashLanding(p,n,reach){
+ // A stepwise collision-aware preview: never promise an unreachable spot
+ // inside rock, tree walls, props or closed dungeon boundaries.
+ var steps=Math.max(1,Math.ceil(reach/5)),last=0;
+ for(var k=1;k<=steps;k++){
+   var amount=reach*k/steps,
+       x=p.x+n.x*amount,y=p.y+n.y*amount;
+   if(!standable(p,x,y))break;
+   last=amount;
+ }
+ return {x:p.x+n.x*last,y:p.y+n.y*last,distance:last};
+}
 function aim(p,slot,drag){
  var d=slotDefinition(p,slot),dx=p.aimX||p.face||1,dy=p.aimY||0,autoDistance=null;
  // Stationary input: auto-target the closest visible monster in casting range.
@@ -97,15 +115,25 @@ function aim(p,slot,drag){
  var n=norm(dx,dy);
  // The stationary field spell Whirl remains centered on the player.
  var reach=d.range===0?0:autoDistance!==null?Math.min(range,autoDistance):range;
- if(drag&&d.shape!=='dash')reach=clamp(drag.distance/83*range,34,range);
- var x=p.x+n.x*reach,y=p.y+n.y*reach;
- // Trim to solid walls. Never target a sealed room through the bark.
- var D=CC.Dungeon,steps=Math.ceil(reach/12);
- if(D&&D.isSolid)for(var k=1;k<=steps;k++){
-   var px=p.x+n.x*Math.min(reach,k*12),py=p.y+n.y*Math.min(reach,k*12);
-   if(D.isSolid(px,py)){x=p.x+n.x*Math.max(0,(k-1)*12);y=p.y+n.y*Math.max(0,(k-1)*12);break;}
+ if(drag){
+   // Dash distance is proportional to thumb displacement, not fixed at max.
+   if(slot==='dash')reach=clamp(drag.distance/MAX_AIM*range,0,range);
+   else if(d.range!==0)reach=clamp(drag.distance/83*range,34,range);
  }
- return {x:x,y:y,dx:n.x,dy:n.y,rad:d.radius,range:reach};
+ var x,y,valid=true;
+ if(slot==='dash'){
+   var safe=dashLanding(p,n,reach);
+   x=safe.x;y=safe.y;reach=safe.distance;valid=reach>=8;
+ }else{
+   x=p.x+n.x*reach;y=p.y+n.y*reach;
+   // Existing spells do not aim through the forest walls.
+   var D=CC.Dungeon,steps=Math.ceil(reach/12);
+   if(D&&D.isSolid)for(var k=1;k<=steps;k++){
+     var px=p.x+n.x*Math.min(reach,k*12),py=p.y+n.y*Math.min(reach,k*12);
+     if(D.isSolid(px,py)){x=p.x+n.x*Math.max(0,(k-1)*12);y=p.y+n.y*Math.max(0,(k-1)*12);break;}
+   }
+ }
+ return {x:x,y:y,dx:n.x,dy:n.y,rad:d.radius,range:reach,valid:valid};
 }
 function begin(slot,sx,sy){
  var p=hero();
@@ -132,7 +160,8 @@ function info(){
  return {slot:active.slot,name:d.name,color:d.color,shape:d.shape,range:d.range,
    radius:d.radius,elapsed:active.time,power:clamp((active.time-ARM)/(FULL-ARM),0,1),
    progress:clamp(active.time/FULL,0,1),ready:active.time>=ARM,
-   cost:total,affordable:p.mana>=total,
+   cost:total,affordable:p.mana>=total,valid:where.valid,
+   maxDistance:d.range,distance:where.range,heroClass:p.classId,
    x:where.x,y:where.y,dx:where.dx,dy:where.dy,originX:p.x,originY:p.y};
 }
 function effect(kind,opts){
@@ -223,6 +252,7 @@ function release(slot){
  var mana=cost(p,slot);
  if(p.mana<mana){fxText(p.x,p.y-20,'NEED '+mana+' MANA','#7bbddd');return false;}
  var where=aim(p,slot,a.drag),power=clamp((a.time-ARM)/(FULL-ARM),0,1);
+ if(!where.valid){fxText(p.x,p.y-20,'BLOCKED LANDING','#f3969d');return false;}
  p.mana-=mana;cast(p,slot,where,power);
  return true;
 }
