@@ -707,6 +707,13 @@
   }
   // Called when a dash ends. Thief: a dash that hit opens the next link of the chain (up to 3); a miss, or the third link, starts the cool-down.
   function endDash(p) {
+    if (p.chargedDash) {
+      // Charged Phantom Rush is a single extended dash, not three free chain links.
+      p.chargedDash=false;p.dashAttack=false;
+      p.dashChain=0;p.dashComboT=0;
+      p.cd.dash=Math.max(p.cd.dash||0,p.cdMax.dash*1.5);
+      return;
+    }
     if (!p.dashAttack) return;
     var hits = p.dashHit ? p.dashHit.length : 0;
     p.dashChain = (p.dashChain || 0) + 1;
@@ -715,6 +722,40 @@
       fxText(p.x, p.y - 24, 'DASH ' + (p.dashChain + 1) + '/' + CHAIN_MAX + ' READY', '#b9a6ff', 9);
     } else { p.dashChain = 0; p.dashComboT = 0; p.cd.dash = p.cdMax.dash; }
     p.dashAttack = false;
+  }
+
+  /* ---------- charged spell support ----------
+   * The hold/aim gesture belongs to CC.SpellCharge. Keep all normal class spells
+   * here, so tap actions remain perfectly identical to the old game.
+   */
+  function tapAction(slot) {
+    var p=hero();
+    if(!p||!CC.state||CC.state.mode!=='dungeon'||p.hp<=0||
+       !p.cd||p.cd[slot]>.001||p.perkOpen)return false;
+    if(slot==='spell2'&&p.level<SPELL2_LEVEL)return false;
+    if(slot==='spell1')doSpell1(p);
+    else if(slot==='spell2')doSpell2(p);
+    else if(slot==='dash'&&p.dashT<=0)doDash(p);
+    else return false;
+    return p.cd[slot]>.001;
+  }
+  function summonCharged(x,y,count,p) {
+    p=p||hero();if(!p||p.classId!=='necromancer')return 0;
+    var cap=4+Math.floor(p.level/3)+2*(p.flags.legion||0);
+    var n=Math.min(count,Math.max(0,cap-minions.length)),made=0;
+    for(var i=0;i<n;i++){
+      var a=i*6.2831853/Math.max(1,n)+.6,r=18+i%2*9,
+          tx=x+Math.cos(a)*r,ty=y+Math.sin(a)*r;
+      if(solidAt(tx,ty)){tx=p.x+Math.cos(a)*20;ty=p.y+Math.sin(a)*20;}
+      if(solidAt(tx,ty))continue;
+      var health=(37+p.level*3.8)*(1+.45*(p.flags.sturdy||0));
+      minions.push({x:tx,y:ty,r:7,hp:health,maxHp:health,life:16,
+        dmg:(6+p.stats.dmg*.92)*sm(p,1),atkCd:0,
+        anim:rnd(0,6),face:1,spawn:.48,charged:true});
+      addFx({kind:'puff',x:tx,y:ty,r:19,t:.53,max:.53,col:'#a7e3b0'});
+      made++;
+    }
+    return made;
   }
 
   /* ---------- per-frame systems ---------- */
@@ -1208,6 +1249,7 @@
     drawCriticalHero: drawCriticalHero, critRadius: critRadius,
     gainXp: gainXp, xpToNext: xpToNext, damage: damage, heal: heal, damageMinion: damageMinion,
     applyItemStats: applyItemStats, choosePerk: choosePerk, hitEnemy: hitEnemy, status: status,
+    tapAction:tapAction,summonCharged:summonCharged,
     get player() { return hero(); }
   };
 })();
