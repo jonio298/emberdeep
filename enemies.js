@@ -1214,6 +1214,8 @@
         ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(0, 1, r * (e.boss ? 1.0 : 0.9), r * 0.8, 0, 0, PI2); ctx.fill();
         ctx.fillStyle = e.boss ? '#ff7ad0' : '#ff3a3a'; ctx.fillRect(-4, -3, 2, 2); ctx.fillRect(-1, -4, 2, 2); ctx.fillRect(2, -3, 2, 2); break;
       default: // Area-specific monsters are rendered by their own scene modules.
+        if (CC.WoundArt && CC.WoundArt.drawMonster &&
+            CC.WoundArt.drawMonster(ctx,e,r,col,dark,t)) break;
         if (CC.TreeTunnel && CC.TreeTunnel.drawMonster &&
             CC.TreeTunnel.drawMonster(ctx, e, r, col, dark, t)) break;
         if (CC.Forest && CC.Forest.drawMonster && CC.Forest.drawMonster(ctx, e, r, col, dark, t)) break;
