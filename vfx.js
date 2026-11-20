@@ -817,14 +817,28 @@
     for (i = 0; i < 3; i++) { var oa = tt * 14 + i * 2.094; c.fillStyle = '#eaf6ff'; c.beginPath(); c.arc(x + Math.cos(oa) * (r + 4), y + Math.sin(oa) * (r + 3), 1.2, 0, TAU); c.fill(); }
     c.restore();
   };
-  V.drawBone = function (c, s, x, y, tt) { // the necromancer's spinning bone
-    var a = typeof s.a === 'number' ? s.a : 0, spin = tt * 18 + x * 0.1;
-    c.save(); add(c, true); soft(c, x, y, 9, '#7dff9a', 0.28); add(c, false);
-    c.translate(x, y); c.rotate(spin); c.lineCap = 'round';
-    c.strokeStyle = '#2a2a24'; c.lineWidth = 3.4; c.beginPath(); c.moveTo(-5, 0); c.lineTo(5, 0); c.stroke();
-    c.strokeStyle = '#ece8d2'; c.lineWidth = 2; c.beginPath(); c.moveTo(-5, 0); c.lineTo(5, 0); c.stroke();
-    c.fillStyle = '#ece8d2'; c.beginPath(); c.arc(-5, -1.2, 1.6, 0, TAU); c.arc(-5, 1.2, 1.6, 0, TAU); c.arc(5, -1.2, 1.6, 0, TAU); c.arc(5, 1.2, 1.6, 0, TAU); c.fill();
+  // The necromancer's shot: a small green skull in profile, facing the way it flies, trailing green smoke and a ghostly tail
+  V.drawBone = function (c, s, x, y, tt) {
+    var a = typeof s.a === 'number' ? s.a : Math.atan2(s.vy || 0, s.vx || 1), ca = Math.cos(a), sa = Math.sin(a), wob = Math.sin(tt * 26 + x * 0.2);
+    c.save();
+    add(c, true); soft(c, x, y, 13, '#3dff88', 0.4); soft(c, x - ca * 6, y - sa * 6, 10, '#1fbf5a', 0.3); add(c, false);
+    c.translate(x, y); c.rotate(a);
+    c.scale(1.3, ca < 0 ? -1.3 : 1.3); // a touch bigger; flying left, the skull stays the right way up
+    // ghostly flame tail
+    c.fillStyle = 'rgba(70,230,120,.45)'; c.beginPath(); c.moveTo(-1, -3.4); c.quadraticCurveTo(-8, -4 + wob * 1.5, -15, wob * 2); c.quadraticCurveTo(-8, 4 + wob, -1, 3.4); c.closePath(); c.fill();
+    c.fillStyle = 'rgba(200,255,215,.55)'; c.beginPath(); c.moveTo(-1, -1.8); c.quadraticCurveTo(-6, wob, -10, wob * 1.4); c.quadraticCurveTo(-6, 1.8, -1, 1.8); c.closePath(); c.fill();
+    // the skull, seen from the side: cranium, brow, eye, cheekbone, teeth and jaw toward the front
+    c.fillStyle = '#e4f8e6'; c.beginPath(); c.arc(0, -0.4, 4.2, 0, TAU); c.fill();
+    c.fillStyle = '#b8dcc0'; c.beginPath(); c.arc(-1.4, 0.6, 3.1, 0.4, 3.6); c.fill();           // shaded back of the skull
+    c.fillStyle = '#e4f8e6'; c.fillRect(1.2, 1.2, 4.4, 2.8);                                        // upper jaw and face
+    c.fillStyle = '#c9e8d0'; c.fillRect(1.4, 3.6, 4, 1.8);                                           // lower jaw
+    c.fillStyle = '#0c2414'; c.beginPath(); c.ellipse(1.3, -0.5, 1.5, 1.7, 0, 0, TAU); c.fill();     // eye socket
+    c.fillStyle = '#59ff90'; c.beginPath(); c.arc(1.5, -0.5, 0.8 + 0.2 * wob, 0, TAU); c.fill();      // burning eye
+    c.fillStyle = '#0c2414'; c.fillRect(3.6, 1.4, 1.2, 1); c.fillStyle = '#7a9a82'; for (var i = 0; i < 3; i++) c.fillRect(2 + i * 1.3, 3.2, 0.7, 1.2); // nose hole and teeth
     c.restore();
+    // green smoke pouring out behind it
+    for (var sm = 0; sm < 2; sm++) V.emit({ kind: 'smoke', x: s.x - ca * (4 + sm * 5) + rnd(-1.5, 1.5), y: s.y - sa * (4 + sm * 5) + rnd(-1.5, 1.5), vx: rnd(-9, 9) - ca * 14, vy: rnd(-12, 2) - sa * 14, drag: 1.1, life: rnd(0.55, 0.95), size: rnd(4, 6.5), grow: rnd(8, 13), col: Math.random() < 0.55 ? '#46e07a' : '#1f8a44', alpha: 0.85 });
+    if (Math.random() < 0.22) V.emit({ kind: 'soul', add: true, x: s.x - ca * 6, y: s.y - sa * 6, vx: rnd(-14, 14), vy: rnd(-24, -6), life: rnd(0.4, 0.7), size: rnd(1.4, 2.2), col: '#9bffb8' });
   };
 
   /* ---------- a lightning-style beam / soul-drain beam (used by CC.Classes) ---------- */

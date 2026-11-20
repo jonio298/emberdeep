@@ -656,7 +656,7 @@
     } else {
       dir = aimDir(p, 170);
       var fan = p.flags.volley ? [-0.2, 0, 0.2] : [0];
-      for (i = 0; i < fan.length; i++) shoot(p, dir.a + fan[i], 250, 0.7, p.flags.volley ? 0.7 : 1, 3.5, 'shard', 'bone', '#e8e6d0');
+      for (i = 0; i < fan.length; i++) shoot(p, dir.a + fan[i], 250, 0.7, p.flags.volley ? 0.7 : 1, 3.5, 'shard', 'bone', '#8dffae');
       p.cd.attack = p.cdMax.attack; p.castFlash = 0.15;
     }
     p.face = dir.x >= 0 ? 1 : -1;
@@ -1244,7 +1244,7 @@
       var vt = CC.Vfx._T();
       if (s.kind === 'fire') { CC.Vfx.drawFireball(c, s, x, y, vt); return; }
       if (s.kind === 'bolt') { CC.Vfx.drawBolt(c, s, x, y, vt); return; }
-      if (s.kind === 'shard') { if (s.type === 'bone' || s.col === '#e8e6d0') CC.Vfx.drawBone(c, s, x, y, vt); else CC.Vfx.drawKnife(c, s, x, y, vt); return; }
+      if (s.kind === 'shard') { if (s.type === 'bone' || s.col === '#8dffae' || s.col === '#e8e6d0') CC.Vfx.drawBone(c, s, x, y, vt); else CC.Vfx.drawKnife(c, s, x, y, vt); return; }
     }
     if (s.kind === 'wave') { // a crescent of cutting light
       c.save(); c.translate(x, y); c.rotate(s.a);
