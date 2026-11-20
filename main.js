@@ -40,6 +40,9 @@
     if (Math.abs(userTarget - 1) < 0.04) userTarget = 1; // a gentle detent at the normal view
   }
   CC.getUserZoom = function () { return userCur; };
+  CC.getZoomTarget = function () { return userTarget; };
+  CC.zoomRange = [ZOOM_MIN, ZOOM_MAX];
+  CC.setZoom = function (z) { setUserZoom(z); }; // the Settings zoom slider
   var pinch = { on: false, a: null, b: null, d0: 1, z0: 1 }, worldTouches = {};
   var STEP = 1 / 60;
   var time = 0;
@@ -180,6 +183,7 @@
     }
   }
   function clearWorldCache(){worldCache={};}
+  CC.clearWorldCache=clearWorldCache;
   CC.rememberSessionWorld=rememberWorld;
   CC.restoreSessionWorld=function(area,floor,treeFloor){
     var cache=worldCache[key(area,floor,treeFloor)],E=CC.Enemies,L=CC.Loot;
@@ -228,7 +232,7 @@
   CC.startRun = function (floor, area) {
     call('CriticalScene', 'reset');
     var s = CC.state;
-    s.area = area === 'tree-ascent' && has('TreeAscent', 'generate') ? 'tree-ascent' : area === 'tree-tunnel' && has('TreeTunnel', 'generate') ? 'tree-tunnel' : area === 'defense' && has('Defense', 'generate') ? 'defense' : area === 'plains' && has('Plains', 'generate') ? 'plains' : area === 'forest' && has('Forest', 'generate') ? 'forest' : 'cave'; // 'forest' = the Giant Forest, then the Rolling Plains, in front of floor 1
+    s.area = area === 'testroom' ? 'testroom' : area === 'tree-ascent' && has('TreeAscent', 'generate') ? 'tree-ascent' : area === 'tree-tunnel' && has('TreeTunnel', 'generate') ? 'tree-tunnel' : area === 'defense' && has('Defense', 'generate') ? 'defense' : area === 'plains' && has('Plains', 'generate') ? 'plains' : area === 'forest' && has('Forest', 'generate') ? 'forest' : 'cave'; // 'forest' = the Giant Forest, then the Rolling Plains, in front of floor 1
     s.floor = Math.max(1, floor | 0 || 1);
     if(!s.startGold)s.startGold=s.gold;
     s.mode = 'dungeon';
@@ -333,6 +337,7 @@
     if (s.area === 'forest') { map = call('Forest', 'generate',s.resumeSeed); CC.Dungeon = map; } // CC.Dungeon is whichever map the player is in
     else if (s.area === 'plains') { map = call('Plains', 'generate',s.resumeSeed); CC.Dungeon = map; }
     else if (s.area === 'tree-ascent') { map = call('TreeAscent','generate',s.treeFloor||1); CC.Dungeon=map; }
+    else if (s.area === 'testroom') { map = call('TestMode','arena'); CC.Dungeon = map; }
     else if (s.area === 'tree-tunnel') { map = call('TreeTunnel', 'generate', s.resumeSeed); CC.Dungeon = map; }
     else if (s.area === 'defense') { map = call('Defense', 'generate', s.resumeSeed); CC.Dungeon = map; }
     else { CC.Dungeon = CC.CaveDungeon; map = call('Dungeon', 'generate', s.floor, s.coop && Number.isFinite(s.resumeSeed) ? s.resumeSeed : undefined); }
@@ -357,7 +362,7 @@
   function startGame(classId) {
     var s = CC.state;
     s.coop = false;
-    clearWorldCache();call('SaveGame','newGame');call('EggQuest','reset');
+    clearWorldCache();CC.state.testMode=false;call('SaveGame','newGame');call('EggQuest','reset');
     s.gold=0;s.inventory=[];s.potions=2;s.manaPotions=1;s.bridgeDown=false;s.treeFloor=1;
     call('Camp', 'clear'); // a fresh hero must not inherit a previous run's fence or checkpoint
     call('Portal','reset');lastWorld=null;
@@ -374,7 +379,7 @@
   // A fresh, isolated multiplayer character. Never clear/overwrite solo saves.
   CC.beginCoop=function(classId,scene,character){
     clearWorldCache();
-    var s=CC.state;
+    var s=CC.state;s.testMode=false;
     call('Camp','clear');call('Portal','reset');call('EggQuest','reset');lastWorld=null;
     s.coop=true;s.inventory=[];s.potions=2;s.manaPotions=1;s.gold=0;s.kills=0;s.runGold=0;s.coopSlot=0;
     s.classId=classId;s.bestFloor=1;s.treeFloor=Math.max(1,scene&&scene.tf||1);
@@ -502,7 +507,7 @@
   CC.loadSavedGame=function(data){
     if(!data||!data.player||!data.classId)return false;
     clearWorldCache();
-    call('Camp','clear');call('Portal','reset');lastWorld=null;call('CriticalScene','reset');call('UI','close');
+    call('Camp','clear');call('Portal','reset');lastWorld=null;CC.state.testMode=false;call('CriticalScene','reset');call('UI','close');
     call('Waypoints','reset');call('EggQuest','restore',data.quest);
     var s=CC.state,p=call('Classes','create',data.classId);
     if(!p)return false;
@@ -713,7 +718,7 @@
     try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* not fatal */ }
     var p = pos(e);
     var u = hitUi(p.x, p.y);
-    if (u) { ptrs[e.pointerId] = { kind: 'ui' }; u.cb(); return; }
+    if (u) { ptrs[e.pointerId] = { kind: 'ui', drag: u.drag || null }; u.cb(p.x, p.y); return; }
     var mode = CC.state.mode;
     if (paused || uiOpen() || (CC.Waypoints && CC.Waypoints.isOpen && CC.Waypoints.isOpen()) ||
         (CC.state.player && CC.state.player.perkOpen) || (mode !== 'dungeon' && mode !== 'town')) return;
@@ -776,6 +781,7 @@
       return;
     }
     var pressed=ptrs[e.pointerId];
+    if(pressed&&pressed.kind==='ui'&&pressed.drag){e.preventDefault();var dp=pos(e);pressed.drag(dp.x,dp.y);return;}
     if(pressed&&pressed.kind==='charge'){
       e.preventDefault();
       var thumb=pos(e);
@@ -820,6 +826,7 @@
     var r = ptrs[e.pointerId];
     if (!r) return;
     delete ptrs[e.pointerId];
+    if (r.kind === 'ui' && r.drag) { try { localStorage.setItem('emberdeep-zoom', String(userTarget)); } catch (_) { /* optional */ } }
     if (r.kind === 'joy') { joy.id = null; joy.x = joy.y = 0; }
     else if(r.kind==='charge'){
       held[r.name]=Math.max(0,held[r.name]-1);
@@ -1626,7 +1633,7 @@
         ctx.fillStyle = 'rgba(8,4,16,0.65)'; ctx.fillRect(0, H * 0.4, W, 80);
         label('PAUSED', W / 2, H * 0.4 + 40, 28, '#ffe08a');
       }
-      var addHit = function (x, y, w, h, cb) { ui.push({ x: x, y: y, w: w, h: h, cb: cb }); };
+      var addHit = function (x, y, w, h, cb, drag) { ui.push({ x: x, y: y, w: w, h: h, cb: cb, drag: drag ? cb : null }); }; // drag: a slider that follows the finger
       if (m === 'town') call('Town', 'drawPanel', ctx, W, H, addHit);
       else if (CC.state.area === 'forest') call('Forest', 'drawOverlay', ctx, W, H);
       else if (CC.state.area === 'plains') call('Plains', 'drawOverlay', ctx, W, H);
@@ -1641,6 +1648,7 @@
     } else if (m === 'dead') {
       drawHud(); call('Defense','drawScreen',ctx,W,H,addButton); drawDead();
     }
+    if (m === 'town' || m === 'dungeon') call('Classes', 'drawPerkOverlay', ctx); // level-up perk choice: on top of everything
   }
 
   /* ---------- main loop ---------- */

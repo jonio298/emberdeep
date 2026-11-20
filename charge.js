@@ -65,8 +65,9 @@
   }
 
   /* ---------- release effects ---------- */
-  function skillIndex(p) { return CC.SkillTree && CC.SkillTree.chargeSelected ? CC.SkillTree.chargeSelected(p) : 0; }
-  function skillName(p) { var l = CC.SkillTree && CC.SkillTree.chargeSkills(p.classId); var i = skillIndex(p); return l && l[i] ? l[i].name : NAMES[p.classId]; }
+  function ccls(p) { return p.testChargeCls || p.classId; } // test mode can borrow another class's charge attack
+  function skillIndex(p) { if (p.testChargeCls) return p.chargeSel | 0; return CC.SkillTree && CC.SkillTree.chargeSelected ? CC.SkillTree.chargeSelected(p) : 0; }
+  function skillName(p) { var l = CC.SkillTree && CC.SkillTree.chargeSkills(ccls(p)); var i = skillIndex(p); return l && l[i] ? l[i].name : NAMES[ccls(p)]; }
   function within(p, r) { return foes().filter(function (f) { return alive(f) && Math.hypot(f.x - p.x, f.y - p.y) <= r + (f.r || 8); }); }
   function later(t, fn) { effects.push({ kind: 'later', t: t, max: t, fn: fn, x: 0, y: 0 }); }
   function ring(x, y, rad, col, t) { effects.push({ kind: 'ring', x: x, y: y, rad: rad, col: col, t: t, max: t }); }
@@ -185,7 +186,7 @@
   }
 
   function release(p, pow) {
-    var cls = p.classId, dmg = p.stats.dmg, a = aim(p), i, e, l;
+    var cls = ccls(p), dmg = p.stats.dmg, a = aim(p), i, e, l;
     var scale = 0.6 + 0.6 * pow; // a partial charge is weaker, a full one hits hardest
     var sidx = skillIndex(p);
     if (sidx > 0) {
@@ -241,7 +242,7 @@
   }
 
   function ready(p) {
-    if (p.classId !== 'thief') return true;
+    if (ccls(p) !== 'thief') return true;
     return !!foes().filter(function (f) { return alive(f) && Math.hypot(f.x - p.x, f.y - p.y) <= 150; }).length;
   }
 

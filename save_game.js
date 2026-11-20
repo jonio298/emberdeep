@@ -80,7 +80,7 @@ S.deleteSlot=function(n,keepCurrent){
 };
 S.save=function(){
  var st=storage(),s=CC.state,p=s&&s.player;
- if(!st||!p||s.coop||p.hp<=0||!(s.mode==='town'||s.mode==='dungeon'))return false;
+ if(!st||!p||s.coop||s.testMode||s.area==='testroom'||p.hp<=0||!(s.mode==='town'||s.mode==='dungeon'))return false;
  try{
   if(!current)current=S.nextSlot().n;
   var campMeta=CC.Camp&&CC.Camp.exportState?CC.Camp.exportState():null;

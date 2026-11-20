@@ -706,7 +706,8 @@ function initialize(){
  // The SESSION button would cover the journal's tab row, so it steps aside while the journal is open.
  setInterval(function(){
   var u=CC.UI&&CC.UI._state?CC.UI._state():null,h=el('mp-hud');
-  if(h)h.style.visibility=u&&u.target?'hidden':'';
+  var pk=CC.state&&CC.state.player&&CC.state.player.perkOpen;
+  if(h)h.style.visibility=(u&&u.target)||pk?'hidden':'';
  },150);
  // Text input must not also trigger gameplay key bindings or scroll the canvas.
  function editing(e){var t=e.target;return t&&(t.tagName==='INPUT'||t.tagName==='SELECT'||t.tagName==='TEXTAREA');}

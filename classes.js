@@ -680,7 +680,7 @@
   }
 
   function doSpell1(p) {
-    var cls = p.classId, dir;
+    var cls = p.testSpell1 || p.classId, dir;
     if (cls === 'swordsman') { // shield bash
       if (!spend(p, 'spell1')) return;
       dir = aimDir(p, 48);
@@ -711,7 +711,7 @@
   }
 
   function doSpell2(p) {
-    var cls = p.classId;
+    var cls = p.testSpell2 || p.classId;
     if (cls === 'swordsman') { // whirlwind
       if (!spend(p, 'spell2')) return;
       p.whirlT = 0.7; p.whirlTick = 0;
@@ -1275,7 +1275,7 @@
     var dpr = cv && cv.width && root.innerWidth ? cv.width / root.innerWidth : 1;
     c.save();
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    c.fillStyle = 'rgba(8,4,16,0.78)'; c.fillRect(0, 0, W, H);
+    c.fillStyle = 'rgba(8,4,16,0.88)'; c.fillRect(0, 0, W, H);
     c.textAlign = 'center'; c.textBaseline = 'middle';
     c.font = 'bold 22px "Trebuchet MS", Verdana, sans-serif'; c.fillStyle = '#ffe08a';
     c.fillText('LEVEL ' + p.level + ' - CHOOSE A PERK', W / 2, Math.max(40, H * 0.16));
@@ -1284,7 +1284,7 @@
     for (var i = 0; i < p.perkChoices.length; i++) {
       var pk = p.perkChoices[i], y = y0 + i * (ch + 12);
       perkRects.push({ x: x, y: y, w: cw, h: ch });
-      c.fillStyle = 'rgba(255,255,255,0.1)'; c.fillRect(x, y, cw, ch);
+      c.fillStyle = '#1b1326'; c.fillRect(x, y, cw, ch); c.fillStyle = 'rgba(255,255,255,0.08)'; c.fillRect(x, y, cw, ch); // solid, so nothing shows through
       c.strokeStyle = p.color; c.lineWidth = 2; c.strokeRect(x, y, cw, ch);
       c.font = 'bold 17px "Trebuchet MS", Verdana, sans-serif'; c.fillStyle = p.color; c.fillText(pk.name, W / 2, y + 24);
       c.font = '13px "Trebuchet MS", Verdana, sans-serif'; c.fillStyle = '#e6defa'; c.fillText(pk.desc, W / 2, y + 50);
@@ -1352,8 +1352,7 @@
     }
     for (i = 0; i < projs.length; i++) drawProj(c, projs[i], cam);
     for (i = 0; i < fxs.length; i++) if (fxs[i].kind === 'arc' || fxs[i].kind === 'beam') drawFx(c, fxs[i], cam);
-    if (p.perkOpen && p.perkChoices) drawPerkPanel(c, p);
-  }
+  } // the level-up perk panel is drawn last of all by CC.Classes.drawPerkOverlay (above the HUD, trees and every other layer)
 
   /* ---------- perk picking input (taps / keys 1-3) ---------- */
   if (typeof root.addEventListener === 'function') {
@@ -1381,6 +1380,7 @@
     gainXp: gainXp, xpToNext: xpToNext, damage: damage, heal: heal, damageMinion: damageMinion,
     applyItemStats: applyItemStats, choosePerk: choosePerk, hitEnemy: hitEnemy, status: status,
     tapAction:tapAction,summonCharged:summonCharged,
+    drawPerkOverlay: function (c) { var p = hero(); if (p && p.perkOpen && p.perkChoices) drawPerkPanel(c, p); },
     addRemoteFx: addRemoteFx, addRemoteProjectile: addRemoteProjectile, drawMinion: drawMinion,
     get player() { return hero(); }
   };

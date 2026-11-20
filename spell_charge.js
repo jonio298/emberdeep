@@ -68,7 +68,7 @@ function targets(x,y,r){
    return living(e)&&dist(e.x,e.y,x,y)<=r+(e.r||8)&&clearPath(x,y,e.x,e.y);
  });
 }
-function slotDefinition(p,slot){return (DEFINITIONS[p.classId]||DEFINITIONS.swordsman)[slot];}
+function slotDefinition(p,slot){var c=slot==='spell1'?p.testSpell1:slot==='spell2'?p.testSpell2:null;return (DEFINITIONS[c||p.classId]||DEFINITIONS.swordsman)[slot];}
 function cost(p,slot){
  var def=slotDefinition(p,slot);
  if(slot==='dash')return Math.max(10,Math.ceil((p.maxMana||60)*.16));
@@ -350,6 +350,12 @@ function cast(p,slot,where,power){
  fxText(p.x,p.y-30,d.name,col);
  burst(x,y,col,17);shake(3);
 }
+var castInner=cast;
+cast=function(p,slot,where,power){ // test mode: a spell borrowed from another class is cast as that class
+ var ov=slot==='spell1'?p.testSpell1:slot==='spell2'?p.testSpell2:null,real=p.classId;
+ if(ov&&ov!==real){p.classId=ov;try{return castInner(p,slot,where,power);}finally{p.classId=real;}}
+ return castInner(p,slot,where,power);
+};
 function release(slot){
  if(!active||active.slot!==slot)return false;
  var p=hero(),a=active;active=null;

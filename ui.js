@@ -491,7 +491,8 @@
   }
 
   // Final computed numbers (class base + level scaling + all gear and skill modifiers).
-  function drawStats(c, x, y, w, h, p) {
+  var tmTaps = 0, tmAt = 0;
+  function drawStats(c, x, y, w, h, p, hit) {
     if (!p) return;
     var stats = p.stats || {}, equip = p.equipment || {}, mods = p.mods || {};
     tx(c, p.name + '  -  Level ' + p.level, x + 8, y + 13, 17, COL.accent);
@@ -514,6 +515,16 @@
       if (i % 2 === 0) { c.fillStyle = 'rgba(224,168,74,0.055)'; rr(c, x + 4, yy - 9, w - 8, row - 1, 3); c.fill(); }
       tx(c, data[i][0], x + 10, yy, 12, COL.text);
       tx(c, data[i][1], x + w - 10, yy, 12, COL.good, 'right');
+    }
+    // Secret: tap the Area bonus row three times to reveal TEST MODE.
+    var lastY = y + 56 + (data.length - 1) * row, TM = CC.TestMode;
+    if (hit) hit(x + 4, lastY - 9, w - 8, row + 14, function () {
+      var now = Date.now(); tmTaps = now - tmAt < 1400 ? tmTaps + 1 : 1; tmAt = now;
+      if (tmTaps >= 3 && TM && TM.unlock) { tmTaps = 0; TM.unlock(); toast.s = 'Test mode unlocked'; toast.c = COL.good; toast.t = 1.6; }
+    });
+    if (TM && TM.isUnlocked && TM.isUnlocked()) {
+      var tby = Math.min(y + h - 44, lastY + row * 0.5 + 6);
+      if (hit) button(c, hit, x + w / 2 - 70, tby, 140, 26, 'TEST MODE', true, function () { close(); TM.open(); }, '#6a2a7a');
     }
     var bonus = Object.keys(equip).filter(function (slot) { return equip[slot]; }).length;
     tx(c, bonus + ' equipped items  |  ' + (p.perks || []).length + ' perks  |  ' +
@@ -548,6 +559,18 @@
     }
     row('Auto equip', 'Wear loot automatically when it is better than your gear.', S.get('autoEquip') ? 'ON  -  tap to turn off' : 'OFF  -  tap to turn on', S.get('autoEquip'), function () { S.toggle('autoEquip'); });
     row('Auto level', 'Spend skill points and pick level-up perks for you.', S.get('autoLevel') ? 'ON  -  tap to turn off' : 'OFF  -  tap to turn on', S.get('autoLevel'), function () { S.toggle('autoLevel'); });
+    // zoom slider (drag, or tap the bar): 28% .. 220%, on a log scale so the middle feels even
+    (function () {
+      var rg = CC.zoomRange || [0.28, 2.2], z = CC.getZoomTarget ? CC.getZoomTarget() : 1, tk = x + 28, tw = w - 56, ty = yy + 54, k = Math.log(z / rg[0]) / Math.log(rg[1] / rg[0]);
+      rr(c, x + 6, yy, w - 12, 84, 8); c.fillStyle = 'rgba(255,255,255,0.05)'; c.fill(); c.lineWidth = 1.5; c.strokeStyle = COL.line; c.stroke();
+      tx(c, 'Zoom', x + 18, yy + 20, 14, '#fff', 'left'); tx(c, Math.round(z * 100) + '%', x + w - 18, yy + 20, 14, COL.accent, 'right');
+      tx(c, 'Drag the bar, or pinch the screen. 100% is the normal view.', x + 18, yy + 40, 11, COL.dim, 'left');
+      rr(c, tk, ty - 3, tw, 6, 3); c.fillStyle = 'rgba(0,0,0,0.5)'; c.fill();
+      rr(c, tk, ty - 3, Math.max(4, tw * k), 6, 3); c.fillStyle = COL.accent; c.fill();
+      var kx = tk + tw * k; c.beginPath(); c.arc(kx, ty, 11, 0, 6.2832); c.fillStyle = '#f2e3b8'; c.fill(); c.lineWidth = 2; c.strokeStyle = '#7a5a28'; c.stroke();
+      hit(tk - 14, ty - 18, tw + 28, 36, function (px) { if (CC.setZoom) CC.setZoom(rg[0] * Math.pow(rg[1] / rg[0], Math.max(0, Math.min(1, (px - tk) / tw)))); }, true);
+      yy += 94;
+    })();
     row('Movement stick', 'Floating appears under your thumb. Fixed stays in the corner.', S.get('stick') === 'fixed' ? 'FIXED  -  tap for floating' : 'FLOATING  -  tap for fixed', true, function () { S.set('stick', S.get('stick') === 'fixed' ? 'floating' : 'fixed'); }, '#3a5a8a');
   }
 
@@ -604,7 +627,7 @@
       else if (cur === 'inv') drawInv(c, hit, ax, ay, aw, ah, p);
       else if (cur === 'map') drawMap(c, ax, ay, aw, ah);
       else if (cur === 'quests' && CC.EggQuest) CC.EggQuest.drawJournal(c,ax,ay,aw,ah);
-      else if (cur === 'stats') drawStats(c, ax, ay, aw, ah, p);
+      else if (cur === 'stats') drawStats(c, ax, ay, aw, ah, p, hit);
       else if (cur === 'party') drawParty(c, hit, ax, ay, aw, ah);
       else if (cur === 'settings') drawSettings(c, hit, ax, ay, aw, ah);
       c.restore();

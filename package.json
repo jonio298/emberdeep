@@ -6,7 +6,7 @@
   "description": "Emberdeep browser RPG with two-player co-op WebSocket rooms",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check api/ws.js && node --check server.js && node --check multiplayer.js && node --check p2p.js && node --check defense.js && node --check settings.js && node --check explore.js && node --check itemart.js && node --check portal.js && node --check vfx.js && node --check mask.js && node --check critical_scene.js && node --check charge.js && node --check spell_charge.js && node --check camp.js && node --check egg_quest.js && node --check save_game.js && node --check ui.js && node --check main.js && node --check classes.js && node --check enemies.js",
+    "check": "node --check api/ws.js && node --check server.js && node --check multiplayer.js && node --check p2p.js && node --check defense.js && node --check settings.js && node --check explore.js && node --check itemart.js && node --check portal.js && node --check vfx.js && node --check testmode.js && node --check mask.js && node --check critical_scene.js && node --check charge.js && node --check spell_charge.js && node --check camp.js && node --check egg_quest.js && node --check save_game.js && node --check ui.js && node --check main.js && node --check classes.js && node --check enemies.js",
     "test": "node --test tests/multiplayer.test.mjs",
     "validate": "npm run check && npm test"
   },
