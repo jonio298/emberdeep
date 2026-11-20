@@ -197,10 +197,10 @@ A.populate=function(floor){
 A.canAdvance=function(){
  var E=CC.Enemies;return !E||!E.list||E.list.every(function(e){return e.dead||e.hp<=0||e.asleep&&e.x===-999;});
 };
-A.interact=function(){
+A.interact=function(force){ // force: the party's partner asked at the ladder
  var s=CC.state,p=s&&s.player,m=s&&s.map;
  if(s.area!=='tree-ascent'||!p||!m)return false;
- if(Math.hypot(p.x-m.stairs.x,p.y-m.stairs.y)>58)return false;
+ if(!force&&Math.hypot(p.x-m.stairs.x,p.y-m.stairs.y)>58)return false;
  if(!A.canAdvance()){
    if(CC.fx&&CC.fx.text)CC.fx.text(p.x,p.y-27,'DEFEAT THE NEST GUARDIANS','#f39b78',11);
    return true;

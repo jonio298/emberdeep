@@ -488,10 +488,13 @@
     Town.dialog = null; Town.hintT = 8; Town.bridgeAnim = s.bridgeDown ? 1 : 0; applyBridge();
     if (p) { var arrive = s.fromForest; p.x = 24 * T; p.y = (arrive ? 30.6 : 24) * T; }
     s.fromForest = false;
-    if (CC.Enemies) { CC.Enemies.list.length = 0; CC.Enemies.projectiles.length = 0; }
-    if (CC.Loot && CC.Loot.clear) CC.Loot.clear();
+    if (!s.keepWorld) { // a co-op host keeps the dungeon alive for the partner while they are in town
+      if (CC.Enemies) { CC.Enemies.list.length = 0; CC.Enemies.projectiles.length = 0; }
+      if (CC.Loot && CC.Loot.clear) CC.Loot.clear();
+    }
     spawnCreeps();
   };
+  Town.leave = function () { Town.dialog = null; };
   Town.update = function (dt) {
     var s = st(), p = s.player;
     if (CC.Dungeon !== Town.map) CC.Dungeon = Town.map;

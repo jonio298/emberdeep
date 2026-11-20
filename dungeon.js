@@ -306,7 +306,7 @@
         var ac = floors.filter(function (q) { return !used[q] && !liquid[q] && !props[q] && dist[q] >= 8 && inner(q) && open3(g, q % W, (q / W) | 0); });
         if (ac.length) { var ak = ac[(prng() * ac.length) | 0]; props[ak] = 6; used[ak] = 1; addLight(ak % W, (ak / W) | 0, 3.5, [255, 60, 60], 0.75, 'altar'); }
       }
-      addLight(stIdx % W, (stIdx / W) | 0, 4, hex(B.accent), 0.8, 'stairs');
+      addLight(stIdx % W, (stIdx / W) | 0, 3.2, [190, 36, 30], 0.55, 'stairs'); // a faint red glow from below
       var sl = new Float32Array(N);
       lights.forEach(function (L) { lightInto(sl, L); });
 
@@ -1029,13 +1029,45 @@
     }
     shroom(11, 25, 2); shroom(19 + (h & 1) * 2, 24, 1.5);
   }
+  // The way down: a black pit in the floor with a rotting ladder, and something watching from below. Its red eyes
+  // glow in the dark and blink every few seconds.
   function drawStairs(ctx, px, py, B, t) {
-    ctx.fillStyle = '#0a0a0e'; ctx.fillRect(px + 2, py + 2, T - 4, T - 4);
-    for (var i = 0; i < 4; i++) {
-      var s = 3 + i * 3;
-      ctx.fillStyle = shade(B.accent, 0.35 + i * 0.18); ctx.fillRect(px + s, py + s, T - s * 2, T - s * 2);
+    var cx = px + 16, cy = py + 18, i, seed = (px * 7 + py * 13) % 11;
+    // ragged stone rim and the pit
+    ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.ellipse(cx, cy + 3, 17, 13, 0, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = '#2b2622'; ctx.beginPath(); ctx.ellipse(cx, cy, 15.5, 12.5, 0, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = '#4a423a'; for (i = 0; i < 9; i++) { var ra = i / 9 * 6.2832 + seed; ctx.fillRect(cx + Math.cos(ra) * 14 - 2, cy + Math.sin(ra) * 11.5 - 1.5, 4, 3); }
+    var pit = ctx.createRadialGradient(cx, cy + 1, 1, cx, cy + 1, 13);
+    pit.addColorStop(0, '#000000'); pit.addColorStop(0.7, '#050304'); pit.addColorStop(1, '#14100e');
+    ctx.fillStyle = pit; ctx.beginPath(); ctx.ellipse(cx, cy + 1, 12.5, 10, 0, 0, 6.2832); ctx.fill();
+    // the ladder: pale wood rungs sinking into the black
+    ctx.save(); ctx.beginPath(); ctx.ellipse(cx, cy + 1, 12.5, 10, 0, 0, 6.2832); ctx.clip();
+    var lx = cx - 4.5, rx = cx + 4.5;
+    for (i = 0; i < 5; i++) {
+      var ry = py + 6 + i * 4.2, a = Math.max(0.1, 0.95 - i * 0.2);
+      ctx.fillStyle = 'rgba(138,98,60,' + a + ')'; ctx.fillRect(lx - 1.5, ry, rx - lx + 3, 1.8);
     }
-    ctx.fillStyle = 'rgba(255,255,255,' + (0.35 + 0.25 * Math.sin(t * 3)) + ')'; ctx.fillRect(px + 13, py + 13, 6, 6);
+    ctx.fillStyle = 'rgba(110,76,46,0.9)'; ctx.fillRect(lx - 1.5, py + 3, 2, 22); ctx.fillRect(rx - 0.5, py + 3, 2, 22);
+    var fade = ctx.createLinearGradient(0, py + 8, 0, py + 28); fade.addColorStop(0, 'rgba(0,0,0,0)'); fade.addColorStop(1, 'rgba(0,0,0,0.95)');
+    ctx.fillStyle = fade; ctx.fillRect(px, py + 8, T, 22);
+    ctx.restore();
+    // the eyes: a pair in the dark, drifting a little, blinking
+    var cycle = (t * 0.55 + seed) % 5, blink = cycle > 4.55 && cycle < 4.8 ? 0 : 1, look = Math.sin(t * 0.6 + seed) * 2.2;
+    var glow = 0.55 + 0.25 * Math.sin(t * 2.3 + seed), ey = cy + 3 + Math.sin(t * 0.9) * 0.8;
+    if (blink) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      var eg = ctx.createRadialGradient(cx + look, ey, 0, cx + look, ey, 11);
+      eg.addColorStop(0, 'rgba(255,40,30,' + (0.5 * glow) + ')'); eg.addColorStop(1, 'rgba(255,0,0,0)');
+      ctx.fillStyle = eg; ctx.fillRect(cx + look - 11, ey - 11, 22, 22);
+      ctx.restore();
+      ctx.fillStyle = '#ff2a22'; ctx.beginPath(); ctx.ellipse(cx - 3.6 + look, ey, 2.1, 1.3, -0.25, 0, 6.2832); ctx.ellipse(cx + 3.6 + look, ey, 2.1, 1.3, 0.25, 0, 6.2832); ctx.fill();
+      ctx.fillStyle = '#ffd0c0'; ctx.fillRect(cx - 4.4 + look, ey - 0.4, 1.4, 0.9); ctx.fillRect(cx + 3.1 + look, ey - 0.4, 1.4, 0.9);
+    } else { // eyelids shut: two thin dark red lines
+      ctx.fillStyle = '#4a0a08'; ctx.fillRect(cx - 5.5 + look, ey, 4, 1); ctx.fillRect(cx + 1.5 + look, ey, 4, 1);
+    }
+    // the top of the ladder reaches over the rim
+    ctx.fillStyle = '#9a6e40'; ctx.fillRect(lx - 1.5, py - 4, 2, 9); ctx.fillRect(rx - 0.5, py - 4, 2, 9);
+    ctx.fillStyle = '#b98852'; ctx.fillRect(lx - 1.5, py + 1, rx - lx + 3, 1.8);
   }
   function diamond(ctx, x, y, r) {
     ctx.beginPath(); ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.closePath(); ctx.fill();

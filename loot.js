@@ -257,6 +257,9 @@
     var minR = Math.min(minRarity || 0, maxOk);
     for (i = 0; i < RARITIES.length; i++) {
       w[i] = (i < minR || i > maxOk) ? 0 : RARITIES[i].weight * Math.pow(1 + k, i);
+      // depth bonus: from floor 8 on, epics and legendaries keep getting likelier the lower you go
+      if (i === 4 && floor >= 8) w[i] *= 1 + (floor - 7) * 0.45;
+      if (i === 3 && floor >= 5) w[i] *= 1 + (floor - 4) * 0.2;
       tot += w[i];
     }
     var r = R() * tot;
@@ -378,7 +381,12 @@
     return makeCharm(floor, r);
   }
   // level: player level (defaults to CC.state.player.level, else 1)
-  function rollItem(floor, luck, minRarity, cls, tier, level) { return makeItem(floor, pickRarity(floor, luck, minRarity, tier, level), pickSlot(), cls, level); }
+  function rollItem(floor, luck, minRarity, cls, tier, level) {
+    var rarity = pickRarity(floor, luck, minRarity, tier, level), slot = pickSlot();
+    // the deeper you go, the more often a legendary is a legendary WEAPON
+    if (rarity === 4 && floor >= 8 && R() < Math.min(0.75, 0.35 + (floor - 8) * 0.04)) slot = 'weapon';
+    return makeItem(floor, rarity, slot, cls, level);
+  }
 
   // ---------- drops ----------
   var L = CC.Loot = {
@@ -446,20 +454,25 @@
         for (var i = 0; i < n; i++) item(1);
         gold(ri(2, 3));
         if (R() < 0.5) add(self._spawn('hp', x, y, { amount: 25, color: '#ff4a5a' }));
-        if (R() < 0.2) add(self._spawn('potion', x, y, { color: '#ff7ad0' }));
+        if (R() < 0.45) add(self._spawn('potion', x, y, { color: '#ff7ad0' }));
+        if (R() < 0.35) add(self._spawn('mpotion', x, y, { color: '#6ab4ff' }));
       } else if (boss) {
         item(1, 4); item(1, 4); if (R() < 0.3) item(1, 4);
         if (R() < 0.25) charm(4);
         gold(ri(4, 6));
         add(self._spawn('hp', x, y, { amount: 40, color: '#ff4a5a' })); add(self._spawn('mana', x, y, { amount: 30, color: '#4aa8ff' }));
-        add(self._spawn('potion', x, y, { color: '#ff7ad0' }));
+        add(self._spawn('potion', x, y, { color: '#ff7ad0' })); add(self._spawn('mpotion', x, y, { color: '#6ab4ff' }));
+        if (R() < 0.6) add(self._spawn('potion', x, y, { color: '#ff7ad0' }));
       } else {
-        if (R() < (elite ? 0.3 : 0.07 + Math.min(luck, LUCK_CAP) * 0.0015)) item(0);
-        if (R() < (elite ? 0.1 : 0.015)) charm();
-        if (R() < (elite ? 1 : 0.55)) gold(elite ? ri(1, 3) : 1);
-        if (R() < 0.12) add(self._spawn('hp', x, y, { amount: 12 + floor * 2, color: '#ff4a5a' }));
-        if (R() < 0.1) add(self._spawn('mana', x, y, { amount: 10 + floor * 2, color: '#4aa8ff' }));
-        if (R() < 0.03 + (elite ? 0.07 : 0)) add(self._spawn('potion', x, y, { color: '#ff7ad0' }));
+        // Elites (the glowing ones) drop real loot: at least Uncommon, luckier, sometimes two pieces
+        if (elite) { item(1, 8); if (R() < 0.35) item(1, 6); if (R() < 0.35) charm(6); }
+        else if (R() < 0.07 + Math.min(luck, LUCK_CAP) * 0.0015) item(0);
+        if (!elite && R() < 0.015) charm();
+        if (R() < (elite ? 1 : 0.55)) gold(elite ? ri(2, 4) : 1);
+        if (R() < (elite ? 0.5 : 0.16)) add(self._spawn('hp', x, y, { amount: 12 + floor * 2, color: '#ff4a5a' }));
+        if (R() < (elite ? 0.4 : 0.1)) add(self._spawn('mana', x, y, { amount: 10 + floor * 2, color: '#4aa8ff' }));
+        if (R() < (elite ? 0.4 : 0.075)) add(self._spawn('potion', x, y, { color: '#ff7ad0' }));      // health potion
+        if (R() < (elite ? 0.3 : 0.05)) add(self._spawn('mpotion', x, y, { color: '#6ab4ff' }));     // mana potion
       }
       return out;
     },
@@ -503,7 +516,9 @@
           } else if (d.kind === 'mana') {
             player.mana = Math.min(player.maxMana || player.mana + d.amount, player.mana + d.amount); this._text(d.x, d.y, '+' + d.amount + ' MP', '#6ab8ff');
           } else if (d.kind === 'potion') {
-            s.potions = (s.potions || 0) + 1; this._text(d.x, d.y, 'Potion', '#ff9ae0');
+            s.potions = (s.potions || 0) + 1; this._text(d.x, d.y, 'Health Potion', '#ff9ae0');
+          } else if (d.kind === 'mpotion') {
+            s.manaPotions = (s.manaPotions || 0) + 1; this._text(d.x, d.y, 'Mana Potion', '#7ec2ff');
           } else if (d.kind === 'item') {
             s.inventory = s.inventory || [];
             if (this.autoEquip(player, d.item)) { this._text(d.x, d.y, 'Equipped ' + d.item.name, d.item.color, 11); }
@@ -577,7 +592,7 @@
       glow(ctx, sx, y, 10 * scale, col);
       ctx.fillStyle = col; ctx.beginPath(); ctx.arc(sx, y, 4 * scale, 0, 6.3); ctx.fill();
       ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.fillRect(sx - 2, y - 2, 2, 2);
-    } else if (d.kind === 'potion') {
+    } else if (d.kind === 'potion' || d.kind === 'mpotion') {
       glow(ctx, sx, y, 10 * scale, col);
       ctx.fillStyle = '#c0c8d8'; ctx.fillRect(sx - 1.5, y - 6 * scale, 3, 3);
       ctx.fillStyle = col; ctx.fillRect(sx - 4 * scale, y - 3 * scale, 8 * scale, 7 * scale);

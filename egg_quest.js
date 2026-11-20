@@ -38,6 +38,7 @@ Q.gather=function(){
  if(stage!=='climbing')return false;
  stage='gathered';
  notice('3 ORPHANED EAGLE EGGS GATHERED','#e3d4a1');
+ if(CC.Multiplayer&&CC.Multiplayer.questEvent)CC.Multiplayer.questEvent({e:'gather',tf:(CC.state&&CC.state.treeFloor)||5}); // the party shares the quest
  if(CC.fx&&CC.fx.burst){var p=CC.state.player;CC.fx.burst(p.x,p.y,'#efd9a1',22,100);}
  save();return true;
 };
@@ -49,6 +50,19 @@ Q.keepEgg=function(){
  if(stage!=='nest')return false;
  stage='complete';hatched=false;hatching=false;
  notice('A WARM EAGLE EGG JOINS YOUR SACK','#cbefb1');save();return true;
+};
+// Co-op: everyone does the leader's quest. The leader's stage reaches the party, and when the eggs are gathered
+// the partner who is on that same bough completes it too.
+Q.coopSync=function(d){
+ if(!d)return;
+ if(d.s==='climbing'&&stage==='unstarted'){stage='climbing';notice('PARTY QUEST: THE UNHATCHED','#cfe8a8');}
+ if(d.e==='gather'){
+  var s=CC.state;
+  if(s&&s.area==='tree-ascent'&&(s.treeFloor||1)===d.tf){
+   if(stage==='unstarted')stage='climbing';
+   Q.gather();
+  }
+ }
 };
 Q.tunnelUnlocked=function(){return stage==='complete';};
 Q.onMovement=function(){}; // hatching no longer depends on walking

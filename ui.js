@@ -23,7 +23,8 @@
   var mouse = { cx: 0, cy: 0, on: false, x: -1, y: -1, bound: false }, hoverInfo = null, canvasEl = null;
   var TABS = [{ id: 'inv', key: 'KeyI', name: 'Inventory' }, { id: 'skills', key: 'KeyK', name: 'Skills' }, { id: 'quests', key: 'KeyJ', name: 'Quests' }, { id: 'map', key: 'KeyM', name: 'Map' }, { id: 'stats', key: 'KeyC', name: 'Stats' }];
   var PARTY_TAB = { id: 'party', name: 'Party' }; // only while in a co-op session
-  function tabs() { return CC.Multiplayer && CC.Multiplayer.active ? TABS.concat([PARTY_TAB]) : TABS; }
+  var SETTINGS_TAB = { id: 'settings', name: 'Settings' };
+  function tabs() { var t = TABS.concat([SETTINGS_TAB]); return CC.Multiplayer && CC.Multiplayer.active ? t.concat([PARTY_TAB]) : t; }
   var BAG_MAX = 40, FRACT = { crit: 1, speed: 1, cdr: 1, lifesteal: 1 };
 
   var cur = null, target = false, t = 0, clock = 0, hovering = false;
@@ -156,6 +157,20 @@
     recalc(p);
     say('Unequipped ' + it.name, COL.text);
   }
+  // Drop an item on the ground in front of you (a co-op guest asks the host to place it). Nobody can scoop it up for a moment.
+  function dropItem(src, ref) {
+    var p = hero(), bag = inv(), it = src === 'bag' ? bag[ref] : p && p.equipment && p.equipment[ref];
+    if (!it || !p) return;
+    if (src === 'bag') bag.splice(ref, 1); else { p.equipment[ref] = null; recalc(p); }
+    var MP = CC.Multiplayer;
+    if (MP && MP.isGuest && MP.isGuest() && MP.requestDrop) MP.requestDrop(it);
+    else if (CC.Loot && CC.Loot._spawn && CC.Loot.drops) {
+      var d = CC.Loot._spawn('item', p.x + (p.face || 1) * 14, p.y + 4, { item: it, rarity: it.rarity, color: it.color });
+      d.age = -2.5; d.vx = (p.face || 1) * 40; d.vy = 10; CC.Loot.drops.push(d);
+    }
+    sel.item = null;
+    say('Dropped ' + it.name, COL.dim);
+  }
   function sell(idx) {
     var bag = inv(), it = bag[idx];
     if (!it) return;
@@ -269,8 +284,94 @@
     c.lineWidth = chosen ? 3 : hov ? 2.5 : 2; c.strokeStyle = chosen ? '#fff' : (it ? rc : (hov ? COL.accent : '#3a2e24')); rr(c, x, y, cs, cs, 5); c.stroke();
     c.restore();
     rr(c, x + 3, y + 3, cs - 6, cs - 6, 3); c.lineWidth = 1; c.strokeStyle = 'rgba(255,255,255,0.06)'; c.stroke();
-    tx(c, glyph(it ? it.slot : slotName), x + cs / 2, y + cs / 2 + 0.5, Math.round(cs * 0.42), it ? (it.color || '#fff') : 'rgba(143,128,112,0.55)', 'center');
+    if (CC.ItemArt) CC.ItemArt.draw(c, it, it ? it.slot : slotName, x, y, cs, { ghostAlpha: 0.32 });
+    else tx(c, glyph(it ? it.slot : slotName), x + cs / 2, y + cs / 2 + 0.5, Math.round(cs * 0.42), it ? (it.color || '#fff') : 'rgba(143,128,112,0.55)', 'center');
   }
+
+  // An ornate equipment socket: bronze double frame with rivets, rarity glow, a ghost of the slot when empty
+  var SOCKET_NAME = { weapon: 'WEAPON', armor: 'ARMOR', helm: 'HELM', gloves: 'GLOVES', boots: 'BOOTS', ring: 'RING', amulet: 'AMULET', trinket: 'TRINKET', charm: 'CHARM' };
+  function drawSocket(c, x, y, cs, it, slotName, chosen, info, accent) {
+    var hov = !!info && mouse.x >= x && mouse.x < x + cs && mouse.y >= y && mouse.y < y + cs, rc = it ? (it.color || COL.line) : accent || '#5a4630';
+    if (hov) { hoverInfo = it ? { it: it, info: info, x: x, y: y, cs: cs } : hoverInfo; hovering = true; }
+    c.save();
+    var g = c.createRadialGradient(x + cs / 2, y + cs / 2, 2, x + cs / 2, y + cs / 2, cs * 0.75);
+    g.addColorStop(0, hov ? '#33263f' : '#241a2e'); g.addColorStop(1, '#0c0812');
+    rr(c, x, y, cs, cs, 7); c.fillStyle = g; c.fill();
+    if (it) { var a = c.createRadialGradient(x + cs / 2, y + cs / 2, 2, x + cs / 2, y + cs / 2, cs * 0.7); a.addColorStop(0, rc + '66'); a.addColorStop(1, rc + '00'); rr(c, x, y, cs, cs, 7); c.fillStyle = a; c.fill(); }
+    if (it && it.rarity >= 2) { c.shadowColor = rc; c.shadowBlur = 8 + 4 * Math.sin(clock * 3); }
+    c.lineWidth = chosen ? 3 : 2.4; c.strokeStyle = chosen ? '#fff6dc' : it ? rc : (hov ? COL.accent : '#7a5a34'); rr(c, x, y, cs, cs, 7); c.stroke();
+    c.shadowBlur = 0; c.lineWidth = 1; c.strokeStyle = 'rgba(255,214,150,0.28)'; rr(c, x + 3, y + 3, cs - 6, cs - 6, 5); c.stroke();
+    c.fillStyle = '#c89a4a'; [[x + 2, y + 2], [x + cs - 2, y + 2], [x + 2, y + cs - 2], [x + cs - 2, y + cs - 2]].forEach(function (q) { c.beginPath(); c.arc(q[0], q[1], 1.6, 0, 6.2832); c.fill(); });
+    c.restore();
+    if (CC.ItemArt) CC.ItemArt.draw(c, it, it ? it.slot : slotName, x + 2, y + 2, cs - 4, { ghostAlpha: 0.34 });
+    if (!it && cs >= 34) tx(c, SOCKET_NAME[slotName] || '', x + cs / 2, y + cs - 5, 7, 'rgba(176,150,110,0.7)', 'center');
+  }
+
+  // The hero paper doll: a runed panel, a glowing sigil, and a detailed armoured figure for the sockets to sit on.
+  function drawPaperDoll(c, px, py, pw, ph, p, cs) {
+    var col = p.color || '#e0a84a', cx = px + pw / 2, cls = p.classId || 'swordsman', i, a;
+    c.save();
+    var bg = c.createLinearGradient(0, py, 0, py + ph); bg.addColorStop(0, '#2a1d38'); bg.addColorStop(0.55, '#150f20'); bg.addColorStop(1, '#0c0814');
+    rr(c, px, py, pw, ph, 14); c.fillStyle = bg; c.fill();
+    c.lineWidth = 3; c.strokeStyle = '#7a5a34'; rr(c, px, py, pw, ph, 14); c.stroke();
+    c.lineWidth = 1; c.strokeStyle = 'rgba(224,168,74,0.35)'; rr(c, px + 5, py + 5, pw - 10, ph - 10, 10); c.stroke();
+    [[px + 9, py + 9], [px + pw - 9, py + 9], [px + 9, py + ph - 9], [px + pw - 9, py + ph - 9]].forEach(function (q) { // filigree corners
+      c.fillStyle = '#c89a4a'; c.beginPath(); c.moveTo(q[0], q[1] - 4); c.lineTo(q[0] + 4, q[1]); c.lineTo(q[0], q[1] + 4); c.lineTo(q[0] - 4, q[1]); c.closePath(); c.fill();
+      c.fillStyle = '#1a1020'; c.beginPath(); c.arc(q[0], q[1], 1.3, 0, 6.2832); c.fill();
+    });
+    // the sigil behind the figure: nested rune rings with tick marks, glowing in the hero's colour
+    var sy = py + ph * 0.5, R = Math.min(pw * 0.34, ph * 0.46), pulse = 0.5 + 0.5 * Math.sin(clock * 1.6);
+    var glow = c.createRadialGradient(cx, sy, 4, cx, sy, R * 1.25); glow.addColorStop(0, col + '40'); glow.addColorStop(1, col + '00');
+    c.fillStyle = glow; c.fillRect(cx - R * 1.3, sy - R * 1.3, R * 2.6, R * 2.6);
+    c.strokeStyle = col; c.globalAlpha = 0.35 + 0.15 * pulse; c.lineWidth = 1.4;
+    c.beginPath(); c.arc(cx, sy, R, 0, 6.2832); c.stroke(); c.beginPath(); c.arc(cx, sy, R * 0.78, 0, 6.2832); c.stroke();
+    for (i = 0; i < 24; i++) { a = i / 24 * 6.2832 + clock * 0.05; c.beginPath(); c.moveTo(cx + Math.cos(a) * R * 0.9, sy + Math.sin(a) * R * 0.9); c.lineTo(cx + Math.cos(a) * R * (i % 3 === 0 ? 1.07 : 1.0), sy + Math.sin(a) * R * (i % 3 === 0 ? 1.07 : 1.0)); c.stroke(); }
+    c.beginPath(); for (i = 0; i < 6; i++) { a = i / 6 * 6.2832 - 1.5708 + clock * 0.03; var qx = cx + Math.cos(a) * R * 0.78, qy = sy + Math.sin(a) * R * 0.78; if (i) c.lineTo(qx, qy); else c.moveTo(qx, qy); } c.closePath(); c.stroke();
+    c.globalAlpha = 1;
+    // ---- the figure ----
+    var u = cs / 42, fy = py + ph * 0.1, dark = '#1c1424', steel = '#7a7d96', steelHi = '#c4c8e0', cloth = col;
+    c.translate(cx, fy); c.scale(u * 1.05, u * 1.05);
+    c.lineJoin = 'round'; c.lineCap = 'round';
+    // cape
+    c.beginPath(); c.moveTo(-24, 22); c.quadraticCurveTo(-40, 70, -34, 126); c.lineTo(34, 126); c.quadraticCurveTo(40, 70, 24, 22); c.closePath();
+    var cg = c.createLinearGradient(0, 22, 0, 126); cg.addColorStop(0, '#5a1624'); cg.addColorStop(1, '#1e0810'); c.fillStyle = cg; c.fill(); c.lineWidth = 1.6; c.strokeStyle = '#0c0408'; c.stroke();
+    c.strokeStyle = 'rgba(255,255,255,0.08)'; c.lineWidth = 1; for (i = -2; i <= 2; i++) { c.beginPath(); c.moveTo(i * 9, 30); c.quadraticCurveTo(i * 12, 80, i * 13, 124); c.stroke(); }
+    // legs and greaves
+    [-1, 1].forEach(function (s) {
+      c.beginPath(); c.moveTo(s * 4, 82); c.lineTo(s * 16, 82); c.lineTo(s * 17, 118); c.lineTo(s * 5, 118); c.closePath();
+      c.fillStyle = lin(c, s * 4, 0, s * 17, 0, '#4a3f66', '#241c36'); c.fill(); c.lineWidth = 1.4; c.strokeStyle = '#0e0a16'; c.stroke();
+      c.beginPath(); c.moveTo(s * 4.5, 100); c.lineTo(s * 16.5, 100); c.lineTo(s * 17, 120); c.lineTo(s * 5, 120); c.closePath(); c.fillStyle = lin(c, 0, 100, 0, 120, steel, '#3a3c50'); c.fill(); c.stroke();
+      c.fillStyle = steelHi; c.beginPath(); c.arc(s * 10.5, 96, 4.2, 0, 6.2832); c.fill(); c.stroke(); // knee guard
+    });
+    // arms: pauldron, bicep, bracer, hand
+    [-1, 1].forEach(function (s) {
+      c.beginPath(); c.moveTo(s * 20, 28); c.lineTo(s * 33, 46); c.lineTo(s * 36, 74); c.lineTo(s * 28, 76); c.lineTo(s * 24, 50); c.closePath();
+      c.fillStyle = lin(c, 0, 28, s * 36, 74, '#4a3f66', '#251d38'); c.fill(); c.lineWidth = 1.4; c.strokeStyle = '#0e0a16'; c.stroke();
+      c.fillStyle = lin(c, 0, 52, 0, 76, steel, '#3a3c50'); c.fillRect(s > 0 ? 25 : -37, 56, 12, 20); c.strokeRect(s > 0 ? 25 : -37, 56, 12, 20);
+      c.beginPath(); c.ellipse(s * 32, 82, 6, 7, 0, 0, 6.2832); c.fillStyle = steelHi; c.fill(); c.stroke();
+      c.beginPath(); c.ellipse(s * 26, 28, 12, 8, s * 0.5, 0, 6.2832); c.fillStyle = lin(c, s * 14, 20, s * 38, 36, steelHi, '#4a4c64'); c.fill(); c.stroke(); // pauldron
+      c.fillStyle = cloth; c.beginPath(); c.arc(s * 28, 28, 2.4, 0, 6.2832); c.fill();
+    });
+    // torso: breastplate with a tabard in the hero's colour, belt and buckle
+    c.beginPath(); c.moveTo(-22, 26); c.lineTo(22, 26); c.lineTo(20, 60); c.lineTo(12, 84); c.lineTo(-12, 84); c.lineTo(-20, 60); c.closePath();
+    c.fillStyle = lin(c, -22, 0, 22, 0, '#3e3858', '#6a6490'); c.fill(); c.lineWidth = 1.6; c.strokeStyle = '#0e0a16'; c.stroke();
+    c.beginPath(); c.moveTo(-7, 28); c.lineTo(7, 28); c.lineTo(9, 82); c.lineTo(0, 90); c.lineTo(-9, 82); c.closePath(); c.fillStyle = cloth; c.globalAlpha = 0.85; c.fill(); c.globalAlpha = 1; c.stroke();
+    c.strokeStyle = 'rgba(255,255,255,0.22)'; c.lineWidth = 1; c.beginPath(); c.moveTo(-20, 38); c.quadraticCurveTo(0, 46, 20, 38); c.moveTo(-18, 50); c.quadraticCurveTo(0, 58, 18, 50); c.stroke();
+    c.fillStyle = '#3a2412'; c.fillRect(-20, 70, 40, 6); c.fillStyle = '#d6b46a'; c.fillRect(-4, 69, 8, 8); c.strokeRect(-4, 69, 8, 8);
+    // class emblem on the tabard
+    c.strokeStyle = '#fff3d0'; c.fillStyle = '#fff3d0'; c.lineWidth = 1.6;
+    if (cls === 'wizard') { c.beginPath(); for (i = 0; i < 5; i++) { a = i / 5 * 6.2832 - 1.5708; var sx2 = Math.cos(a) * 6, sy2 = 46 + Math.sin(a) * 6, b2 = a + 6.2832 / 10, ix = Math.cos(b2) * 2.6, iy = 46 + Math.sin(b2) * 2.6; if (i) c.lineTo(sx2, sy2); else c.moveTo(sx2, sy2); c.lineTo(ix, iy); } c.closePath(); c.fill(); }
+    else if (cls === 'necromancer') { c.beginPath(); c.arc(0, 44, 5, 0, 6.2832); c.fill(); c.fillRect(-3, 48, 6, 4); c.fillStyle = col; c.beginPath(); c.arc(-2, 44, 1.2, 0, 6.2832); c.arc(2, 44, 1.2, 0, 6.2832); c.fill(); }
+    else if (cls === 'thief') { c.beginPath(); c.moveTo(-5, 40); c.lineTo(5, 52); c.moveTo(5, 40); c.lineTo(-5, 52); c.stroke(); }
+    else { c.beginPath(); c.moveTo(0, 38); c.lineTo(6, 41); c.lineTo(5, 50); c.lineTo(0, 54); c.lineTo(-5, 50); c.lineTo(-6, 41); c.closePath(); c.stroke(); c.beginPath(); c.moveTo(0, 41); c.lineTo(0, 51); c.moveTo(-3, 45); c.lineTo(3, 45); c.stroke(); }
+    // gorget, neck and head with a hood
+    c.fillStyle = lin(c, 0, 14, 0, 28, steel, '#3a3c50'); c.beginPath(); c.moveTo(-9, 20); c.lineTo(9, 20); c.lineTo(11, 30); c.lineTo(-11, 30); c.closePath(); c.fill(); c.lineWidth = 1.4; c.strokeStyle = '#0e0a16'; c.stroke();
+    c.beginPath(); c.ellipse(0, 6, 12, 14, 0, 0, 6.2832); c.fillStyle = lin(c, -10, -6, 10, 20, '#e8c8a0', '#a8805c'); c.fill(); c.stroke();
+    c.beginPath(); c.moveTo(-16, 12); c.quadraticCurveTo(-18, -14, 0, -16); c.quadraticCurveTo(18, -14, 16, 12); c.quadraticCurveTo(10, -2, 0, -4); c.quadraticCurveTo(-10, -2, -16, 12); c.closePath(); c.fillStyle = lin(c, 0, -16, 0, 12, '#3e2c5c', '#1c1230'); c.fill(); c.stroke();
+    c.fillStyle = col; c.beginPath(); c.arc(-4.5, 6, 1.7, 0, 6.2832); c.arc(4.5, 6, 1.7, 0, 6.2832); c.fill(); // glowing eyes
+    c.restore();
+  }
+  function lin(c, x0, y0, x1, y1, a, b) { var g = c.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, a); g.addColorStop(1, b); return g; }
   // hover tooltip: stats, then +/- against the item equipped in the same slot
   function drawTip(c, W, H, p) {
     var h = hoverInfo;
@@ -324,25 +425,14 @@
     tx(c, 'DMG ' + Math.round(st.dmg || 0) + '  CRIT ' + Math.round((st.crit || 0) * 100) + '%  ARM ' + Math.round(st.armor || 0) + '  HP ' + Math.round(p.maxHp || 0),
       x + w - 6, yy + 7, 11, COL.text, 'right');
     yy += 18;
-    // paper doll: hero silhouette with slots around it (amulet head, weapon / armor / ring across the body, trinket at the feet), charms in a row below
     var step = cs + 12, mid = x + w / 2 - cs / 2, POS = { amulet: [-1, 0], helm: [0, 0], trinket: [1, 0], weapon: [-1, 1], armor: [0, 1], ring: [1, 1], gloves: [-1, 2], boots: [1, 2] }, extra = 0, ci = 0, i;
-    // Anatomical paper doll, with armor and equipment slots positioned at the body part.
-    c.save(); c.translate(x + w / 2, yy);
-    c.strokeStyle = 'rgba(224,168,74,0.65)'; c.lineWidth = 2;
-    c.fillStyle = '#66566b'; c.beginPath(); c.arc(0, cs * 0.50, cs * 0.31, 0, 6.2832); c.fill(); c.stroke();
-    c.fillStyle = '#3f344a'; rr(c, -cs * 0.38, cs * 0.9, cs * 0.76, cs * 1.25, cs * 0.22); c.fill(); c.stroke();
-    c.beginPath(); c.moveTo(-cs * 0.38, cs * 1.05); c.lineTo(-cs * 0.65, cs * 2.0);
-    c.moveTo(cs * 0.38, cs * 1.05); c.lineTo(cs * 0.65, cs * 2.0);
-    c.moveTo(-cs * 0.19, cs * 2.1); c.lineTo(-cs * 0.24, cs * 2.9);
-    c.moveTo(cs * 0.19, cs * 2.1); c.lineTo(cs * 0.24, cs * 2.9); c.stroke();
-    c.fillStyle = 'rgba(224,168,74,0.15)'; rr(c, -cs * 0.38, cs * 0.9, cs * 0.76, cs * 1.25, 3); c.fill();
-    c.restore();
+    drawPaperDoll(c, x + 2, yy - 6, w - 4, 3 * (cs + gap) + (nCharm ? cs + gap + 2 : 0) + 8, p, cs);
     for (i = 0; i < keys.length; i++) {
       (function (k) {
         var isCharm = k.indexOf('charm') === 0, pp = POS[k], cx, cy, it = p.equipment && p.equipment[k];
         if (isCharm) { cx = mid + (ci++ - (nCharm - 1) / 2) * step; cy = yy + 3 * (cs + gap) + 2; }
         else { if (!pp) pp = [extra++ % 2 ? 1 : -1, 2]; cx = mid + pp[0] * step; cy = yy + pp[1] * (cs + gap); }
-        drawItemCell(c, cx, cy, cs, it, isCharm ? 'charm' : k, sel.item && sel.item.src === 'eq' && sel.item.key === k, { src: 'eq', key: k });
+        drawSocket(c, cx, cy, cs, it, isCharm ? 'charm' : k, sel.item && sel.item.src === 'eq' && sel.item.key === k, { src: 'eq', key: k }, isCharm ? '#6a4a8a' : '#7a5a34');
         addHit(cx, cy, cs, cs, function () { sel.item = it ? { src: 'eq', key: k } : null; });
       })(keys[i]);
     }
@@ -390,10 +480,12 @@
     var bx = x + w - 100;
     if (sel.item.src === 'bag') {
       var blocked = !!(it.classReq && it.classReq !== p.classId);
-      button(c, addHit, bx, dy + 10, 90, 28, 'Equip', !blocked, function () { equip(p, sel.item.i); });
-      button(c, addHit, bx, dy + 44, 90, 28, 'Sell ' + (it.value || 0) + 'G', true, function () { sell(sel.item.i); }, '#6a4a2a');
+      button(c, addHit, bx, dy + 5, 90, 25, 'Equip', !blocked, function () { equip(p, sel.item.i); });
+      button(c, addHit, bx, dy + 34, 90, 25, 'Drop', true, function () { dropItem('bag', sel.item.i); }, '#5a3a3a');
+      button(c, addHit, bx, dy + 63, 90, 25, 'Sell ' + (it.value || 0) + 'G', true, function () { sell(sel.item.i); }, '#6a4a2a');
     } else {
-      button(c, addHit, bx, dy + 10, 90, 28, 'Unequip', bag.length < BAG_MAX, function () { unequip(p, sel.item.key); }, '#4a3a6a');
+      button(c, addHit, bx, dy + 5, 90, 25, 'Unequip', bag.length < BAG_MAX, function () { unequip(p, sel.item.key); }, '#4a3a6a');
+      button(c, addHit, bx, dy + 34, 90, 25, 'Drop', true, function () { dropItem('eq', sel.item.key); }, '#5a3a3a');
     }
     if (toast.t > 0) tx(c, toast.s, x + w - 10, dy + detailH - 12, 11, toast.c, 'right');
   }
@@ -442,6 +534,23 @@
     tx(c, 'Floor ' + s.floor, x + 8, y + 10, 12, COL.accent);
   }
 
+  // SETTINGS tab: options remembered in this browser (see settings.js)
+  function drawSettings(c, hit, x, y, w, h) {
+    var S = CC.Settings; if (!S) { tx(c, 'Settings unavailable', x + w / 2, y + h / 2, 14, COL.dim, 'center'); return; }
+    var yy = y + 14;
+    tx(c, 'SETTINGS', x + w / 2, yy, 16, COL.accent, 'center'); yy += 30;
+    function row(title, desc, label, on, cb, color) {
+      rr(c, x + 6, yy, w - 12, 84, 8); c.fillStyle = 'rgba(255,255,255,0.05)'; c.fill(); c.lineWidth = 1.5; c.strokeStyle = COL.line; c.stroke();
+      tx(c, title, x + 18, yy + 20, 14, '#fff', 'left');
+      tx(c, desc, x + 18, yy + 40, 11, COL.dim, 'left');
+      button(c, hit, x + 18, yy + 50, w - 36, 28, label, true, cb, on ? (color || '#2a6a4a') : '#5a3a3a');
+      yy += 94;
+    }
+    row('Auto equip', 'Wear loot automatically when it is better than your gear.', S.get('autoEquip') ? 'ON  -  tap to turn off' : 'OFF  -  tap to turn on', S.get('autoEquip'), function () { S.toggle('autoEquip'); });
+    row('Auto level', 'Spend skill points and pick level-up perks for you.', S.get('autoLevel') ? 'ON  -  tap to turn off' : 'OFF  -  tap to turn on', S.get('autoLevel'), function () { S.toggle('autoLevel'); });
+    row('Movement stick', 'Floating appears under your thumb. Fixed stays in the corner.', S.get('stick') === 'fixed' ? 'FIXED  -  tap for floating' : 'FLOATING  -  tap for fixed', true, function () { S.set('stick', S.get('stick') === 'fixed' ? 'floating' : 'fixed'); }, '#3a5a8a');
+  }
+
   // PARTY tab: session options. The host decides whether the guest can be hurt.
   function drawParty(c, hit, x, y, w, h) {
     var MP = CC.Multiplayer, host = MP && MP.isHost && MP.isHost(), on = !!(MP && MP.options && MP.options.guestInvuln), yy = y + 14;
@@ -476,7 +585,7 @@
       }
       frame(c, px, py, pw, ph);
       var TT = tabs(), tw = (pw - 20 - 36 - (TT.length - 1) * 4) / TT.length;
-      if (cur === 'party' && TT.length === TABS.length) cur = 'inv'; // left the session while the tab was open
+      if (cur === 'party' && TT.length === TABS.length + 1) cur = 'inv'; // left the session while the tab was open
       TT.forEach(function (tb, i) {
         var bx = px + 10 + i * (tw + 4), by = py + 10, on = tb.id === cur;
         rr(c, bx, by, tw, 28, 6); c.fillStyle = on ? 'rgba(224,168,74,0.2)' : (target && mouse.x >= bx && mouse.x < bx + tw && mouse.y >= by && mouse.y < by + 28 ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.05)'); c.fill();
@@ -497,6 +606,7 @@
       else if (cur === 'quests' && CC.EggQuest) CC.EggQuest.drawJournal(c,ax,ay,aw,ah);
       else if (cur === 'stats') drawStats(c, ax, ay, aw, ah, p);
       else if (cur === 'party') drawParty(c, hit, ax, ay, aw, ah);
+      else if (cur === 'settings') drawSettings(c, hit, ax, ay, aw, ah);
       c.restore();
       if (target && e > 0.9 && cur === 'inv') drawTip(c, W, H, p);
     }
@@ -583,9 +693,11 @@
       tx(c,String(pts),hx+charW-2,by+3.5,9,'#0b0812','center');
     }
     if(s.mode==='dungeon'){
-      var bx=qx+questW+gap, small=retreatW<57;
-      button(c,addHit,bx,by,retreatW,sz,small?'EXIT':'Retreat',
+      var bx=qx+questW+gap, small=retreatW<57, inTent=!!(CC.Camp&&CC.Camp.isInside&&CC.Camp.isInside());
+      if(s.area==='defense')button(c,addHit,bx,by,retreatW,sz,small?'EXIT':'Retreat',
         true,function(){if(CC.returnToTown)CC.returnToTown();},'#5a2a22');
+      else if(!inTent)button(c,addHit,bx,by,retreatW,sz,small?'TP':'TP-Town',
+        true,function(){if(CC.Portal)CC.Portal.place();},'#4b2a78'); // opens a purple portal to the town centre right here
     }
   }
 

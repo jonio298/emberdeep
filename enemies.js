@@ -1055,6 +1055,13 @@
           ctx.beginPath();ctx.moveTo(-7,0);ctx.lineTo(7,0);ctx.stroke();
           ctx.restore();
         }
+        else if (q.kind === 'crystal') { // the Grinning Mask's mirror shards
+          ctx.save(); ctx.translate(sx, sy); ctx.rotate(Math.atan2(q.vy, q.vx)); var cl = q.r * 2.6;
+          ctx.shadowColor = '#ff5a7a'; ctx.shadowBlur = 7; ctx.fillStyle = '#ffd8e0';
+          ctx.beginPath(); ctx.moveTo(cl, 0); ctx.lineTo(0, -q.r * 0.9); ctx.lineTo(-cl * 0.7, 0); ctx.lineTo(0, q.r * 0.9); ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0;
+          ctx.fillStyle = '#ff6a82'; ctx.beginPath(); ctx.moveTo(cl, 0); ctx.lineTo(0, -q.r * 0.9); ctx.lineTo(-cl * 0.7, 0); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.fillRect(-1, -0.6, cl * 0.6, 1.2); ctx.restore();
+        }
         else if (q.kind === 'arrow') { ctx.save(); ctx.translate(sx, sy); ctx.rotate(Math.atan2(q.vy, q.vx)); ctx.fillRect(-7, -1, 14, 2); ctx.fillStyle = '#fff'; ctx.fillRect(5, -2, 3, 4); ctx.restore(); }
         else { ctx.beginPath(); ctx.arc(sx, sy, q.r, 0, PI2); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fillRect(sx - 1, sy - 1, 2, 2); }
       }
@@ -1084,8 +1091,9 @@
       // slashes) move the ACTUAL damaged enemy sprite for a handful of frames.
       var kick=0;
       if(scene&&scene.heroClass==='swordsman'){
-        kick=6*Math.exp(-Math.pow((time-.232)/.035,2)) -
-          5*Math.exp(-Math.pow((time-.463)/.04,2));
+        kick=7*Math.exp(-Math.pow((time-.405)/.04,2)) -
+          6*Math.exp(-Math.pow((time-.725)/.045,2)) +
+          .8*Math.sin(time*90)*(time>.42&&time<.62?1:0);
       }else if(scene&&scene.heroClass==='thief'){
         kick=3.2*Math.exp(-Math.pow((time-.205)/.034,2)) -
           3.6*Math.exp(-Math.pow((time-.315)/.038,2)) +
@@ -1338,7 +1346,7 @@
         if (CC.Forest && CC.Forest.drawMonster && CC.Forest.drawMonster(ctx, e, r, col, dark, t)) break;
         ctx.fillStyle = col; ctx.beginPath(); ctx.arc(0, 0, r, 0, PI2); ctx.fill();
     }
-    if (!e.collapsed) horrorArt(ctx, e, look, r, col, dark, t);
+    if (!e.collapsed && e.type !== 'grinmask') horrorArt(ctx, e, look, r, col, dark, t); // the mask paints its own gore
     ctx.restore(); // restore anatomy clipping
     if (!e.collapsed && CC.WoundArt) CC.WoundArt.paint(ctx,e,look,r,t);
     ctx.restore();
@@ -1346,7 +1354,7 @@
     if (e.shield > 0) { ctx.strokeStyle = 'rgba(120,160,255,0.8)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(sx, sy, e.r + 2, 0, PI2); ctx.stroke(); }
     if (e.state === 'telegraph' && !e.boss) { ctx.fillStyle = '#ff4a3a'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('!', sx, sy - e.r - 6); ctx.textAlign = 'left'; }
     if (e.state === 'stunned') { ctx.fillStyle = '#ffe04a'; ctx.fillRect(sx - 4 + Math.sin(t * 8) * 4, sy - e.r - 8, 3, 3); }
-    if (!e.boss && !e.stitched && e.hp < e.maxHp) { // hp bar
+    if (!e.boss && !e.stitched && e.type !== 'grinmask' && e.hp < e.maxHp) { // hp bar
       var w = Math.max(14, e.r * 2);
       ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(sx - w / 2 - 1, sy - e.r - 11, w + 2, 4);
       ctx.fillStyle = e.elite ? '#ffb02a' : '#d84a4a'; ctx.fillRect(sx - w / 2, sy - e.r - 10, w * clamp(e.hp / e.maxHp, 0, 1), 2);

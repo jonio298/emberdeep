@@ -673,7 +673,7 @@
       if (solidAt(rx, ry)) { rx = p.x; ry = p.y; } // never raise a skeleton inside a wall
       minions.push({ x: rx, y: ry, r: 6, hp: hp, maxHp: hp, life: 16 * (1 + 0.5 * (p.flags.linger || 0)),
         dmg: (5 + p.stats.dmg * 0.42) * (1 + 0.35 * (p.flags.deadly || 0)) * sm(p, 1), atkCd: 0, anim: rnd(0, 6), face: 1, spawn: 0.35 });
-      addFx({ kind: 'puff', x: rx, y: ry, r: 14, t: 0.4, max: 0.4, col: '#7dff9a' });
+      if (CC.Vfx) CC.Vfx.spawn('raise', rx, ry, 18, {}); else addFx({ kind: 'puff', x: rx, y: ry, r: 14, t: 0.4, max: 0.4, col: '#7dff9a' });
     }
     if (!free) addFx({ kind: 'ring', x: p.x, y: p.y, r: 34, t: 0.4, max: 0.4, col: '#7dff9a' });
     return n;
@@ -685,7 +685,8 @@
       if (!spend(p, 'spell1')) return;
       dir = aimDir(p, 48);
       cone(p, dir, 38, 0.85, 1.3 * sm(p, 1), 'bash', 18, 1.0 + 0.6 * (p.flags.stun || 0));
-      addFx({ kind: 'arc', x: p.x, y: p.y, a: dir.a, half: 0.85, r: 38, t: 0.25, max: 0.25, col: '#6bb8ff' });
+      if (CC.Vfx) CC.Vfx.spawn('bash', p.x, p.y, 38, { a: dir.a });
+      else addFx({ kind: 'arc', x: p.x, y: p.y, a: dir.a, half: 0.85, r: 38, t: 0.25, max: 0.25, col: '#6bb8ff' });
       p.swingAng = dir.a; p.atkAnim = 0.25; fxShake(4); fxStop(0.05);
     } else if (cls === 'wizard') { // fireball
       if (!spend(p, 'spell1')) return;
@@ -714,19 +715,21 @@
     if (cls === 'swordsman') { // whirlwind
       if (!spend(p, 'spell2')) return;
       p.whirlT = 0.7; p.whirlTick = 0;
+      if (CC.Vfx) CC.Vfx.spawn('whirl', p.x, p.y, 28, { own: p, life: 0.7 });
     } else if (cls === 'wizard') { // frost nova
       if (!spend(p, 'spell2')) return;
       var rad = 72 * (1 + p.mods.aoePct);
       radial(p, p.x, p.y, rad, 1.0 * sm(p, 2), 'frost', 2.5 + 1.5 * (p.flags.frostbite || 0), 0.45);
-      addFx({ kind: 'ring', x: p.x, y: p.y, r: rad, t: 0.45, max: 0.45, col: '#9fe3ff' });
-      fxBurst(p.x, p.y, '#9fe3ff', 20, 120); fxShake(3); p.castFlash = 0.3;
+      if (CC.Vfx) CC.Vfx.spawn('frostNova', p.x, p.y, rad, {});
+      else { addFx({ kind: 'ring', x: p.x, y: p.y, r: rad, t: 0.45, max: 0.45, col: '#9fe3ff' }); fxBurst(p.x, p.y, '#9fe3ff', 20, 120); }
+      fxShake(3); p.castFlash = 0.3;
     } else if (cls === 'thief') { // smoke bomb: slows nearby foes, brief invulnerability, primes an ambush
       if (!spend(p, 'spell2')) return;
       radial(p, p.x, p.y, 56, 0.4 * sm(p, 2), 'smoke', 2.5, 0.5);
       p.iframes = Math.max(p.iframes, 0.5); p.ambushT = 2;
-      addFx({ kind: 'ring', x: p.x, y: p.y, r: 56, t: 0.5, max: 0.5, col: '#8a90a8' });
-      addFx({ kind: 'puff', x: p.x, y: p.y, r: 22, t: 0.5, max: 0.5, col: '#5a5f78' });
-      fxBurst(p.x, p.y, '#8a90a8', 16, 90); p.castFlash = 0.3;
+      if (CC.Vfx) CC.Vfx.spawn('smokeBomb', p.x, p.y, 56, {});
+      else { addFx({ kind: 'ring', x: p.x, y: p.y, r: 56, t: 0.5, max: 0.5, col: '#8a90a8' }); addFx({ kind: 'puff', x: p.x, y: p.y, r: 22, t: 0.5, max: 0.5, col: '#5a5f78' }); fxBurst(p.x, p.y, '#8a90a8', 16, 90); }
+      p.castFlash = 0.3;
     } else { // life drain
       var t = nearest(p.x, p.y, 110);
       if (!t) { if (noManaT <= 0) { fxText(p.x, p.y - 18, 'No target', '#aaa', 10); noManaT = 0.6; } return; }
@@ -815,7 +818,7 @@
       minions.push({x:tx,y:ty,r:7,hp:health,maxHp:health,life:14,
         dmg:(5+p.stats.dmg*.62)*sm(p,1),atkCd:0,
         anim:rnd(0,6),face:1,spawn:.48,charged:true});
-      addFx({kind:'puff',x:tx,y:ty,r:19,t:.53,max:.53,col:'#a7e3b0'});
+      if(CC.Vfx)CC.Vfx.spawn('raise',tx,ty,20,{});else addFx({kind:'puff',x:tx,y:ty,r:19,t:.53,max:.53,col:'#a7e3b0'});
       made++;
     }
     return made;
@@ -859,10 +862,10 @@
           } else { target = e; end = true; }
         }
       }
-      if (Math.random() < 0.6) addFx({ kind: 'puff', x: s.x, y: s.y, r: s.r, t: 0.2, max: 0.2, col: s.col });
+      if (!(CC.Vfx && (s.kind === 'fire' || s.kind === 'bolt' || s.kind === 'shard')) && Math.random() < 0.6) addFx({ kind: 'puff', x: s.x, y: s.y, r: s.r, t: 0.2, max: 0.2, col: s.col });
       if (s.life <= 0) end = true;
       if (s.visual) { // partner's shot: fly and vanish, no damage here
-        if (end) { fxBurst(s.x, s.y, s.col, 5, 60); projs.splice(i, 1); }
+        if (end) { fxBurst(s.x, s.y, s.col, 5, 60); if (s.kind === 'fire' && CC.Vfx) CC.Vfx.spawn('fireBoom', s.x, s.y, 40, { remote: true }); projs.splice(i, 1); }
         continue;
       }
       if (!end) continue;
@@ -873,8 +876,9 @@
           var be = bl[bi], bx = be.x - s.x, by = be.y - s.y, br = s.aoe + (be.r || 8);
           if (alive(be) && bx * bx + by * by <= br * br) ignite(be, 3, p.stats.dmg * 0.5);
         }
-        addFx({ kind: 'ring', x: s.x, y: s.y, r: s.aoe, t: 0.35, max: 0.35, col: '#ff8a3c' });
-        fxBurst(s.x, s.y, '#ff8a3c', 18, 120); fxShake(4);
+        if (CC.Vfx) CC.Vfx.spawn('fireBoom', s.x, s.y, s.aoe, {});
+        else { addFx({ kind: 'ring', x: s.x, y: s.y, r: s.aoe, t: 0.35, max: 0.35, col: '#ff8a3c' }); fxBurst(s.x, s.y, '#ff8a3c', 18, 120); }
+        fxShake(4);
       } else if (target) {
         hitEnemy(target, s.dmg, s.type, {
           basicAttack: s.kind === 'bolt' || s.kind === 'shard',
@@ -1082,7 +1086,9 @@
       R(c,x-f*6-1+drive*3,y-18+bob+low,3,7,'#d9413b');
       R(c,x+f*2+drive*3,y-10+bob+low,1,2,'#222');
       var ang;
-      if(cp){
+      if(cp&&cp.noBlade){
+        // the knee-drop critical paints its own arm and blue blade (critical_scene.js)
+      }else if(cp){
         // Draw the gripping arm from the real sprite, then a luminous blue blade
         // with enough length to reach the actual victim (not a fake icon at impact).
         var sx=x+f*7+drive*5,sy=y-1+bob+low,
@@ -1216,9 +1222,12 @@
     } else if (f.kind === 'beam') {
       var tx = (f.ref && alive(f.ref) ? f.ref.x : f.x2) - cam.x, ty = (f.ref && alive(f.ref) ? f.ref.y : f.y2) - cam.y;
       var px = !f.remote && hero() ? hero().x - cam.x : x, py = !f.remote && hero() ? hero().y - cam.y : y;
+      if (CC.Vfx && CC.Vfx.drawBeam) CC.Vfx.drawBeam(c, px, py, tx, ty, f.col, a, CC.Vfx._T());
+      else {
       c.strokeStyle = f.col; c.lineWidth = 1 + 3 * a; c.beginPath(); c.moveTo(px, py);
       for (var i = 1; i < 6; i++) c.lineTo(px + (tx - px) * i / 6 + rnd(-3, 3), py + (ty - py) * i / 6 + rnd(-3, 3));
       c.lineTo(tx, ty); c.stroke();
+      }
     } else { // puff
       c.fillStyle = f.col; c.beginPath(); c.arc(x, y, f.r * (1.2 - a * 0.6), 0, 6.2832); c.fill();
     }
@@ -1231,6 +1240,12 @@
       return;
     }
     var x = s.x - cam.x, y = s.y - cam.y;
+    if (CC.Vfx) {
+      var vt = CC.Vfx._T();
+      if (s.kind === 'fire') { CC.Vfx.drawFireball(c, s, x, y, vt); return; }
+      if (s.kind === 'bolt') { CC.Vfx.drawBolt(c, s, x, y, vt); return; }
+      if (s.kind === 'shard') { if (s.type === 'bone' || s.col === '#e8e6d0') CC.Vfx.drawBone(c, s, x, y, vt); else CC.Vfx.drawKnife(c, s, x, y, vt); return; }
+    }
     if (s.kind === 'wave') { // a crescent of cutting light
       c.save(); c.translate(x, y); c.rotate(s.a);
       c.strokeStyle = s.col; c.lineCap = 'round'; c.globalAlpha = 0.35; c.lineWidth = 6; c.beginPath(); c.arc(-6, 0, 11, -1.0, 1.0); c.stroke();

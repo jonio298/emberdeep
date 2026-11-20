@@ -7,7 +7,8 @@ var CC=root.CC=root.CC||{};
 var MP=CC.Multiplayer={active:false,role:null,room:null,remote:null,connected:false,options:{guestInvuln:false}};
 var ws=null,session=null,reconnectDelay=800,pending=null,opened=false,playing=false;
 var chat=[],trade=null,positionClock=0,snapshotClock=0,roomClock=0,pickupClock=0;
-var lastScene='',lastRemote=0,pendingPickups={};
+var lastScene='',lastRemote=0,pendingPickups={},hostPos=null,extClock=0,qsClock=0;
+var SCENES=['cave','defense','forest','tree-tunnel','plains','tree-ascent'];
 // Partner motion: samples arrive ~20x/s; we draw ~110 ms in the past and blend between them,
 // so movement is smooth on any connection instead of stepping from packet to packet.
 var linkKind='ws',joinCode='',optClock=0,samples=[],lastViewAt=0,minionClock=0,remoteMinions=[],remoteMinionsAt=0,INTERP_MS=110;
@@ -30,7 +31,7 @@ var ready=function(){return ws&&ws.readyState===1;};
 function send(o){if(ready()){ws.send(JSON.stringify(o));return true;}return false;}
 function message(t){if(el('mp-status'))el('mp-status').textContent=t;}
 function setError(t){message(t);if(el('mp-server'))el('mp-server').textContent=t;}
-function safeName(){return (el('mp-name').value||'').trim().slice(0,22);}
+function safeName(){return ((MP.character&&MP.character.name)||'Adventurer').trim().slice(0,22);}
 function sessionSave(){try{sessionStorage.setItem('emberdeep-room',JSON.stringify(session));}catch(_){}}
 function sessionClear(){session=null;try{sessionStorage.removeItem('emberdeep-room');}catch(_){}}
 function direct(){return linkKind==='p2p-host'||linkKind==='p2p-join';}
@@ -87,10 +88,41 @@ function connect(){
  };
 }
 function emit(data){if(!send(data)){pending=data;connect();}}
-function identity(){return {name:safeName(),hero:el('mp-hero').value};}
+function identity(){return {name:safeName(),hero:(MP.character&&MP.character.hero)||'swordsman'};}
+// ---- character select (shown after you press Create or Join): your saved heroes, or a new one ----
+var HERO_NAMES={wizard:'Wizard',necromancer:'Necromancer',swordsman:'Swordsman',thief:'Thief'},HERO_COL={wizard:'#75caff',necromancer:'#b98eff',swordsman:'#f3bf78',thief:'#e6809f'};
+function pickCharacter(done){
+ var box=el('mp-char-list'),SG=CC.SaveGame;box.textContent='';
+ var slots=SG&&SG.slots?SG.slots():[],free=0;
+ slots.forEach(function(sl){
+  if(!sl.info){free++;return;}
+  var card=document.createElement('button');card.className='mp-char';card.style.borderColor=HERO_COL[sl.info.classId]||'#7a5a34';
+  var n=document.createElement('strong');n.textContent=sl.info.name;n.style.color=HERO_COL[sl.info.classId]||'#fff';
+  var s1=document.createElement('small');s1.textContent='Level '+sl.info.level+' '+(HERO_NAMES[sl.info.classId]||sl.info.classId)+'  -  '+sl.info.where;
+  var s0=document.createElement('em');s0.textContent='SLOT '+sl.n;
+  card.appendChild(s0);card.appendChild(n);card.appendChild(s1);
+  card.onclick=function(){el('mp-chars').classList.add('mp-hidden');MP.character=SG.getCharacter(sl.n);done();};
+  box.appendChild(card);
+ });
+ var nc=document.createElement('div');nc.className='mp-char mp-newchar';
+ if(free>0){
+  nc.innerHTML='<strong>NEW CHARACTER</strong><div class="mp-line"><label>Name<input id="mp-newname" maxlength="22" placeholder="Adventurer" autocomplete="nickname"></label>'
+   +'<label>Hero<select id="mp-newhero"><option value="swordsman">Swordsman</option><option value="wizard">Wizard</option><option value="necromancer">Necromancer</option><option value="thief">Thief</option></select></label></div>'
+   +'<button id="mp-newgo">CREATE AND PLAY</button>';
+ }else nc.innerHTML='<strong>NEW CHARACTER</strong><small>All 5 slots are full. Delete a save from the single player Continue screen to make room.</small>';
+ box.appendChild(nc);
+ var go=el('mp-newgo');
+ if(go)go.onclick=function(){
+  var nm=(el('mp-newname').value||'').trim().slice(0,22)||'Adventurer',hero=el('mp-newhero').value,slot=SG.createCharacter(hero,nm);
+  if(!slot){message('Could not create the character (all slots full)');return;}
+  el('mp-chars').classList.add('mp-hidden');MP.character=SG.getCharacter(slot);done();
+ };
+ el('mp-chars').classList.remove('mp-hidden');
+}
 function netChoice(){return el('mp-net')&&el('mp-net').value==='server'?'server':'direct';}
-function startRoom(isPrivate){
- var i=identity();if(!i.name)return message('Enter your name to create a game');
+function startRoom(isPrivate,chosen){
+ if(!chosen)return pickCharacter(function(){startRoom(isPrivate,true);});
+ var i=identity();
  if(netChoice()==='direct'){
   if(!(CC.P2P&&CC.P2P.available()))return setError('Direct play is not available in this browser. Choose "Game server".');
   sessionClear();useLink('p2p-host');
@@ -98,10 +130,11 @@ function startRoom(isPrivate){
  message('Creating room...');
  emit({type:'create',name:i.name,hero:i.hero,private:!!isPrivate,mode:el('mp-mode').value});
 }
-function joinRoom(code){
- var i=identity();if(!i.name)return message('Enter your name to join a game');
+function joinRoom(code,chosen){
  code=String(code||'').trim().toUpperCase();
  if(!/^[0-9A-F]{6}$/.test(code))return message('Enter a six-character room code');
+ if(!chosen)return pickCharacter(function(){joinRoom(code,true);});
+ var i=identity();
  if(netChoice()==='direct'){
   if(!(CC.P2P&&CC.P2P.available()))return setError('Direct play is not available in this browser. Choose "Game server".');
   sessionClear();
@@ -118,7 +151,7 @@ function rooms(items){
  items.forEach(function(room){
   var row=document.createElement('div');row.className='mp-room';
   var left=document.createElement('div'),h=document.createElement('strong'),s=document.createElement('small');
-  h.textContent=(room.mode==='defense'?'🛡 ':'')+room.title;s.textContent=(room.mode==='defense'?'Town Defense · ':'Cave Co-op · ')+room.host.name+' · '+room.host.hero+' · 1 / 2 players';
+  h.textContent=(room.mode==='defense'?'🛡 ':'')+room.title;s.textContent=(room.mode==='defense'?'Town Defense · ':'Explore · ')+room.host.name+' · '+room.host.hero+' · 1 / 2 players';
   left.appendChild(h);left.appendChild(s);row.appendChild(left);
   var button=document.createElement('button');button.textContent='JOIN';
   button.onclick=function(){useLink('ws');joinRoom(room.code);};row.appendChild(button);box.appendChild(row);
@@ -138,37 +171,56 @@ function start(scene){
  if(!player||!CC.beginCoop)return setError('Game not ready');
  // Joining never loads the owner's local save; the game creates a fresh hero.
  playing=true;
- if(!scene&&MP.room&&MP.room.mode==='defense')scene={area:'defense',floor:1};
- CC.beginCoop(player.hero,scene);
+ if(!scene&&MP.room)scene=MP.room.mode==='defense'?{area:'defense',floor:1}:{area:'forest',floor:1}; // Explore starts in the Giant Forest
+ CC.beginCoop(player.hero,scene,MP.character);
  el('mp-lobby').classList.add('mp-hidden');
  el('mp-hud').classList.remove('mp-hidden');
  opened=false;hud();
  if(MP.role==='host')broadcastScene();
 }
+function awayNow(){var s=CC.state;return !!s&&(s.mode==='town'||!!(CC.Camp&&CC.Camp.isInside&&CC.Camp.isInside()));}
+function sceneKey(sc){return sc.area+':'+sc.floor+':'+(sc.tf||1)+':'+sc.seed;}
 function broadcastScene(){
- if(!MP.active||MP.role!=='host'||!CC.state||(CC.state.area!=='cave'&&CC.state.area!=='defense'))return;
+ if(!MP.active||MP.role!=='host'||!CC.state||SCENES.indexOf(CC.state.area)<0)return;
  var s=CC.state,d=CC.Dungeon;
  if(!d||!Number.isFinite(d.seed))return;
- var scene={area:s.area,floor:s.floor,seed:d.seed};
- lastScene=scene.area+':'+scene.floor+':'+scene.seed;
+ if(s.player&&!awayNow())hostPos={x:s.player.x,y:s.player.y};
+ var scene={area:s.area,floor:s.floor,seed:d.seed,tf:s.treeFloor||1};
+ if(hostPos){scene.px=Math.round(hostPos.x);scene.py=Math.round(hostPos.y);}
+ lastScene=sceneKey(scene);MP.scene=scene;
  send({type:'scene',scene:scene});
  var data=snapshot();if(data)send({type:'snapshot',snapshot:data});
 }
 function incomingScene(scene){
- if(!scene||(scene.area!=='cave'&&scene.area!=='defense')||MP.role!=='guest')return;
- var key=scene.area+':'+scene.floor+':'+scene.seed;
+ if(!scene||SCENES.indexOf(scene.area)<0||MP.role!=='guest')return;
+ var key=sceneKey(scene);
+ MP.scene=scene;
  if(!playing){start(scene);lastScene=key;return;}
  if(key===lastScene)return;
  lastScene=key;
+ if(awayNow())return; // in town or a tent: we catch up with the leader when we step back out
  CC.syncCoopScene(scene);
 }
+// back from a tent or town: be in whatever world the leader is in now
+MP.resync=function(){
+ var sc=MP.scene,s=CC.state;
+ if(MP.role!=='guest'||!sc||!playing||awayNow())return false;
+ if(s.area===sc.area&&(s.floor||1)===sc.floor&&(s.treeFloor||1)===(sc.tf||1)&&CC.Dungeon&&CC.Dungeon.seed===sc.seed)return false;
+ CC.syncCoopScene(sc);return true;
+};
+// through the town portal back to the party: arrive at your portal if it is in the leader's world, else beside the leader
+MP.rejoin=function(portal){
+ var sc=MP.scene;if(MP.role!=='guest'||!sc||!CC.syncCoopScene)return false;
+ var at=portal&&portal.area===sc.area&&(portal.floor||1)===sc.floor&&(sc.area!=='tree-ascent'||(portal.treeFloor||1)===(sc.tf||1))?portal:null;
+ return CC.syncCoopScene(sc,at&&at.x,at&&at.y);
+};
 var enemyFields=['id','type','name','x','y','r','hp','maxHp','dmg','spd','state',
  't','cd','face','anim','asleep','dead','boss','bossIdx','phase','def','bar',
  'stitched','miniBoss','elite','affixes','shield','slow','stunT','contact',
  'dangerous','tele','ang','atk','invuln','flash','burn','color','floor',
  'ghost','eth','look','size','horrorParts','bloodTime','collapsed','weaselMove',
  'weaselPhase','weaselGlow','weaselElapsed','weaselFx','weaselTarget','weaselAngle',
- 'heartPhase','introDone','rage','poison','fireproof'];
+ 'heartPhase','introDone','rage','poison','fireproof','mkGrip','mkFx','orbs','trail','enraged','mkSt','lostN'];
 function fields(v,names){
  var o={};if(!v)return o;
  names.forEach(function(n){if(v[n]!==undefined&&typeof v[n]!=='function')o[n]=v[n];});return o;
@@ -183,10 +235,11 @@ function snapshot(){
    if(!d.mpId)d.mpId='d'+Math.random().toString(36).slice(2,11);
    return fields(d,['mpId','kind','x','y','z','age','amount','item','rarity','color','seed']);
   }),
+  chests:(CC.Dungeon&&CC.Dungeon.chests||[]).map(function(c){return c.opened?1:0;}).join(''),
   bossId:E.boss&&E.boss.id,at:Date.now()};
 }
 function applySnapshot(data){
- if(MP.role!=='guest'||!playing||!data||!Array.isArray(data.enemies))return;
+ if(MP.role!=='guest'||!playing||!data||!Array.isArray(data.enemies)||awayNow())return;
  var E=CC.Enemies,L=CC.Loot;
  if(!E)return;
  var old=new Map(E.list.map(function(e){return [e.id,e];}));
@@ -206,6 +259,7 @@ function applySnapshot(data){
  if(Array.isArray(data.projectiles))E.projectiles=data.projectiles;
  if(Array.isArray(data.zones))E.zones=data.zones;
  if(L&&Array.isArray(data.drops))L.drops=data.drops;
+ if(typeof data.chests==='string'&&CC.Dungeon&&CC.Dungeon.chests)data.chests.split('').forEach(function(f,i){var c=CC.Dungeon.chests[i];if(c&&f==='1'&&!c.opened)CC.Dungeon.openChest(c);});
 }
 function chatItem(m){
  chat.push(m);if(chat.length>60)chat.shift();
@@ -222,10 +276,14 @@ function reward(r){
  var s=CC.state,p=s.player;if(!p||!r)return;
  if(r.kind==='item'&&r.item){
   s.inventory=s.inventory||[];
-  if(s.inventory.length<40)s.inventory.push(r.item);
-  else s.gold=(s.gold||0)+(r.item.value||0);
+  var L=CC.Loot,it=r.item,say=function(t,c,z){if(CC.fx&&CC.fx.text)CC.fx.text(p.x,p.y-22,t,c,z||11);};
+  if(L&&L.autoEquip&&L.autoEquip(p,it))say('Equipped '+it.name,it.color||'#fff',11);
+  else if(s.inventory.length>=40){s.gold=(s.gold||0)+(it.value||0);say('Sold +'+(it.value||0),'#ffd24a');}
+  else{s.inventory.push(it);say(it.name,it.color||'#fff',it.rarity>=3?12:10);}
+  if(CC.fx&&CC.fx.burst)CC.fx.burst(p.x,p.y,it.color||'#fff',6+(it.rarity||0)*3,80);
  }else if(r.kind==='gold')s.gold=(s.gold||0)+(r.amount||0);
- else if(r.kind==='potion')s.potions=(s.potions||0)+1;
+ else if(r.kind==='potion'){s.potions=(s.potions||0)+1;if(CC.fx)CC.fx.text(p.x,p.y-22,'Health Potion','#ff9ae0',10);}
+ else if(r.kind==='mpotion'){s.manaPotions=(s.manaPotions||0)+1;if(CC.fx)CC.fx.text(p.x,p.y-22,'Mana Potion','#7ec2ff',10);}
  else if(r.kind==='hp')p.hp=Math.min(p.maxHp,p.hp+(r.amount||0));
  else if(r.kind==='mana')p.mana=Math.min(p.maxMana,p.mana+(r.amount||0));
 }
@@ -315,7 +373,16 @@ function handle(m){
     CC.fx.text(CC.state.player.x,CC.state.player.y-30,gi?'INVULNERABLE':'VULNERABLE',gi?'#9fe3ff':'#ffb0a0',11);
    MP.options.guestInvuln=gi;
   }
-  else if(m.k==='tc'&&CC.Defense&&CC.Defense.onCommand&&MP.role==='host')CC.Defense.onCommand(d);
+  else if(m.k==='tc'&&MP.role==='host'&&d){
+   if(d.ch!==undefined)hostOpenChest(d.ch);
+   else if(d.dn)hostDescend();
+   else if(d.ta)hostTree();
+   else if(CC.Defense&&CC.Defense.onCommand)CC.Defense.onCommand(d);
+  }
+  else if(m.k==='ch'&&MP.role==='guest'&&d&&CC.Dungeon&&CC.Dungeon.chests){var cc=CC.Dungeon.chests[d.i];if(cc&&!cc.opened)CC.Dungeon.openChest(cc);}
+  else if((m.k==='qs'||m.k==='qe')&&MP.role==='guest'&&d&&CC.EggQuest&&CC.EggQuest.coopSync)CC.EggQuest.coopSync(d);
+  else if(m.k==='gp'&&MP.role==='guest'&&d&&CC.state&&CC.state.player){var gpl=CC.state.player;gpl.psyT=Math.min(4,d.t||0);gpl.psyPull=d.n?null:{x:d.x,y:d.y};} // the Grinning Mask's psychic grip
+  else if(m.k==='vf'&&d&&CC.Vfx&&CC.Vfx.addRemote)CC.Vfx.addRemote(d); // the partner's spell art (nova rings, explosions, lightning)
   else if(m.k==='mn'&&d&&Array.isArray(d.l)){
    remoteMinions=d.l.map(function(q,i){var old=remoteMinions[i]||{};
     return {x:q.x,y:q.y,face:q.f>=0?1:-1,hp:q.h,maxHp:q.m||1,life:9,anim:old.anim||0,spawn:0,atkCd:0,charged:!!q.c};});
@@ -336,6 +403,10 @@ function handle(m){
    E.damage(e,Math.min(450,m.damage),m.kind||'slash');
   return;
  }
+ if(m.type==='drop_item'&&MP.role==='host'&&m.item&&MP.remote&&CC.Loot&&CC.Loot._spawn){
+  var di=m.item,dd=CC.Loot._spawn('item',MP.remote.x+(MP.remote.face||1)*14,MP.remote.y+4,{item:di,rarity:di.rarity,color:di.color});
+  dd.age=-2.5;dd.vx=(MP.remote.face||1)*40;dd.vy=10;CC.Loot.drops.push(dd);return;
+ }
  if(m.type==='pickup_request'&&MP.role==='host'){guestPickup(m.id);return;}
  if(m.type==='pickup_grant'&&m.to===MP.role){reward(m.reward);delete pendingPickups[m.id];return;}
  if(m.type==='damage_guest'&&MP.role==='guest'){
@@ -350,28 +421,41 @@ function handle(m){
  if(m.type==='closed'||m.type==='left'){stop(false);setError(m.message||'Room closed.');}
 }
 function stop(notify){
+ try{if(CC.SaveGame&&CC.state&&CC.state.coop)CC.SaveGame.saveCharacter();}catch(_){}
  if(notify)send({type:'leave'});
  MP.active=false;MP.connected=false;MP.role=null;MP.code=null;MP.room=null;MP.remote=null;MP.view=null;samples=[];remoteMinions=[];MP.options.guestInvuln=false;
- playing=false;opened=false;lastScene='';trade=null;pendingPickups={};sessionClear();
+ playing=false;opened=false;lastScene='';trade=null;pendingPickups={};MP.scene=null;hostPos=null;sessionClear();
  el('mp-lobby').classList.add('mp-hidden');el('mp-hud').classList.add('mp-hidden');
  el('mp-chat').classList.add('mp-hidden');el('mp-trade').classList.add('mp-hidden');el('mp-menu').classList.add('mp-hidden');
  if(ws){ws.onclose=null;ws.close();ws=null;}
  if(CC.state)CC.state.mode='title';
 }
-function posData(){
+// 0 = out in the shared world, 1 = in town, 10..13 = inside a camp (owner and tent/outside); partners only see each other in the same place
+function myScene(){var C=CC.Camp;if(C&&C.isInside&&C.isInside())return C.tag();return CC.state&&CC.state.mode==='town'?1:0;}
+function sameScene(){return !!MP.remote&&(MP.remote.sc|0)===myScene();}
+function posData(ext){
  var p=CC.state.player;
- return p?{x:p.x,y:p.y,hp:p.hp,maxHp:p.maxHp,mana:p.mana,maxMana:p.maxMana,
+ if(!p)return null;
+ var o={x:p.x,y:p.y,hp:p.hp,maxHp:p.maxHp,mana:p.mana,maxMana:p.maxMana,
   classId:p.classId,level:p.level,face:p.face||1,anim:p.anim||0,
   moving:!!p.moving,atkAnim:p.atkAnim||0,swingAng:p.swingAng||0,swingSign:p.swingSign||1,
   castFlash:p.castFlash||0,whirlT:p.whirlT||0,dashT:p.dashT||0,
-  pwb:p.pw?((p.pw.rapid>0?1:0)|(p.pw.explode>0?2:0)|(p.pw.shield>0?4:0)):0}:null;
+  pwb:p.pw?((p.pw.rapid>0?1:0)|(p.pw.explode>0?2:0)|(p.pw.shield>0?4:0)):0,sc:myScene()};
+ if(ext){ // our portal and camp, a couple of times a second
+  var pt=CC.Portal&&CC.Portal.share?CC.Portal.share():{a:0};
+  o.pta=pt.a;if(pt.a){o.ptx=pt.x;o.pty=pt.y;o.ptr=pt.r;o.ptf=pt.f;o.ptt=pt.t;}
+  var cp=CC.Camp&&CC.Camp.shareInfo?CC.Camp.shareInfo():null;
+  o.cpa=cp?cp.a:-1;if(cp){o.cpx=Math.round(cp.x);o.cpy=Math.round(cp.y);o.cpf=cp.f;o.cpt=cp.t;}
+ }
+ return o;
 }
 function tick(dt){
- if(!playing||!MP.active||(CC.state.mode!=='dungeon'&&!(CC.state.mode==='dead'&&CC.state.area==='defense')))return;
- positionClock+=dt;snapshotClock+=dt;roomClock+=dt;pickupClock+=dt;
+ if(!playing||!MP.active||(CC.state.mode!=='dungeon'&&CC.state.mode!=='town'&&!(CC.state.mode==='dead'&&CC.state.area==='defense')))return;
+ var away=awayNow();
+ positionClock+=dt;snapshotClock+=dt;roomClock+=dt;pickupClock+=dt;extClock+=dt;qsClock+=dt;
  if(MP.role==='host'&&MP.remote&&MP.remote.invuln>0)
   MP.remote.invuln=Math.max(0,MP.remote.invuln-dt);
- if(MP.role==='guest'){
+ if(MP.role==='guest'&&!away){
   (CC.Enemies&&CC.Enemies.list||[]).forEach(function(e){
    e.anim=(e.anim||0)+dt;
    if(Number.isFinite(e.tx)){
@@ -380,7 +464,7 @@ function tick(dt){
   });
  }
  if(!ready())return;
- if(positionClock>.05){positionClock=0;send({type:'position',player:posData()});}
+ if(positionClock>.05){positionClock=0;var wantExt=extClock>.5;if(wantExt)extClock=0;send({type:'position',player:posData(wantExt)});}
  optClock+=dt;
  if(MP.role==='host'&&optClock>2){optClock=0;if(MP.room&&MP.room.guest)sendFx('opt',{gi:MP.options.guestInvuln?1:0});}
  minionClock+=dt;
@@ -391,14 +475,16 @@ function tick(dt){
     h:Math.round(q.hp),m:Math.round(q.maxHp),c:q.charged?1:0};})});}
  }
  if(MP.role==='host'){
+  if(!away&&CC.state.player)hostPos={x:CC.state.player.x,y:CC.state.player.y};
   if(roomClock>.5){roomClock=0;
-   var sceneKey=CC.state.area+':'+CC.state.floor+':'+(CC.Dungeon&&CC.Dungeon.seed);
-   if(sceneKey!==lastScene)broadcastScene();
+   var sk=sceneKey({area:CC.state.area,floor:CC.state.floor,tf:CC.state.treeFloor||1,seed:CC.Dungeon&&CC.Dungeon.seed});
+   if(sk!==lastScene)broadcastScene();
   }
+  if(qsClock>3){qsClock=0;if(MP.room&&MP.room.guest&&CC.EggQuest&&CC.EggQuest.stage)sendFx('qs',{s:CC.EggQuest.stage()});} // everyone follows the leader's quest
   if(snapshotClock>.15){snapshotClock=0;
    var snap=snapshot();if(snap)send({type:'snapshot',snapshot:snap});
   }
- }else if(pickupClock>.23){
+ }else if(pickupClock>.23&&!away){
   pickupClock=0;var L=CC.Loot,p=CC.state.player;
   if(L&&p)(L.drops||[]).forEach(function(d){
    if(d.mpId&&d.age>.5&&Math.hypot(p.x-d.x,p.y-d.y)<25){
@@ -451,6 +537,7 @@ function updateView(now){
 function drawWorld(c,cam){
  if(!playing||!MP.remote||!MP.active)return;
  var now=performance.now(),p=updateView(now);
+ if(!sameScene())return;
  if(!p)return;
  // partner's skeletons, drawn like our own
  if(remoteMinions.length&&now-remoteMinionsAt<1500&&CC.Classes&&CC.Classes.drawMinion){
@@ -480,6 +567,53 @@ function drawWorld(c,cam){
  c.fillStyle='#7fd7ab';c.fillRect(x-16,y-19,32*Math.max(0,Math.min(1,p.hp/Math.max(1,p.maxHp))),4);
  c.restore();
 }
+// An arrow at the edge of the screen pointing to your partner whenever they are out of view.
+function drawScreen(c,W,H){
+ var v=MP.view;
+ if(!playing||!MP.active||!v||!CC.getCamera||!CC.state.player||!sameScene())return;
+ var cam=CC.getCamera(),z=cam.zoom,me=CC.state.player;
+ var sx=(v.x-cam.x)*z,sy=(v.y-cam.y)*z,m=26;
+ if(sx>m&&sx<W-m&&sy>m&&sy<H-m)return; // in view
+ var cx=W/2,cy=H*0.42,dx=sx-cx,dy=sy-cy,ang=Math.atan2(dy,dx);
+ var ex=Math.min(W/2-m-4,Math.abs(dx)),ey=Math.min(H*0.38,Math.abs(dy));
+ var t=Math.min((W/2-m-4)/Math.max(1,Math.abs(dx)),(H*0.40)/Math.max(1,Math.abs(dy)),1);
+ var ax=cx+dx*t,ay=cy+dy*t,tiles=Math.round(Math.hypot(v.x-me.x,v.y-me.y)/32);
+ var pulse=.7+.3*Math.sin(Date.now()/220);
+ c.save();c.translate(ax,ay);
+ c.save();c.rotate(ang);c.globalAlpha=.55+.4*pulse;
+ c.fillStyle='#7df0ff';c.strokeStyle='#04222a';c.lineWidth=2;c.shadowColor='rgba(80,230,255,.9)';c.shadowBlur=10;
+ c.beginPath();c.moveTo(13,0);c.lineTo(-8,-10);c.lineTo(-3,0);c.lineTo(-8,10);c.closePath();c.stroke();c.fill();c.restore();
+ c.shadowBlur=0;c.globalAlpha=1;c.textAlign='center';c.textBaseline='middle';
+ var nm=(MP.role==='host'?MP.room&&MP.room.guest&&MP.room.guest.name:MP.room&&MP.room.host&&MP.room.host.name)||'PARTNER';
+ c.font='bold 10px Georgia,serif';c.lineWidth=3;c.strokeStyle='rgba(0,0,0,.85)';
+ var ly=ay<H*0.3?20:-20, label=nm+'  '+tiles;
+ c.strokeText(label,0,ly);c.fillStyle='#c8f8ff';c.fillText(label,0,ly);
+ c.restore();
+}
+MP.drawScreen=drawScreen;
+function hostOpenChest(i){
+ var D=CC.Dungeon,g=MP.remote,c=D&&D.chests&&D.chests[i];
+ if(!c||c.opened||!g||Math.hypot(g.x-c.x,g.y-c.y)>80)return;
+ if(D.openChest(c)&&CC.Loot&&CC.Loot.roll)CC.Loot.roll(c,CC.state.floor,0);
+ sendFx('ch',{i:i});
+}
+function hostDescend(){
+ var s=CC.state,st=s.map&&s.map.stairs,g=MP.remote;
+ if(awayNow()||!g||(g.sc|0)!==0)return; // the world waits while the leader is in town or a tent
+ if(!(st&&st.x>-900&&Math.hypot(g.x-st.x,g.y-st.y)<90))return;
+ if(s.area==='tree-ascent'){if(CC.TreeAscent&&CC.TreeAscent.interact)CC.TreeAscent.interact(true);return;}
+ if(CC.nextFloor)CC.nextFloor();
+}
+function hostTree(){
+ var m=CC.state.map,g=MP.remote;
+ if(awayNow()||!g||(g.sc|0)!==0||!m||!m.ascentEntrance||Math.hypot(g.x-m.ascentEntrance.x,g.y-m.ascentEntrance.y)>90)return;
+ if(CC.enterTreeAscent)CC.enterTreeAscent(true);
+}
+MP.requestTree=function(){sendFx('tc',{ta:1});};
+MP.questEvent=function(d){if(MP.isHost())sendFx('qe',d);};
+MP.requestChest=function(i){sendFx('tc',{ch:i});};
+MP.requestDrop=function(item){if(ready())ws.send(JSON.stringify({type:'drop_item',item:item}));};
+MP.requestDescend=function(){sendFx('tc',{dn:1});};
 function sendFx(k,d){if(playing&&MP.active&&ready())ws.send(JSON.stringify({type:'fx',k:k,d:d}));}
 MP.sendFx=sendFx;
 function initialize(){
@@ -490,11 +624,8 @@ function initialize(){
     <header class="mp-title"><div><small>EMBERDEEP ONLINE</small><h2>ADVENTURERS' GUILD</h2></div>
       <button id="mp-back" class="mp-quiet">BACK</button></header>
     <p>Form a party of two. Explore caves together, chat and exchange items.</p>
-    <div class="mp-line"><label>Your name<input id="mp-name" maxlength="22" placeholder="Adventurer" autocomplete="nickname"></label>
-      <label>Choose hero<select id="mp-hero"><option value="wizard">Wizard</option><option value="necromancer">Necromancer</option>
-        <option value="swordsman">Swordsman</option><option value="thief">Thief</option></select></label></div>
     <div class="mp-line"><label>Game mode<select id="mp-mode"><option value="defense">Town Defense (waves)</option>
-        <option value="cave">Cave Co-op (explore)</option></select></label>
+        <option value="cave">Explore: forest, tunnel, plains, caves</option></select></label>
       <label>Connection<select id="mp-net"><option value="direct">Direct (no server)</option>
         <option value="server">Game server</option></select></label></div>
     <div class="mp-actions"><button id="mp-create">CREATE OPEN GAME</button>
@@ -507,6 +638,12 @@ function initialize(){
     <small id="mp-server">Direct games run on the host's phone, so the host keeps the game open. Share the 6-letter code, or use INVITE inside the game.</small>
    </div>
  </section>
+ <section id="mp-chars" class="mp-hidden" aria-label="Choose your character"><div class="mp-panel">
+   <header class="mp-title"><div><small>EMBERDEEP ONLINE</small><h2>CHOOSE YOUR CHARACTER</h2></div>
+     <button id="mp-chars-back" class="mp-quiet">BACK</button></header>
+   <p>Your single player heroes can play online too, and what they earn comes back with them.</p>
+   <div id="mp-char-list"></div>
+ </div></section>
  <div id="mp-hud" class="mp-hidden">
    <button id="mp-session" aria-haspopup="true" aria-expanded="false"><span id="mp-dot">●</span> SESSION</button>
    <div id="mp-menu" class="mp-hidden" role="menu">
@@ -532,6 +669,7 @@ function initialize(){
  document.body.appendChild(div);
  var sheet=document.createElement('link');sheet.rel='stylesheet';sheet.href='multiplayer.css';
  document.head.appendChild(sheet);
+ el('mp-chars-back').onclick=function(){el('mp-chars').classList.add('mp-hidden');};
  el('mp-back').onclick=function(){el('mp-lobby').classList.add('mp-hidden');opened=false;if(!MP.active&&ws){ws.onclose=null;ws.close();ws=null;}};
  el('mp-create').onclick=function(){startRoom(false);};
  el('mp-private').onclick=function(){startRoom(true);};
@@ -601,7 +739,9 @@ function syncNet(){
 MP.leave=function(){stop(true);};MP.tick=tick;MP.drawWorld=drawWorld;
 MP.isHost=function(){return MP.active&&MP.role==='host';};
 MP.isGuest=function(){return MP.active&&MP.role==='guest';};
-MP.remotePlayerForAI=function(){return MP.isHost()?MP.remote:null;};
+MP.remotePlayerForAI=function(){return MP.isHost()&&MP.remote&&(MP.remote.sc|0)===0?MP.remote:null;};
+MP.myScene=myScene;MP.sameScene=sameScene;
+MP.partnerName=function(){var o=MP.room&&(MP.role==='host'?MP.room.guest:MP.room.host);return (o&&o.name)||'Partner';};
 MP.setGuestInvuln=function(on){
  if(!MP.isHost())return false;
  MP.options.guestInvuln=!!on;optClock=0;

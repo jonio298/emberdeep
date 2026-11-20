@@ -114,15 +114,15 @@
     }
     if (t === 'position') {
       var p = d.player || {}, clean = {};
-      ['x', 'y', 'hp', 'maxHp', 'mana', 'maxMana', 'level', 'face', 'anim', 'atkAnim', 'swingAng', 'swingSign', 'castFlash', 'whirlT', 'dashT', 'pwb'].forEach(function (k) {
+      ['x', 'y', 'hp', 'maxHp', 'mana', 'maxMana', 'level', 'face', 'anim', 'atkAnim', 'swingAng', 'swingSign', 'castFlash', 'whirlT', 'dashT', 'pwb', 'sc', 'pta', 'ptx', 'pty', 'ptr', 'ptf', 'ptt', 'cpa', 'cpx', 'cpy', 'cpf', 'cpt'].forEach(function (k) {
         if (typeof p[k] === 'number' && isFinite(p[k])) clean[k] = Math.max(-20000, Math.min(20000, p[k]));
       });
       clean.classId = room[role].hero; clean.moving = !!p.moving;
       this.publish({ type: 'position', from: role, player: clean }); return;
     }
     if (t === 'fx') {
-      if (['fx', 'pr', 'sc', 'mn', 'df', 'tb', 'tc', 'opt'].indexOf(d.k) < 0) return;
-      if ((d.k === 'df' || d.k === 'tb' || d.k === 'opt') && role !== 'host') return;
+      if (['fx', 'pr', 'sc', 'mn', 'df', 'tb', 'tc', 'opt', 'ch', 'qs', 'qe', 'vf', 'gp'].indexOf(d.k) < 0) return;
+      if ((d.k === 'df' || d.k === 'tb' || d.k === 'opt' || d.k === 'ch' || d.k === 'qs' || d.k === 'qe' || d.k === 'gp') && role !== 'host') return;
       if (d.k === 'tc' && role !== 'guest') return;
       var fx = cleanFx(d.d, 0);
       if (fx === undefined || JSON.stringify(fx).length > 2500) return;
@@ -139,17 +139,24 @@
       if (!Number.isInteger(id) || !isFinite(dm) || dm <= 0 || dm > 450) return;
       this.publish({ type: 'hit', from: role, id: id, damage: dm, kind: safeText(d.kind, 24) }); return;
     }
+    if (t === 'drop_item' && role === 'guest') {
+      var di = d.item; if (!di || typeof di !== 'object' || Array.isArray(di)) return;
+      var dj = JSON.stringify(di); if (dj.length > 3000) return;
+      this.publish({ type: 'drop_item', from: role, item: JSON.parse(dj) }); return;
+    }
     if (t === 'pickup_request' && role === 'guest') { var pid = safeText(d.id, 50); if (pid) this.publish({ type: 'pickup_request', from: role, id: pid }); return; }
     if (t === 'pickup_grant' && role === 'host') {
       var rw = d.reward;
-      if (rw && ['item', 'gold', 'potion', 'hp', 'mana'].indexOf(rw.kind) >= 0 && JSON.stringify(rw).length <= 5000)
+      if (rw && ['item', 'gold', 'potion', 'mpotion', 'hp', 'mana'].indexOf(rw.kind) >= 0 && JSON.stringify(rw).length <= 5000)
         this.publish({ type: 'pickup_grant', to: 'guest', id: safeText(d.id, 50), reward: rw });
       return;
     }
     if (t === 'scene' && role === 'host') {
       var sc = d.scene || {};
-      if (['cave', 'defense'].indexOf(sc.area) < 0 || !isFinite(sc.seed) || !Number.isInteger(sc.floor) || sc.floor < 1 || sc.floor > 200) return;
+      if (['cave', 'defense', 'forest', 'tree-tunnel', 'plains', 'tree-ascent'].indexOf(sc.area) < 0 || !isFinite(sc.seed) || !Number.isInteger(sc.floor) || sc.floor < 1 || sc.floor > 200) return;
       this.scene = { area: sc.area, seed: sc.seed, floor: sc.floor };
+      if (Number.isInteger(sc.tf) && sc.tf >= 1 && sc.tf <= 5) this.scene.tf = sc.tf;
+      if (isFinite(sc.px) && isFinite(sc.py)) { this.scene.px = Math.max(-20000, Math.min(20000, sc.px)); this.scene.py = Math.max(-20000, Math.min(20000, sc.py)); }
       this.publish({ type: 'scene', scene: this.scene }); return;
     }
     if (t === 'trade_offer') {

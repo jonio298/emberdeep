@@ -80,7 +80,8 @@
         for (i = 0; i < 3; i++) (function (n) {
           later(0.14 * n, function () {
             within(p, 62).forEach(function (f) { hit(f, dmg * 1.7 * scale, 'slash'); knock(f, p.x, p.y, 6); });
-            ring(p.x, p.y, 62, '#ffffff', 0.25); burst(p.x, p.y, '#ffd36b', 14, 130); shake(3);
+            if (CC.Vfx) CC.Vfx.spawn('bladeStorm', p.x, p.y, 62, {}); else ring(p.x, p.y, 62, '#ffffff', 0.25);
+            burst(p.x, p.y, '#ffd36b', 14, 130); shake(3);
           });
         })(i);
       } else if (idx === 2) { // Dragon Rush: a long cutting dash
@@ -90,25 +91,29 @@
           move(p, a.x * len / steps, a.y * len / steps);
           within(p, 14).forEach(function (f) { if (hitList.indexOf(f) < 0) { hitList.push(f); hit(f, dmg * 3.4 * scale, 'slash'); burst(f.x, f.y, '#ffd36b', 10, 120); } });
         }
-        beam(sx, sy, p.x, p.y, '#ffffff', 0.4); shake(6);
+        if (CC.Vfx) CC.Vfx.spawn('rush', sx, sy, 0, { x2: p.x, y2: p.y }); else beam(sx, sy, p.x, p.y, '#ffffff', 0.4);
+        shake(6);
       } else { // Sky Cleaver: three huge shockwaves
         [-0.5, 0, 0.5].forEach(function (off) {
           var ca = Math.atan2(a.y, a.x) + off;
           effects.push({ kind: 'wave', x: p.x, y: p.y, dx: Math.cos(ca), dy: Math.sin(ca), run: 0, range: 240 + 80 * pow, w: 26, dmg: dmg * 4.2 * scale, hit: [], trail: [] });
         });
         shake(9); burst(p.x, p.y, '#ff8a4a', 30, 160); ring(p.x, p.y, 50, '#ffd0a0', 0.4);
+        if (CC.Vfx) [-0.5, 0, 0.5].forEach(function (off) { CC.Vfx.spawn('earthSpikes', p.x, p.y, 240 + 80 * pow, { a: Math.atan2(a.y, a.x) + off }); });
       }
     } else if (cls === 'wizard') {
       if (idx === 1) { // Chain Lightning
         var cur = { x: p.x, y: p.y }, left = foes().filter(function (f) { return alive(f) && Math.hypot(f.x - p.x, f.y - p.y) <= 190; }), n = 0;
+        var chainPts = [{ x: p.x, y: p.y }];
         while (left.length && n < 6) {
           left.sort(function (u, v) { return Math.hypot(u.x - cur.x, u.y - cur.y) - Math.hypot(v.x - cur.x, v.y - cur.y); });
-          e = left.shift(); beam(cur.x, cur.y, e.x, e.y, '#bfe9ff', 0.35); hit(e, dmg * (3.2 - n * 0.3) * scale, 'arcane'); status(e, 'stun', 0.5);
+          e = left.shift(); chainPts.push({ x: e.x, y: e.y }); if (!CC.Vfx) beam(cur.x, cur.y, e.x, e.y, '#bfe9ff', 0.35); hit(e, dmg * (3.2 - n * 0.3) * scale, 'arcane'); status(e, 'stun', 0.5);
           burst(e.x, e.y, '#bfe9ff', 10, 110); cur = { x: e.x, y: e.y }; n++;
         }
+        if (CC.Vfx && chainPts.length > 1) CC.Vfx.chain(chainPts); // forked yellow lightning, and the sky flashes
         shake(4);
       } else if (idx === 2) { // Blizzard
-        var rad = 96 + 20 * pow; ring(p.x, p.y, rad, '#9fe3ff', 0.7);
+        var rad = 96 + 20 * pow; if (CC.Vfx) CC.Vfx.spawn('blizzard', p.x, p.y, rad, { life: 0.9 }); else ring(p.x, p.y, rad, '#9fe3ff', 0.7);
         for (i = 0; i < 4; i++) (function (k) {
           later(0.18 * k, function () { within(p, rad).forEach(function (f) { hit(f, dmg * 1.3 * scale, 'frost'); status(f, 'slow', 3, 0.4); }); burst(p.x, p.y, '#cfefff', 18, 150); });
         })(i);
@@ -126,7 +131,7 @@
     } else if (cls === 'necromancer') {
       if (idx === 1) { // Soul Spear: a piercing drain along a line
         var healed = 0, reach = 190 + 40 * pow;
-        beam(p.x, p.y, p.x + a.x * reach, p.y + a.y * reach, '#7dff9a', 0.45);
+        if (CC.Vfx) CC.Vfx.spawn('soulSpear', p.x, p.y, 0, { x2: p.x + a.x * reach, y2: p.y + a.y * reach }); else beam(p.x, p.y, p.x + a.x * reach, p.y + a.y * reach, '#7dff9a', 0.45);
         foes().forEach(function (f) {
           if (!alive(f)) return;
           var px = f.x - p.x, py = f.y - p.y, along = px * a.x + py * a.y, off = Math.abs(px * -a.y + py * a.x);
@@ -138,7 +143,7 @@
         });
         shake(4);
       } else if (idx === 2) { // Plague Nova
-        var pr = 120 + 30 * pow; ring(p.x, p.y, pr, '#9acd32', 0.7);
+        var pr = 120 + 30 * pow; if (CC.Vfx) CC.Vfx.spawn('plagueNova', p.x, p.y, pr, {}); else ring(p.x, p.y, pr, '#9acd32', 0.7);
         within(p, pr).forEach(function (f) { hit(f, dmg * 2.15 * scale, 'poison'); status(f, 'slow', 3.5, 0.55); burst(f.x, f.y, '#9acd32', 8, 90); });
         shake(5);
       } else { // Army of the Dead
@@ -148,11 +153,13 @@
           mm.push({ x: p.x + Math.cos(ang) * 24, y: p.y + Math.sin(ang) * 24, r: 6, hp: hp, maxHp: hp, life: 18, dmg: 5 + dmg * 0.54, atkCd: 0, anim: rnd(0, 6), face: 1, spawn: 0.35 });
         }
         within(p, 90).forEach(function (f) { hit(f, dmg * 2.0 * scale, 'drain'); status(f, 'stun', 0.8); });
-        ring(p.x, p.y, 90, '#7dff9a', 0.6); shake(8); burst(p.x, p.y, '#7dff9a', 30, 150);
+        if (CC.Vfx) { CC.Vfx.spawn('boneNova', p.x, p.y, 90, {}); for (i = 0; i < 4; i++) CC.Vfx.spawn('raise', p.x + Math.cos(i * 1.57 + 0.7) * 30, p.y + Math.sin(i * 1.57 + 0.7) * 22, 16, { local: true }); }
+        else { ring(p.x, p.y, 90, '#7dff9a', 0.6); burst(p.x, p.y, '#7dff9a', 30, 150); }
+        shake(8);
       }
     } else { // thief
       if (idx === 1) { // Venom Burst
-        ring(p.x, p.y, 80, '#7dff5a', 0.6);
+        if (CC.Vfx) CC.Vfx.spawn('venom', p.x, p.y, 80, {}); else ring(p.x, p.y, 80, '#7dff5a', 0.6);
         within(p, 80).forEach(function (f) { hit(f, dmg * 2.4 * scale, 'poison'); status(f, 'slow', 3, 0.5); burst(f.x, f.y, '#7dff5a', 8, 90); });
         shake(3);
       } else if (idx === 2) { // Phantom Blades: up to five foes, two strikes each
@@ -163,7 +170,7 @@
           later(0.12 * n, function () {
             if (!alive(f)) return;
             var fx0 = p.x, fy0 = p.y, ddx = f.x - p.x, ddy = f.y - p.y, d = Math.sqrt(ddx * ddx + ddy * ddy) || 1;
-            move(p, ddx / d * Math.max(0, d - 12), ddy / d * Math.max(0, d - 12)); beam(fx0, fy0, p.x, p.y, '#d8ccff', 0.3);
+            move(p, ddx / d * Math.max(0, d - 12), ddy / d * Math.max(0, d - 12)); if (CC.Vfx) CC.Vfx.spawn('slash', fx0, fy0, 0, { x2: p.x, y2: p.y }); else beam(fx0, fy0, p.x, p.y, '#d8ccff', 0.3);
             hit(f, dmg * 1.5 * scale, 'shadow'); if (alive(f)) hit(f, dmg * 1.5 * scale, 'shadow');
             burst(f.x, f.y, '#b9a6ff', 10, 110);
           });
@@ -171,7 +178,7 @@
         shake(3);
       } else { // Deathmark
         l = within(p, 210); p.iframes = Math.max(p.iframes || 0, 0.8);
-        l.forEach(function (f) { ring(f.x, f.y, 14, '#ff5a6a', 1.0); });
+        l.forEach(function (f) { if (CC.Vfx) CC.Vfx.spawn('mark', f.x, f.y, 14, { life: 1.0 }); else ring(f.x, f.y, 14, '#ff5a6a', 1.0); });
         later(1.0, function () { l.forEach(function (f) { if (!alive(f)) return; hit(f, dmg * 7 * scale, 'shadow'); burst(f.x, f.y, '#ff5a6a', 16, 140); }); shake(8); });
       }
     }
@@ -190,6 +197,7 @@
       effects.push({ kind: 'wave', x: p.x, y: p.y, dx: a.x, dy: a.y, run: 0, range: 190 + 90 * pow, w: 20 + 10 * pow,
         dmg: dmg * 3.2 * scale, hit: [], trail: [] });
       shake(5); burst(p.x, p.y, '#ff8a4a', 14, 120);
+      if (CC.Vfx) CC.Vfx.spawn('earthSpikes', p.x, p.y, 190 + 90 * pow, { a: Math.atan2(a.y, a.x) });
     } else if (cls === 'wizard') {
       var tx = a.target ? a.target.x : p.x + a.x * 90, ty = a.target ? a.target.y : p.y + a.y * 90;
       effects.push({ kind: 'meteor', x: tx, y: ty, t: 0.7, max: 0.7, rad: 48 + 22 * pow, dmg: dmg * 4 * scale });
@@ -209,7 +217,7 @@
         mm.push({ x: p.x + Math.cos(ang) * 20, y: p.y + Math.sin(ang) * 20, r: 6, hp: hp, maxHp: hp, life: 18,
           dmg: 5 + dmg * 0.44, atkCd: 0, anim: rnd(0, 6), face: 1, spawn: 0.35 });
       }
-      effects.push({ kind: 'nova', x: p.x, y: p.y, t: 0.55, max: 0.55, rad: rad });
+      if (CC.Vfx) CC.Vfx.spawn('boneNova', p.x, p.y, rad, {}); else effects.push({ kind: 'nova', x: p.x, y: p.y, t: 0.55, max: 0.55, rad: rad });
       shake(4); burst(p.x, p.y, '#7dff9a', 22, 130);
     } else { // thief
       var targets = [], cap = 2 + Math.round(3 * pow);
@@ -223,7 +231,7 @@
         var fx0 = p.x, fy0 = p.y;
         var ddx = e.x - p.x, ddy = e.y - p.y, d = Math.sqrt(ddx * ddx + ddy * ddy) || 1;
         move(p, ddx / d * Math.max(0, d - 12), ddy / d * Math.max(0, d - 12));
-        effects.push({ kind: 'slash', x: fx0, y: fy0, x2: p.x, y2: p.y, t: 0.35 + 0.08 * i, max: 0.35 + 0.08 * i });
+        if (CC.Vfx) CC.Vfx.spawn('slash', fx0, fy0, 0, { x2: p.x, y2: p.y }); else effects.push({ kind: 'slash', x: fx0, y: fy0, x2: p.x, y2: p.y, t: 0.35 + 0.08 * i, max: 0.35 + 0.08 * i });
         hit(e, dmg * 1.8 * scale, 'shadow');
         burst(e.x, e.y, '#b9a6ff', 8, 100);
       }
@@ -245,6 +253,10 @@
         var step = 330 * dt;
         f.run += step; f.x += f.dx * step; f.y += f.dy * step;
         f.trail.push({ x: f.x, y: f.y, a: 1 }); if (f.trail.length > 14) f.trail.shift();
+        if (CC.Vfx) { // dust and flying rock behind the shockwave
+          CC.Vfx.emit({ kind: 'smoke', x: f.x, y: f.y + 4, vx: rnd(-12, 12), vy: rnd(-20, -5), life: 0.5, size: 5, grow: 9, col: '#8a7355', alpha: 0.7 });
+          if (Math.random() < 0.5) CC.Vfx.emit({ kind: 'dot', x: f.x, y: f.y, vx: rnd(-40, 40), vy: -rnd(60, 130), ay: 480, life: 0.5, size: rnd(1.4, 2.6), col: '#7a5a3a' });
+        }
         l = foes();
         for (i = 0; i < l.length; i++) {
           e = l[i];
@@ -271,7 +283,8 @@
             hit(e, f.dmg, 'fire'); status(e, 'stun', 0.5);
           }
           burst(f.x, f.y, '#ffb04a', 30, 170); shake(8);
-          effects[k] = { kind: 'boom', x: f.x, y: f.y, t: 0.4, max: 0.4, rad: f.rad };
+          if (CC.Vfx) { CC.Vfx.spawn('meteorBoom', f.x, f.y, f.rad, {}); effects.splice(k, 1); }
+          else effects[k] = { kind: 'boom', x: f.x, y: f.y, t: 0.4, max: 0.4, rad: f.rad };
         }
       } else {
         f.t -= dt;
@@ -386,6 +399,8 @@
         a = Math.atan2(f.dy, f.dx);
         arc(ctx, sx, sy, f.w, a - 1.1, a + 1.1, '#ffd0a0', 4, 0.95);
         arc(ctx, sx, sy, f.w * 0.65, a - 0.9, a + 0.9, '#ff8a4a', 3, 0.8);
+      } else if (f.kind === 'meteor' && CC.Vfx && CC.Vfx.drawMeteor) {
+        CC.Vfx.drawMeteor(ctx, sx, sy, 1 - f.t / f.max, f.rad);
       } else if (f.kind === 'meteor') {
         var q = 1 - f.t / f.max;
         arc(ctx, sx, sy, f.rad, 0, 6.2832, '#ff7a3a', 2, 0.35 + 0.4 * q);

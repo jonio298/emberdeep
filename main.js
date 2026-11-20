@@ -29,6 +29,7 @@
   var ctx = canvas.getContext('2d');
   var W = 360, H = 640, dpr = 1, zoom = 1.5, titlePage = 'mode';
   var cam = { x: 0, y: 0, w: 240, h: 420, zoom: 1.5 };
+  CC.getCamera = function () { return { x: cam.x, y: cam.y, w: cam.w, h: cam.h, zoom: curZoom || zoom, W: W, H: H }; };
   var curZoom = 0; // the zoom actually used on the last frame (Town Defense widens and narrows the view)
   // Player zoom: pinch with two fingers (or the mouse wheel) at any time. The target is set by the gesture and the
   // view eases toward it every frame, so the zoom is smooth. 1 = the normal view; below 1 zooms out.
@@ -167,6 +168,7 @@
   // In-memory session worlds: preserve dead monsters, opened loot and map geometry
   // across death, travel to town and revisits. A full reload resets these encounters.
   var worldCache={};
+  var lastWorld=null; // the shared world as the host last stood in it (the host keeps simulating it while they are in town or a tent)
   function key(area,floor,treeFloor){return area+':'+(area==='tree-ascent'?(treeFloor||1):(floor||1));}
   function rememberWorld(){
     var s=CC.state,E=CC.Enemies,L=CC.Loot;
@@ -226,7 +228,7 @@
   CC.startRun = function (floor, area) {
     call('CriticalScene', 'reset');
     var s = CC.state;
-    s.area = area === 'defense' && has('Defense', 'generate') ? 'defense' : area === 'plains' && has('Plains', 'generate') ? 'plains' : area === 'forest' && has('Forest', 'generate') ? 'forest' : 'cave'; // 'forest' = the Giant Forest, then the Rolling Plains, in front of floor 1
+    s.area = area === 'tree-ascent' && has('TreeAscent', 'generate') ? 'tree-ascent' : area === 'tree-tunnel' && has('TreeTunnel', 'generate') ? 'tree-tunnel' : area === 'defense' && has('Defense', 'generate') ? 'defense' : area === 'plains' && has('Plains', 'generate') ? 'plains' : area === 'forest' && has('Forest', 'generate') ? 'forest' : 'cave'; // 'forest' = the Giant Forest, then the Rolling Plains, in front of floor 1
     s.floor = Math.max(1, floor | 0 || 1);
     if(!s.startGold)s.startGold=s.gold;
     s.mode = 'dungeon';
@@ -244,10 +246,10 @@
     resetInputHeld();loadFloor();
     return true;
   };
-  CC.enterTreeAscent=function(){
+  CC.enterTreeAscent=function(byPartner){
     var s=CC.state,p=s.player,m=s.map;
     if(s.area!=='forest'||!p||!m||!m.ascentEntrance)return false;
-    if(Math.hypot(p.x-m.ascentEntrance.x,p.y-m.ascentEntrance.y)>67)return false;
+    if(!byPartner&&Math.hypot(p.x-m.ascentEntrance.x,p.y-m.ascentEntrance.y)>67)return false;
     if(!CC.EggQuest||CC.EggQuest.stage()!=='climbing'){
       if(CC.fx&&CC.fx.text)CC.fx.text(p.x,p.y-27,
         CC.EggQuest&&CC.EggQuest.stage()==='unstarted'?'SPEAK TO SISTER ALDER':
@@ -270,7 +272,7 @@
     }
     // Main hollow ALWAYS leads toward the Plains (via the original tunnel).
     // The egg ascent is a separate entrance, only reached from its side trail.
-    if(CC.state.area==='forest'&&CC.EggQuest&&!CC.EggQuest.tunnelUnlocked()){
+    if(CC.state.area==='forest'&&CC.EggQuest&&!CC.EggQuest.tunnelUnlocked()&&!CC.state.coop){
       var hero=CC.state.player,stage=CC.EggQuest.stage();
       if(hero)CC.fx.text(hero.x,hero.y-28,
         stage==='unstarted'?'SPEAK TO SISTER ALDER':
@@ -316,7 +318,7 @@
   function loadFloor() {
     var s=CC.state,p=s.player,map,E=CC.Enemies,L=CC.Loot,
         cached=worldCache[key(s.area,s.floor,s.treeFloor)];
-    particles.length=0;texts.length=0;decals.length=0;
+    particles.length=0;texts.length=0;decals.length=0;call('Vfx','clear');
     if(cached&&cached.map){
       map=cached.map;CC.Dungeon=map;s.map=map;
       if(s.area==='forest'&&CC.Forest)CC.Forest.map=map;
@@ -331,9 +333,10 @@
     if (s.area === 'forest') { map = call('Forest', 'generate',s.resumeSeed); CC.Dungeon = map; } // CC.Dungeon is whichever map the player is in
     else if (s.area === 'plains') { map = call('Plains', 'generate',s.resumeSeed); CC.Dungeon = map; }
     else if (s.area === 'tree-ascent') { map = call('TreeAscent','generate',s.treeFloor||1); CC.Dungeon=map; }
-    else if (s.area === 'tree-tunnel') { map = call('TreeTunnel', 'generate'); CC.Dungeon = map; }
+    else if (s.area === 'tree-tunnel') { map = call('TreeTunnel', 'generate', s.resumeSeed); CC.Dungeon = map; }
     else if (s.area === 'defense') { map = call('Defense', 'generate', s.resumeSeed); CC.Dungeon = map; }
     else { CC.Dungeon = CC.CaveDungeon; map = call('Dungeon', 'generate', s.floor, s.coop && Number.isFinite(s.resumeSeed) ? s.resumeSeed : undefined); }
+    if (map && !Number.isFinite(map.seed)) map.seed = 0; // fixed-layout maps (the tunnel) still need a seed to be shared in co-op
     s.map = map || null;
     s.resumeSeed=null;
     if(s.area==='plains')call('Waypoints','discover','plains',map);
@@ -344,6 +347,8 @@
     if(s.area==='tree-ascent')call('TreeAscent','populate',s.treeFloor||1);
     else call('Enemies', 'spawnForFloor', s.area==='defense'?1:s.floor, (map && (map.enemySpawns || map.spawns)) || []);
     if(s.area==='defense')call('Defense','begin',map);
+    // Explore co-op: the caves are far harder (the guest just receives the monsters from the host's snapshots)
+    if(s.coop&&s.area==='cave'&&!(CC.Multiplayer&&CC.Multiplayer.isGuest&&CC.Multiplayer.isGuest()))call('Explore','harden',map,s.floor);
     if (s.area === 'tree-tunnel') call('TreeTunnel', 'populate', s.floor);
     if(CC.Camp&&CC.Camp.bindToMap)CC.Camp.bindToMap(s.area,map);
     snapCamera();
@@ -352,34 +357,134 @@
   function startGame(classId) {
     var s = CC.state;
     s.coop = false;
-    clearWorldCache();call('SaveGame','clear');call('EggQuest','reset');
-    s.gold=0;s.inventory=[];s.potions=2;s.bridgeDown=false;s.treeFloor=1;
+    clearWorldCache();call('SaveGame','newGame');call('EggQuest','reset');
+    s.gold=0;s.inventory=[];s.potions=2;s.manaPotions=1;s.bridgeDown=false;s.treeFloor=1;
     call('Camp', 'clear'); // a fresh hero must not inherit a previous run's fence or checkpoint
+    call('Portal','reset');lastWorld=null;
     call('Waypoints','reset');
     s.classId = classId; s.kills = 0; s.runGold = 0; s.floor = 1;
     var p = call('Classes', 'create', classId);
     if (!p || typeof p !== 'object') p = stubPlayer(classId);
     s.player = p;
+    s.charName = (CLASSES.filter(function (c) { return c.id === classId; })[0] || {}).name || classId;
     CC.setMode('town');
+    call('SaveGame','save'); // the new character appears in the Continue list straight away
   }
 
   // A fresh, isolated multiplayer character. Never clear/overwrite solo saves.
-  CC.beginCoop=function(classId,scene){
+  CC.beginCoop=function(classId,scene,character){
     clearWorldCache();
     var s=CC.state;
-    s.coop=true;s.inventory=[];s.potions=2;s.gold=0;s.kills=0;s.runGold=0;
-    s.classId=classId;s.bestFloor=1;s.treeFloor=1;
+    call('Camp','clear');call('Portal','reset');call('EggQuest','reset');lastWorld=null;
+    s.coop=true;s.inventory=[];s.potions=2;s.manaPotions=1;s.gold=0;s.kills=0;s.runGold=0;s.coopSlot=0;
+    s.classId=classId;s.bestFloor=1;s.treeFloor=Math.max(1,scene&&scene.tf||1);
     s.player=call('Classes','create',classId);
     if(!s.player)s.player=stubPlayer(classId);
+    // Diablo II style: the character you brought (from single player or an earlier co-op) keeps its level, gear and pack
+    if(character&&character.data&&character.data.player&&character.data.classId===classId&&!s.player.stub){
+      var cd=character.data;
+      Object.assign(s.player,cd.player);
+      call('Classes','applyItemStats',s.player);
+      s.player.hp=s.player.maxHp;s.player.mana=s.player.maxMana;s.player.perkOpen=false;s.player.perkChoices=null;s.player.invuln=0;
+      s.player.dashHit=null;s.player.grabbedBy=null;s.player.grabT=0;
+      s.inventory=Array.isArray(cd.inventory)?JSON.parse(JSON.stringify(cd.inventory)):[];
+      s.gold=cd.gold||0;s.potions=cd.potions||0;s.manaPotions=cd.manaPotions||0;
+      s.coopSlot=character.slot||0;s.charName=character.name;
+      call('EggQuest','restore',cd.quest); // the story you were on comes along
+    }
     s.resumeSeed=scene&&Number.isFinite(scene.seed)?scene.seed:null;
-    CC.startRun(scene&&scene.floor||1,scene&&scene.area==='defense'?'defense':'cave');
+    CC.startRun(scene&&scene.floor||1,(scene&&scene.area)||'forest');
     return true;
   };
-  CC.syncCoopScene=function(scene){
-    if(!scene||(scene.area!=='cave'&&scene.area!=='defense')||!CC.Multiplayer||!CC.Multiplayer.isGuest())return false;
+  // put the hero beside a point (the leader, or a portal), on open ground
+  function standNear(pt,beside){
+    var s=CC.state,p=s.player,D=CC.Dungeon;
+    if(!p||!pt||!Number.isFinite(pt.x)||!Number.isFinite(pt.y))return false;
+    var offs=[[0,0],[22,0],[-22,0],[0,22],[0,-22],[30,18],[-30,18],[0,34]],i;
+    for(i=beside?1:0;i<offs.length;i++){
+      var x=pt.x+offs[i][0],y=pt.y+offs[i][1];
+      if(!(D&&D.isSolid&&D.isSolid(x,y))){p.x=x;p.y=y;snapCamera();return true;}
+    }
+    return false;
+  }
+  CC.standNear=standNear;
+  CC.syncCoopScene=function(scene,ax,ay){
+    if(!scene||['cave', 'defense', 'forest', 'tree-tunnel', 'plains', 'tree-ascent'].indexOf(scene.area)<0||!CC.Multiplayer||!CC.Multiplayer.isGuest())return false;
     clearWorldCache();
-    CC.state.resumeSeed=scene.seed;
+    var s=CC.state;
+    s.resumeSeed=scene.seed;s.treeFloor=Math.max(1,scene.tf||1);
     CC.startRun(scene.floor,scene.area);
+    // arrive beside the leader (or at the portal you came through), not back at the entrance
+    var x=Number.isFinite(ax)?ax:scene.px,y=Number.isFinite(ay)?ay:scene.py;
+    if(Number.isFinite(x)&&Number.isFinite(y))standNear({x:x,y:y},true);
+    return true;
+  };
+  /* ---- the shared world while the host is away (in town or in a tent) ---- */
+  function inWorldNow(){
+    var s=CC.state;
+    return s.mode==='dungeon'&&!!s.map&&s.area!=='town'&&s.area!=='camp'&&s.area!=='camp-tent'&&!(CC.Camp&&CC.Camp.isInside&&CC.Camp.isInside());
+  }
+  function noteWorld(){
+    var s=CC.state;
+    if(!inWorldNow())return;
+    lastWorld=lastWorld||{};
+    lastWorld.map=s.map;lastWorld.dungeon=CC.Dungeon;lastWorld.area=s.area;lastWorld.floor=s.floor;lastWorld.treeFloor=s.treeFloor||1;
+  }
+  function isAwayNow(){var s=CC.state;return s.mode==='town'||!!(CC.Camp&&CC.Camp.isInside&&CC.Camp.isInside());}
+  function coopHostAway(){
+    var s=CC.state,MP=CC.Multiplayer;
+    return !!(s.coop&&MP&&MP.isHost&&MP.isHost()&&lastWorld&&isAwayNow());
+  }
+  // The host's hero is elsewhere, so the monsters ignore them; the world keeps living for the partner, who still gets snapshots.
+  function bgWorld(dt){
+    var s=CC.state,w=lastWorld,keep={map:s.map,dungeon:CC.Dungeon,area:s.area,floor:s.floor,tf:s.treeFloor,player:s.player};
+    s.map=w.map;CC.Dungeon=w.dungeon;s.area=w.area;s.floor=w.floor;s.treeFloor=w.treeFloor;
+    try{
+      s.player=null;
+      call('Enemies','update',dt);call('Loot','update',dt);call('Breakables','update',dt);
+      s.player=keep.player;
+      call('Multiplayer','tick',dt);
+    }finally{
+      s.player=keep.player;
+      s.map=keep.map;CC.Dungeon=keep.dungeon;s.area=keep.area;s.floor=keep.floor;s.treeFloor=keep.tf;
+    }
+  }
+  /* ---- TP-Town: through the purple portal to the town centre, and back ---- */
+  CC.portalToTown=function(){
+    var s=CC.state,p=s.player,MP=CC.Multiplayer;
+    if(!p||s.mode!=='dungeon'||!inWorldNow())return false;
+    noteWorld();
+    s.keepWorld=!!(s.coop&&MP&&MP.isHost&&MP.isHost()); // the host's monsters stay where they are
+    if(CC.fx&&CC.fx.burst)CC.fx.burst(p.x,p.y,'#c58bff',18,95);
+    s.fromForest=false;
+    CC.setMode('town');
+    s.keepWorld=false;
+    call('Portal','arrived');
+    return true;
+  };
+  CC.portalFromTown=function(){
+    var s=CC.state,p=s.player,MP=CC.Multiplayer,mine=CC.Portal&&CC.Portal.mine&&CC.Portal.mine();
+    if(!p||s.mode!=='town')return false;
+    function sameAs(o,w){return o&&w&&o.area===w.area&&(o.floor||1)===(w.floor||1)&&(o.area!=='tree-ascent'||(o.treeFloor||1)===(w.treeFloor||1));}
+    if(s.coop&&MP&&MP.active){
+      if(MP.isHost()){
+        if(!lastWorld)return false;
+        s.area=lastWorld.area;s.floor=lastWorld.floor;s.treeFloor=lastWorld.treeFloor;s.map=lastWorld.map;CC.Dungeon=lastWorld.dungeon;s.mode='dungeon';
+        call('Town','leave');
+        var at=sameAs(mine,lastWorld)?mine:(lastWorld.map&&lastWorld.map.spawn);
+        if(!standNear(at,!!sameAs(mine,lastWorld)))snapCamera();
+      }else if(!(MP.rejoin&&MP.rejoin(mine)))return false;
+    }else{
+      if(!mine)return false;
+      s.area=mine.area;s.floor=mine.floor;s.treeFloor=mine.treeFloor;s.mode='dungeon';
+      if(Number.isFinite(mine.seed))s.resumeSeed=mine.seed;
+      call('Town','leave');
+      loadFloor();
+      standNear(mine,true);
+    }
+    resetInputHeld();snapCamera();
+    call('Portal','arrived');
+    if(CC.fx&&CC.fx.burst&&s.player)CC.fx.burst(s.player.x,s.player.y,'#c58bff',18,95);
     return true;
   };
   CC.leaveTreeAscent=function(){
@@ -397,7 +502,7 @@
   CC.loadSavedGame=function(data){
     if(!data||!data.player||!data.classId)return false;
     clearWorldCache();
-    call('Camp','clear');call('CriticalScene','reset');call('UI','close');
+    call('Camp','clear');call('Portal','reset');lastWorld=null;call('CriticalScene','reset');call('UI','close');
     call('Waypoints','reset');call('EggQuest','restore',data.quest);
     var s=CC.state,p=call('Classes','create',data.classId);
     if(!p)return false;
@@ -408,12 +513,12 @@
     p.mana=Math.max(0,Math.min(p.maxMana,mp));
     p.perkOpen=false;p.perkChoices=null;p.invuln=1;
     p.dashHit=null;p.grabbedBy=null;p.grabT=0;
-    s.player=p;s.classId=data.classId;
+    s.player=p;s.classId=data.classId;s.charName=data.charName||p.name;
     s.floor=Math.max(1,data.floor||1);
     s.treeFloor=Math.max(1,Math.min(5,data.treeFloor||1));
     s.gold=data.gold||0;s.kills=data.kills||0;s.runGold=data.runGold||0;
     s.bestFloor=data.bestFloor||1;s.bridgeDown=!!data.bridgeDown;
-    s.potions=data.potions||0;s.inventory=Array.isArray(data.inventory)?data.inventory:[];
+    s.potions=data.potions||0;s.manaPotions=data.manaPotions||0;s.inventory=Array.isArray(data.inventory)?data.inventory:[];
     s.area=data.area||'town';s.resumeSeed=data.seed;
     if(data.waypoints&&CC.Waypoints&&CC.Waypoints.restore)
       CC.Waypoints.restore(data.waypoints);
@@ -441,16 +546,26 @@
 
   /* ---------- input ---------- */
   var keys = {};
-  var joy = { id: null, bx: 0, by: 0, x: 0, y: 0 };
-  var held = { attack: 0, spell1: 0, spell2: 0, dash: 0, interact: 0, potion: 0 };
+  var joy = { id: null, bx: 0, by: 0, x: 0, y: 0, vx: 0, vy: 0, fixed: false };
+  var held = { attack: 0, spell1: 0, spell2: 0, dash: 0, interact: 0, potion: 0, mpotion: 0 };
   var pending = {};
   var actionKeys = { Space: 'attack', KeyQ: 'spell1', KeyE: 'spell2',
-    ShiftLeft: 'dash', ShiftRight: 'dash', KeyF: 'interact', Enter: 'interact', KeyH: 'potion' };
+    ShiftLeft: 'dash', ShiftRight: 'dash', KeyF: 'interact', Enter: 'interact', KeyH: 'potion', KeyN: 'mpotion' };
   var paused = false, uiWas = false;
   function playing() { return CC.state.mode === 'town' || CC.state.mode === 'dungeon'; }
   function pressAction(name) {
     if (playing() && !paused && !uiOpen() && !(CC.state.player && CC.state.player.perkOpen)) pending[name] = true;
   }
+  CC.useManaPotion = function () {
+    var s=CC.state,p=s&&s.player;
+    if (!p || p.hp<=0 || p.mana>=p.maxMana || !s.manaPotions || !playing() ||
+        paused || uiOpen() || p.perkOpen || (CC.Camp && CC.Camp.isOpen && CC.Camp.isOpen())) return false;
+    s.manaPotions--;
+    var amount=Math.max(25,Math.ceil(p.maxMana*.5)),before=p.mana;
+    p.mana=Math.min(p.maxMana,p.mana+amount);
+    if(CC.fx) { CC.fx.text(p.x,p.y-25,'+'+Math.ceil(p.mana-before)+' MP','#7fc4ff',12); CC.fx.burst(p.x,p.y,'#4a9bff',15,90); }
+    return true;
+  };
   CC.usePotion = function () {
     var s=CC.state,p=s&&s.player;
     if (!p || p.hp<=0 || p.hp>=p.maxHp || !s.potions || !playing() ||
@@ -472,6 +587,13 @@
   function interact() {
     var s = CC.state, p = s.player;
     if (!p) return;
+    if (CC.Multiplayer && CC.Multiplayer.isGuest && CC.Multiplayer.isGuest() && s.map) { // co-op guest: the host owns chests and stairs
+      var gch = s.map.chests || [], gi;
+      for (gi = 0; gi < gch.length; gi++) if (!gch[gi].opened && Math.hypot(p.x - gch[gi].x, p.y - gch[gi].y) <= 36) { CC.Multiplayer.requestChest(gi); return; }
+      var gst = s.map.stairs, gae = s.map.ascentEntrance;
+      if (s.area === 'forest' && gae && Math.hypot(p.x - gae.x, p.y - gae.y) <= 67) { CC.Multiplayer.requestTree(); CC.fx.text(p.x, p.y - 24, 'Following the leader...', '#d5e7b2', 10); return; }
+      if (gst && gst.x > -900 && Math.hypot(p.x - gst.x, p.y - gst.y) <= 60) { CC.Multiplayer.requestDescend(); CC.fx.text(p.x, p.y - 24, 'Following the leader...', '#ffd36b', 10); return; }
+    }
     if (CC.Waypoints && CC.Waypoints.interact && CC.Waypoints.interact()) return;
     if(s.area==='defense'&&CC.Defense&&CC.Defense.interact&&CC.Defense.interact())return;
     if(s.area==='tree-ascent'&&call('TreeAscent','interact'))return;
@@ -535,18 +657,20 @@
     btns.spell1 = { x: W - m - 118, y: H - m - 40, r: 29, label: 'S1' };
     btns.spell2 = { x: W - m - 100, y: H - m - 120, r: 29, label: 'S2' };
     btns.dash = { x: W - m - 28, y: H - m - 154, r: 24, label: 'DASH' };
-    btns.potion = { x: W - m - 174, y: H - m - 100, r: 18, label: 'POTION' };
+    // health and mana potions side by side, directly above DASH
+    btns.potion = { x: btns.dash.x - 22, y: btns.dash.y - 48, r: 19, label: 'POTION' };
+    btns.mpotion = { x: btns.dash.x + 22, y: btns.dash.y - 48, r: 19, label: 'MANA' };
   }
 
   function resetInputHeld() {
     call('SpellCharge','cancel');
-    held.attack = held.spell1 = held.spell2 = held.dash = held.interact = held.potion = 0;
+    held.attack = held.spell1 = held.spell2 = held.dash = held.interact = held.potion = held.mpotion = 0;
     keys = {}; pending = {};
     lastMouseWorld=null;
     joy.id = null; joy.x = joy.y = 0;
     ptrs = {};
     call('Charge', 'cancel');
-    var i = CC.input; i.moveX = i.moveY = 0; i.attack = i.spell1 = i.spell2 = i.dash = i.interact = i.potion = false;
+    var i = CC.input; i.moveX = i.moveY = 0; i.attack = i.spell1 = i.spell2 = i.dash = i.interact = i.potion = i.mpotion = false;
   }
 
   function pollInput() {
@@ -563,7 +687,7 @@
       var n = Math.sqrt(mx * mx + my * my);
       i.aimX = mx / n; i.aimY = my / n;
     }
-    ['attack', 'spell1', 'spell2', 'dash', 'interact', 'potion'].forEach(function (name) {
+    ['attack', 'spell1', 'spell2', 'dash', 'interact', 'potion', 'mpotion'].forEach(function (name) {
       i[name] = !!pending[name];
     });
     pending = {};
@@ -582,7 +706,8 @@
     return { x: (e.clientX - r.left) * (W / r.width), y: (e.clientY - r.top) * (H / r.height) };
   }
 
-  var JOY_R = 52;
+  var JOY_R = 58;
+  function joyHome() { return { x: 84, y: H - 96 }; }
   canvas.addEventListener('pointerdown', function (e) {
     e.preventDefault();
     try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* not fatal */ }
@@ -628,9 +753,17 @@
         }
       } else if (others.length === 0) worldTouches[e.pointerId] = { x: p.x, y: p.y };
     }
-    if (joy.id === null && p.x < W * 0.6) {
-      joy.id = e.pointerId; joy.bx = p.x; joy.by = p.y; joy.x = joy.y = 0;
-      ptrs[e.pointerId] = { kind: 'joy' };
+    // The stick: left side of the screen, below the HUD. It is anchored where you touch (or at a fixed home spot) and only
+    // ever drifts when the thumb goes far past the ring, so it can never wander across the screen.
+    if (joy.id === null && p.x < W * 0.55 && p.y > H * 0.25) {
+      var fixedStick = CC.Settings && CC.Settings.get('stick') === 'fixed', home = joyHome();
+      if (!fixedStick || Math.hypot(p.x - home.x, p.y - home.y) < JOY_R * 2.2) {
+        joy.id = e.pointerId; joy.x = joy.y = 0; joy.vx = joy.vy = 0; joy.fixed = fixedStick;
+        if (fixedStick) { joy.bx = home.x; joy.by = home.y; }
+        else { joy.bx = Math.max(JOY_R + 14, Math.min(W * 0.5, p.x)); joy.by = Math.max(H * 0.3, Math.min(H - JOY_R - 14, p.y)); }
+        ptrs[e.pointerId] = { kind: 'joy' };
+        if (navigator.vibrate) { try { navigator.vibrate(8); } catch (_) { /* optional */ } }
+      }
     }
   }, { passive: false });
 
@@ -660,13 +793,18 @@
     if (e.pointerId !== joy.id) return;
     e.preventDefault();
     var p = pos(e), dx = p.x - joy.bx, dy = p.y - joy.by;
-    var d = Math.sqrt(dx * dx + dy * dy);
-    if (d > JOY_R) { // drag the base along so the thumb never runs out of range
-      joy.bx = p.x - dx / d * JOY_R; joy.by = p.y - dy / d * JOY_R;
-      dx = p.x - joy.bx; dy = p.y - joy.by; d = JOY_R;
+    var d = Math.sqrt(dx * dx + dy * dy) || 0.0001;
+    // only a long overshoot pulls the base along, and never out of the left side of the screen
+    var REACH = JOY_R * 2.1;
+    if (!joy.fixed && d > REACH) {
+      joy.bx = Math.max(JOY_R + 14, Math.min(W * 0.5, p.x - dx / d * REACH)); joy.by = Math.max(H * 0.3, Math.min(H - JOY_R - 14, p.y - dy / d * REACH));
+      dx = p.x - joy.bx; dy = p.y - joy.by; d = Math.sqrt(dx * dx + dy * dy) || 0.0001;
     }
-    var m = Math.min(1, d / JOY_R);
-    if (m < 0.12) { joy.x = joy.y = 0; } else { joy.x = dx / d * m; joy.y = dy / d * m; }
+    var vr = Math.min(d, JOY_R);
+    joy.vx = dx / d * vr; joy.vy = dy / d * vr; // where the thumb is drawn: always on the ring
+    // dead zone in the middle, full speed before the rim, and a gentle curve for fine control at low speed
+    var raw = Math.max(0, Math.min(1, (vr - JOY_R * 0.12) / (JOY_R * 0.78))), m = Math.pow(raw, 1.3);
+    if (m <= 0.001) { joy.x = joy.y = 0; } else { joy.x = dx / d * m; joy.y = dy / d * m; }
   }, { passive: false });
 
   function release(e) {
@@ -813,24 +951,37 @@
     var s = CC.state, p = s.player;
     time += dt;
     call('UI', 'update', dt);
+    call('Settings', 'tick', dt);
     updatePresentationFx(dt);
     call('Waypoints','update',dt);
     call('EggQuest','update',dt);
     if(!s.coop)call('SaveGame','auto',dt);
+    else call('SaveGame','autoCharacter',dt);
     if (uiOpen() !== uiWas) { uiWas = uiOpen(); resetInputHeld(); }
     if (call('Eagle', 'sceneActive')) return; // the egg is hatching: the game waits
     // In a co-op session the world is shared, so a menu or a level-up perk popup must NOT freeze it: that froze every
     // monster, the crossbow and the partner's view too. The hero just stops responding to the controls meanwhile.
-    var coopLive = !!(s.coop && CC.Multiplayer && CC.Multiplayer.active), menuOpen = uiWas || (p && p.perkOpen);
+    var campOpen = !!(CC.Camp && CC.Camp.isOpen && CC.Camp.isOpen());
+    var coopLive = !!(s.coop && CC.Multiplayer && CC.Multiplayer.active), menuOpen = uiWas || (p && p.perkOpen) || campOpen;
     if (paused || (menuOpen && !coopLive) ||
-        (CC.Waypoints && CC.Waypoints.isOpen && CC.Waypoints.isOpen()) ||
-        (CC.Camp && CC.Camp.isOpen && CC.Camp.isOpen())) return;
+        (CC.Waypoints && CC.Waypoints.isOpen && CC.Waypoints.isOpen())) return;
+    noteWorld();
+    if (coopLive) { // in town or a tent the world is not paused: the host simulates it, and a guest keeps reporting to the party
+      if (coopHostAway()) bgWorld(dt);
+      else if (isAwayNow()) call('Multiplayer', 'tick', dt);
+    }
+    call('Portal', 'update', dt);
     if (tunnel) { updateTunnel(dt); return; }
     if (s.mode === 'dead' && s.coop && s.area === 'defense' && CC.Defense) { CC.Defense.deadUpdate(dt); return; } // the town fights on while you are down
     var beforeX=p&&p.x,beforeY=p&&p.y;
     pollInput();
     if (coopLive && menuOpen) { // a menu is up: the hero stands still while the shared world keeps running
-      var ci = CC.input; ci.moveX = 0; ci.moveY = 0; ci.attack = false; ci.spell1 = false; ci.spell2 = false; ci.dash = false; ci.potion = false; ci.interact = false;
+      var ci = CC.input; ci.moveX = 0; ci.moveY = 0; ci.attack = false; ci.spell1 = false; ci.spell2 = false; ci.dash = false; ci.potion = false; ci.mpotion = false; ci.interact = false;
+    }
+    if (p && p.psyT > 0) { // seized by a psychic grip: no moving, no casting, dragged toward the caster
+      p.psyT -= dt; var cs = CC.input; cs.moveX = 0; cs.moveY = 0; cs.attack = false; cs.spell1 = false; cs.spell2 = false; cs.dash = false; cs.potion = false; cs.mpotion = false; cs.interact = false;
+      if (p.psyPull) { var pk = Math.min(1, dt * 7); movePlayer(p, (p.psyPull.x - p.x) * pk, (p.psyPull.y - p.y) * pk); }
+      if (p.psyT <= 0) p.psyPull = null;
     }
     if (CC.input.interact && playing()) { interact(); return; }
     if (s.area === 'defense' && CC.Defense && CC.Defense.operating && CC.Defense.operating()) { // manning the crossbow: the stick aims, the hero stays put
@@ -839,6 +990,7 @@
     }
     if (s.area === 'defense' && CC.Defense && CC.Defense.rapidActive && CC.Defense.rapidActive()) CC.input.attack = true; // rapid fire: autoshooting
     if (CC.input.potion) CC.usePotion();
+    if (CC.input.mpotion) CC.useManaPotion();
     if (CC.Camp && CC.Camp.isInside && CC.Camp.isInside()) {
       call('Classes', 'update', dt, { noCombat: true });
       if (p && p.stub) movePlayer(p, CC.input.moveX * p.speed * dt, CC.input.moveY * p.speed * dt);
@@ -861,18 +1013,20 @@
         call('Classes', 'update', dt);
         if(!(CC.Multiplayer&&CC.Multiplayer.isGuest()))call('Enemies', 'update', dt);
         call('SpellCharge','update',dt);
+        call('Vfx','update',dt);
         call('Charge', 'update', dt, !!(keys.Space || held.attack > 0) && !(s.area === 'defense' && CC.Defense && CC.Defense.operatingNow && CC.Defense.operatingNow())); // hold attack to charge; a tap is the normal attack
         if(!(CC.Multiplayer&&CC.Multiplayer.isGuest()))call('Loot', 'update', dt);
         if(!(CC.Multiplayer&&CC.Multiplayer.isGuest()))call('Breakables','update',dt);
         call('Multiplayer','tick',dt);
         if (s.area === 'defense') call('Defense','update',dt);
-        if (s.area === 'tree-tunnel') call('TreeTunnel', 'update', dt);
+        var isGuestNow = !!(CC.Multiplayer && CC.Multiplayer.isGuest && CC.Multiplayer.isGuest());
+        if (s.area === 'tree-tunnel' && !isGuestNow) call('TreeTunnel', 'update', dt);
         if (s.area === 'tree-ascent') call('TreeAscent','update',dt);
         // Walk through the living tunnel and defeat its miniboss before entering the plains.
         var ex = s.map && s.map.stairs;
-        if (ex && p && !p.stub && (
-            (s.area === 'forest' && CC.EggQuest &&
-              CC.EggQuest.tunnelUnlocked()) ||
+        if (ex && p && !p.stub && !isGuestNow && (
+            (s.area === 'forest' && ((CC.EggQuest &&
+              CC.EggQuest.tunnelUnlocked()) || s.coop)) ||
             s.area === 'plains' ||
             (s.area === 'tree-tunnel' && call('TreeTunnel', 'canExit'))) &&
             Math.hypot(p.x - ex.x, p.y - ex.y) <= 28 && !playerDead()) {
@@ -926,6 +1080,19 @@
     ctx.lineWidth = 2; ctx.strokeStyle = '#5a4630'; ctx.stroke(); // bronze frame, as in ui.js
     rr(x + 3, y + 3, w - 6, h - 6, 4); ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(224,168,74,0.22)'; ctx.stroke();
     label(text, x + w / 2, y + h / 2, 16, '#e8dcc4');
+  }
+
+  // The settings gear, drawn with canvas primitives (no emoji fonts).
+  function drawGearButton(x, y, w, h, cb) {
+    ui.push({ x: x, y: y, w: w, h: h, cb: cb });
+    var g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, '#4a4358'); g.addColorStop(1, '#14101a');
+    rr(x, y, w, h, 6); ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#5a4630'; ctx.stroke();
+    var cx = x + w / 2, cy = y + h / 2, i;
+    ctx.save(); ctx.translate(cx, cy); ctx.fillStyle = '#e8dcc4';
+    for (i = 0; i < 8; i++) { ctx.save(); ctx.rotate(i * Math.PI / 4); ctx.fillRect(-2, -10, 4, 5); ctx.restore(); }
+    ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fillStyle = '#2a2230'; ctx.fill();
+    ctx.restore();
   }
 
   // Compact framed tent shortcut sits between Save and Pause. The drawing
@@ -1025,6 +1192,7 @@
     ctx.fillStyle = '#0b0812'; ctx.fillRect(0, 0, cam.w, cam.h);
     if (CC.Camp && CC.Camp.isInside && CC.Camp.isInside()) {
       call('Camp', 'drawScene', ctx, cam);
+      call('Multiplayer', 'drawWorld', ctx, cam); // a partner in the same camp
       call('Classes', 'drawPlayer', ctx, cam);
     } else if (s.mode === 'dungeon' || (s.mode === 'dead' && s.area === 'defense')) { // defense keeps the arena on screen while a hero is down
       // The shell already applied ctx.scale(zoom). Dungeon.draw scales by cam.zoom itself, so hand it a
@@ -1037,6 +1205,7 @@
       call('Breakables','draw',ctx,cam);
       call('Waypoints','draw',ctx,cam);
       call('Camp', 'drawWorldMarker', ctx, cam); // grounded below the hero, not painted over them
+      call('Portal', 'drawWorld', ctx, cam);
       call('Loot', 'draw', ctx, cam);
       call('Enemies', 'draw', ctx, cam);
       call('Classes', 'draw', ctx, cam);
@@ -1047,11 +1216,15 @@
       call('Charge', 'draw', ctx, cam);
       if (CC.Dungeon && typeof CC.Dungeon.drawFront === 'function') CC.Dungeon.drawFront(ctx, dcam); // trees and props in front of the hero redraw over the entities
       if (CC.Dungeon && CC.Dungeon.realm) CC.Dungeon.drawLighting(ctx, dcam); // open-air maps light the whole scene after the entities
+      call('Vfx','draw',ctx,cam); // spell particles, nova rings, explosions and lightning
+      call('Vfx','drawDarkness',ctx,cam); // the Patchwork Horror's dark
       call('SpellCharge','draw',ctx,cam); // illuminated aiming circle overlays the ground
     } else {
       if (has('Town', 'draw')) call('Town', 'draw', ctx, cam);
       else { drawFallbackFloor(); call('Classes', 'drawPlayer', ctx, cam); }
       call('Waypoints','draw',ctx,cam);
+      call('Portal', 'drawTown', ctx, cam);
+      call('Multiplayer', 'drawWorld', ctx, cam);
     }
     if (s.mode === 'town') call('Camp', 'drawWorldMarker', ctx, cam);
     drawFallbackPlayer();
@@ -1118,22 +1291,45 @@
     if (s.mode === 'dungeon') {
       label(s.area === 'forest' ? 'Giant Forest' : s.area === 'tree-tunnel' ? 'Hollow Tree' :
         s.area === 'plains' ? 'Rolling Plains' : 'Floor ' + s.floor, W - 12, top + 28, 13, '#e8dcc4', 'right');
-      addButton(W - 78, top + 42, 66, 26, 'Retreat', '#5a2a22', function () { CC.returnToTown(); });
+      if (s.area === 'defense') addButton(W - 78, top + 42, 66, 26, 'Retreat', '#5a2a22', function () { CC.returnToTown(); });
+      else if (!(CC.Camp && CC.Camp.isInside && CC.Camp.isInside())) addButton(W - 84, top + 42, 72, 26, 'TP-Town', '#4b2a78', function () { call('Portal', 'place'); });
     } else {
       label('Town', W - 12, top + 28, 13, '#e8dcc4', 'right');
     }
   }
 
+  // A weighty, premium-feeling stick: a bronze-rimmed well, a glassy thumb, and a glow toward where you are heading.
+  function drawStick() {
+    var on = joy.id !== null, home = joyHome(), bx = on ? joy.bx : home.x, by = on ? joy.by : home.y, R = JOY_R;
+    var tx = bx + (on ? joy.vx : 0), ty = by + (on ? joy.vy : 0), mag = on ? Math.hypot(joy.x, joy.y) : 0;
+    ctx.save();
+    ctx.globalAlpha = on ? 1 : 0.42;
+    var well = ctx.createRadialGradient(bx, by, R * 0.15, bx, by, R);
+    well.addColorStop(0, 'rgba(8,6,14,0.35)'); well.addColorStop(1, 'rgba(24,16,34,0.62)');
+    ctx.beginPath(); ctx.arc(bx, by, R, 0, 6.2832); ctx.fillStyle = well; ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(224,168,74,0.55)'; ctx.stroke(); // bronze rim
+    ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,236,190,0.35)'; ctx.beginPath(); ctx.arc(bx, by, R - 3, 0, 6.2832); ctx.stroke();
+    for (var q = 0; q < 4; q++) { // N / E / S / W notches
+      var a = q * Math.PI / 2; ctx.beginPath(); ctx.moveTo(bx + Math.cos(a) * (R - 11), by + Math.sin(a) * (R - 11)); ctx.lineTo(bx + Math.cos(a) * (R - 4), by + Math.sin(a) * (R - 4));
+      ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(224,168,74,0.5)'; ctx.stroke();
+    }
+    if (on && mag > 0.02) { // glow arc toward the heading, brighter the harder you push
+      var ang = Math.atan2(joy.y, joy.x);
+      ctx.beginPath(); ctx.arc(bx, by, R - 1.5, ang - 0.55, ang + 0.55); ctx.lineWidth = 5; ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(255,196,110,' + (0.35 + 0.55 * mag) + ')'; ctx.shadowColor = 'rgba(255,170,70,0.9)'; ctx.shadowBlur = 10 * mag; ctx.stroke(); ctx.shadowBlur = 0;
+      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(tx, ty); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,214,150,0.25)'; ctx.stroke();
+    }
+    var th = ctx.createRadialGradient(tx - 7, ty - 8, 2, tx, ty, 28); // glassy thumb
+    th.addColorStop(0, 'rgba(255,244,214,0.95)'); th.addColorStop(0.45, 'rgba(224,168,74,0.82)'); th.addColorStop(1, 'rgba(120,76,28,0.9)');
+    ctx.beginPath(); ctx.arc(tx, ty, on ? 26 : 24, 0, 6.2832); ctx.fillStyle = th; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,240,200,0.7)'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(tx - 7, ty - 9, 7, 0, 6.2832); ctx.fillStyle = 'rgba(255,255,255,0.28)'; ctx.fill();
+    ctx.restore();
+  }
+
   function drawControls() {
     // joystick
-    var bx = joy.id !== null ? joy.bx : 80, by = joy.id !== null ? joy.by : H - 90;
-    ctx.globalAlpha = joy.id !== null ? 0.9 : 0.35;
-    ctx.beginPath(); ctx.arc(bx, by, JOY_R, 0, 6.3);
-    ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fill();
-    ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.stroke();
-    ctx.beginPath(); ctx.arc(bx + joy.x * JOY_R, by + joy.y * JOY_R, 22, 0, 6.3);
-    ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fill();
-    ctx.globalAlpha = 1;
+    drawStick();
 
     var p = CC.state.player,chargeHUD=call('SpellCharge','info');
     for (var name in btns) {
@@ -1141,7 +1337,7 @@
       var on = held[contextual ? 'interact' : name] > 0 || (name === 'attack' && keys.Space);
       // Compact ability labels: the spell name appears only after release.
       var txt = contextual ? 'ACTION' : name==='spell1'?'I':name==='spell2'?'II':b.label;
-      var col = name === 'potion' ? '225,55,70' : contextual ? '105,205,170' :
+      var col = name === 'potion' ? '225,55,70' : name === 'mpotion' ? '60,130,235' : contextual ? '105,205,170' :
         name === 'attack' ? '255,140,70' : name === 'dash' ? '120,220,160' : '140,120,255';
       ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 6.3);
       ctx.fillStyle = 'rgba(' + col + ',' + (on ? 0.7 : 0.35) + ')'; ctx.fill();
@@ -1154,14 +1350,14 @@
         ctx.closePath(); ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fill();
         label(cd.toFixed(cd < 10 ? 1 : 0), b.x, b.y - b.r - 8, 10, '#ddd');
       }
-      if (name === 'potion') {
-        var count=(CC.state && CC.state.potions)||0;
+      if (name === 'potion' || name === 'mpotion') {
+        var mana = name === 'mpotion', count=(CC.state && (mana ? CC.state.manaPotions : CC.state.potions))||0;
         ctx.save();ctx.translate(b.x,b.y-2);
         ctx.fillStyle='#ffc9c9';ctx.fillRect(-3,-10,6,3);
         ctx.fillStyle='#603a35';ctx.fillRect(-5,-7,10,3);
         ctx.beginPath();ctx.moveTo(-5,-4);ctx.lineTo(-9,0);ctx.lineTo(-8,9);
         ctx.quadraticCurveTo(0,13,8,9);ctx.lineTo(9,0);ctx.lineTo(5,-4);
-        ctx.closePath();ctx.fillStyle=count>0?'#d9233a':'#70444a';ctx.fill();
+        ctx.closePath();ctx.fillStyle=count>0?(mana?'#2f7be0':'#d9233a'):(mana?'#3a4660':'#70444a');ctx.fill();
         ctx.strokeStyle='#ffd2cc';ctx.lineWidth=1.4;ctx.stroke();
         ctx.fillStyle='#ffb6b2';ctx.fillRect(-5,1,3,4);
         ctx.restore();
@@ -1205,6 +1401,46 @@
     }
   }
 
+  // ---- the Continue screen: up to five saved characters ----
+  var delArm = {};
+  var AREA_NAMES = {};
+  function ago(t) {
+    if (!t) return '';
+    var s = Math.max(0, (Date.now() - t) / 1000);
+    return s < 90 ? 'just now' : s < 5400 ? Math.round(s / 60) + ' min ago' : s < 129600 ? Math.round(s / 3600) + ' h ago' : Math.round(s / 86400) + ' days ago';
+  }
+  function drawContinue() {
+    addButton(W - 86, 14, 76, 27, 'Back', '#463645', function () { titlePage = 'mode'; });
+    label('SAVED GAMES', W / 2, Math.max(50, H * 0.12) + 34, 18, '#ffd36b');
+    var slots = call('SaveGame', 'slots') || [], cw = Math.min(W - 24, 400), x = (W - cw) / 2, y0 = Math.max(50, H * 0.12) + 62;
+    var ch = Math.max(58, Math.min(86, (H - y0 - 24) / 5 - 8));
+    slots.forEach(function (sl, n) {
+      var yy = y0 + n * (ch + 8), inf = sl.info, cl = inf && CLASSES.filter(function (c) { return c.id === inf.classId; })[0];
+      rr(x, yy, cw, ch, 12);
+      var gr = ctx.createLinearGradient(x, yy, x + cw, yy);
+      gr.addColorStop(0, inf ? 'rgba(255,255,255,0.13)' : 'rgba(255,255,255,0.04)'); gr.addColorStop(1, 'rgba(255,255,255,0.03)');
+      ctx.fillStyle = gr; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = inf && cl ? cl.color : '#3a3048'; ctx.stroke();
+      label('SLOT ' + sl.n, x + 12, yy + 12, 9, '#8a7ea0', 'left');
+      if (!inf) { label('Empty', x + cw / 2, yy + ch / 2 + 2, 14, '#6a6080'); return; }
+      ui.push({ x: x, y: yy, w: cw - 44, h: ch, cb: function () { CC.state.coop = false; call('SaveGame', 'load', sl.n); } });
+      var pw = Math.max(46, Math.min(64, ch - 8));
+      if (CC.HeroPortraits && CC.HeroPortraits.draw) CC.HeroPortraits.draw(ctx, inf.classId, x + 8, yy + 14, pw, ch - 20);
+      var tx0 = x + pw + 20;
+      label(inf.name, tx0, yy + 28, 16, cl ? cl.color : '#fff', 'left');
+      label('Level ' + inf.level + ' ' + (cl ? cl.name : inf.classId), tx0, yy + 46, 11, '#d8d0ee', 'left');
+      label(inf.where + '  -  saved ' + ago(inf.savedAt), tx0, yy + 61, 10, '#9a90b4', 'left');
+      var armed = delArm[sl.n] && delArm[sl.n] > Date.now();
+      var dx = x + cw - 38, dy = yy + 8;
+      ui.push({ x: dx - 6, y: dy - 6, w: 44, h: 36, cb: function () {
+        if (delArm[sl.n] && delArm[sl.n] > Date.now()) { call('SaveGame', 'deleteSlot', sl.n); delete delArm[sl.n]; }
+        else delArm[sl.n] = Date.now() + 3000;
+      } });
+      rr(dx, dy, 30, 22, 6); ctx.fillStyle = armed ? 'rgba(200,60,60,0.85)' : 'rgba(255,255,255,0.08)'; ctx.fill();
+      label(armed ? 'DEL?' : 'X', dx + 15, dy + 12, armed ? 9 : 12, armed ? '#fff' : '#c88');
+    });
+    label('Tap a character to continue. A new game uses the first empty slot.', W / 2, H - 16, 10, '#8a80a8');
+  }
+
   function drawTitle() {
     var g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, '#1a0f2e'); g.addColorStop(1, '#07040d');
@@ -1228,11 +1464,12 @@
         if(CC.Multiplayer)CC.Multiplayer.openLobby();
       });
       label('Co-op dungeon adventures for two',W/2,H*.37+151,11,'#baa7c3');
-      if(call('SaveGame','exists'))addButton(W/2-125,H*.37+181,250,44,'CONTINUE SOLO SAVE','#365848',function(){
-        CC.state.coop=false;call('SaveGame','load');
+      if(call('SaveGame','exists'))addButton(W/2-125,H*.37+181,250,44,'CONTINUE','#365848',function(){
+        CC.state.coop=false;titlePage='continue';
       });
       return;
     }
+    if(titlePage==='continue'){drawContinue();return;}
     addButton(W-86,14,76,27,'Back','#463645',function(){titlePage='mode';});
     label('Pick your hero', W / 2, Math.max(50, H * 0.12) + 34, 14, '#cfc5ff');
 
@@ -1260,9 +1497,10 @@
     });
     if(call('SaveGame','exists')){
       addButton(W/2-120,H-85,240,43,'Continue Saved Adventure','#436c56',function(){
-        call('SaveGame','load');
+        CC.state.coop=false;titlePage='continue';
       });
-      label('Choose a hero for a new adventure',W/2,H-21,11,'#aa9cbd');
+      var ns=call('SaveGame','nextSlot');
+      label(ns&&ns.replaces?'All 5 slots are full: a new hero replaces the oldest (slot '+ns.n+')':'A new hero is saved to slot '+(ns&&ns.n),W/2,H-21,11,ns&&ns.replaces?'#e0a06a':'#aa9cbd');
     }else label('Tap a hero to begin',W/2,H-22,12,'#8a80a8');
   }
 
@@ -1308,6 +1546,7 @@
     if (m === 'title') { drawTitle(); return; }
     drawWorld();
     if (m === 'town' || m === 'dungeon' || m === 'dead') drawScreenFx();
+    if (m === 'dungeon') call('Vfx', 'drawScreen', ctx, W, H); // the sky flashes yellow for chain lightning
     if (m === 'dungeon') call('CriticalScene', 'drawScreen', ctx, W, H);
     // No floating HUD/buttons/other overlays during the brief critical close-up.
     if(m==='dungeon'&&call('CriticalScene','isActive'))return;
@@ -1316,6 +1555,7 @@
       drawHud(); drawControls();
       call('EggQuest','drawHud',ctx,W,H);
       call('Defense','drawScreen',ctx,W,H,addButton);
+      call('Multiplayer','drawScreen',ctx,W,H);
       if (m === 'town') drawFallbackTownPanel();
       var mpHudShift = CC.Multiplayer && CC.Multiplayer.active ? 22 : 0; // room for the SESSION button
       var skillPts = CC.SkillTree && CC.state.player ? CC.SkillTree.points(CC.state.player) : 0;
@@ -1327,14 +1567,16 @@
       var hudLeft = W-8-hudWidth;
       var quickWidth = Math.min(188,hudWidth),quickGap = 5;
       var quickX = Math.max(hudLeft,W-14-quickWidth),quickY = 116 + mpHudShift;
-      var saveWidth = Math.round((quickWidth-quickGap*2)*.34);
-      var tentWidth = Math.round((quickWidth-quickGap*2)*.21);
-      var pauseWidth = quickWidth-saveWidth-tentWidth-quickGap*2;
-      addButton(quickX,quickY,saveWidth,30,'Save','#466b53',function(){
+      var gearW = 28, strip = quickWidth-gearW-quickGap, stripX = quickX+gearW+quickGap;
+      var saveWidth = Math.round((strip-quickGap*2)*.34);
+      var tentWidth = Math.round((strip-quickGap*2)*.21);
+      var pauseWidth = strip-saveWidth-tentWidth-quickGap*2;
+      drawGearButton(quickX, quickY, gearW, 30, function () { call('UI', 'open', 'settings'); });
+      addButton(stripX,quickY,saveWidth,30,'Save','#466b53',function(){
         if(!CC.state.coop&&call('SaveGame','save')&&CC.state.player)
           CC.fx.text(CC.state.player.x,CC.state.player.y-18,'GAME SAVED','#b5efb6',12);
       });
-      if(CC.Camp)drawTentButton(quickX+saveWidth+quickGap,quickY,
+      if(CC.Camp)drawTentButton(stripX+saveWidth+quickGap,quickY,
         tentWidth,30,function(){
         if(CC.Camp.isInside&&CC.Camp.isInside()){
           call('Camp','interact');
@@ -1347,7 +1589,7 @@
             'CAMP ALREADY SET','#ddc7a0',12);
         }
       },CC.Camp.hasCamp&&CC.Camp.hasCamp());
-      addButton(quickX+saveWidth+tentWidth+quickGap*2,quickY,
+      addButton(stripX+saveWidth+tentWidth+quickGap*2,quickY,
         pauseWidth,30,paused?'Resume':'Pause','#4a3a6a',togglePause);
       // LEVEL UP: appears when skill points are waiting, with the count beside it. Nothing opens on its own.
       if (skillPts > 0 && !uiOpen()) {

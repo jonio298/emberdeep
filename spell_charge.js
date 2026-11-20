@@ -21,7 +21,7 @@ var DEFINITIONS={
   },
   necromancer:{
     spell1:{name:'GRAVE CHOIR',shape:'circle',range:153,radius:63,color:'#9bd99f',mult:1.8},
-    spell2:{name:'SOUL WELL',shape:'circle',range:161,radius:74,color:'#a47cf0',mult:1.8},
+    spell2:{name:'SOUL WELL',shape:'circle',range:0,radius:74,color:'#a47cf0',mult:1.8},
     dash:{name:'WRAITH STRIDE',shape:'dash',range:184,radius:18,color:'#8bd6a7'}
   },
   thief:{
@@ -396,7 +396,8 @@ function combatTick(dt){
    if(e.kind==='flame'){
      if(!e.owner||e.owner.hp<=0){e.life=e.t;continue;}
      doCone(e.owner,Math.atan2(e.dy,e.dx),e.range,.48,e.damage,'fire',.35);
-     if(Math.random()<.8)burst(px+e.dx*e.range*.8,py+e.dy*e.range*.8,e.color,2);
+     if(CC.Vfx&&CC.Vfx.flameEmbers)CC.Vfx.flameEmbers(px,py,e.dx,e.dy,e.range);
+     else if(Math.random()<.8)burst(px+e.dx*e.range*.8,py+e.dy*e.range*.8,e.color,2);
    }else if(e.kind==='icicles'||e.kind==='razor'){
      var n=e.kind==='icicles'?3:4;
      for(j=0;j<n;j++){
@@ -455,6 +456,7 @@ function drawEffects(c,cam){
    var e=effects[i],x=(e.owner?e.owner.x:e.x)-cam.x,
       y=(e.owner?e.owner.y:e.y)-cam.y,progress=e.t/e.life;
    c.save();c.globalAlpha=clamp(1-progress,0,1)*.85;
+   if(CC.Vfx&&CC.Vfx.drawSC&&CC.Vfx.drawSC(c,e,x,y,progress,t)){c.restore();continue;} // stylised art for every held spell
    if(e.kind==='flame'){
      c.translate(x,y);c.rotate(Math.atan2(e.dy,e.dx));
      var range=e.range;
@@ -561,6 +563,63 @@ function drawEffects(c,cam){
  }
 }
 // A transparent field with a crisp, class-specific edge: no distracting opaque disk.
+function hglyph(c,k,s){ // hieroglyph-style glyphs drawn from strokes (no font needed), about +-5 units
+ c.save();c.scale(s/5,s/5);c.lineWidth=1.25*5/s;c.lineCap='round';c.lineJoin='round';
+ c.beginPath();
+ switch(k%8){
+  case 0:c.arc(0,-3.2,2.2,0,TAU);c.moveTo(0,-1);c.lineTo(0,5);c.moveTo(-3.4,1.4);c.lineTo(3.4,1.4);break;          // ankh
+  case 1:c.moveTo(-5,0);c.quadraticCurveTo(0,-5,5,0);c.quadraticCurveTo(0,5,-5,0);c.moveTo(1.6,0);c.arc(0,0,1.6,0,TAU);c.moveTo(5,0);c.lineTo(5.8,3.4);break; // eye
+  case 2:c.moveTo(-5,3);c.bezierCurveTo(-3,-6,1,6,5,-3);c.moveTo(6,-3.4);c.arc(5,-3.4,1,0,TAU);break;               // serpent
+  case 3:for(var j=-1;j<=1;j++){c.moveTo(-5,j*3);c.lineTo(-2.5,j*3-2);c.lineTo(0,j*3);c.lineTo(2.5,j*3-2);c.lineTo(5,j*3);}break; // water
+  case 4:c.ellipse(0,0,3,4,0,0,TAU);c.moveTo(0,-4);c.lineTo(0,4);c.moveTo(-3,-2);c.lineTo(-5.4,-3.4);c.moveTo(-3,1);c.lineTo(-5.4,2.4);c.moveTo(3,-2);c.lineTo(5.4,-3.4);c.moveTo(3,1);c.lineTo(5.4,2.4);break; // scarab
+  case 5:c.moveTo(0,-5);c.lineTo(0,5);c.moveTo(0,-4);c.lineTo(-3,-1);c.moveTo(0,-4);c.lineTo(3,-1);c.moveTo(0,-1);c.lineTo(-3,2);c.moveTo(0,-1);c.lineTo(3,2);break; // reed
+  case 6:c.moveTo(-5,4);c.lineTo(0,-5);c.lineTo(5,4);c.closePath();c.moveTo(1,0.5);c.arc(0,0.5,1,0,TAU);break;       // pyramid
+  default:c.moveTo(3,0);c.arc(0,0,3,0,TAU);for(var q=0;q<8;q++){c.moveTo(Math.cos(q*.785)*4,Math.sin(q*.785)*4);c.lineTo(Math.cos(q*.785)*5.6,Math.sin(q*.785)*5.6);} // sun disc
+ }
+ c.stroke();c.restore();
+}
+function tinySkull(c,x,y,s,col){
+ c.save();c.translate(x,y);c.scale(s,s);
+ c.fillStyle=col;c.beginPath();c.ellipse(0,-.8,3.6,3.8,0,0,TAU);c.fill();c.fillRect(-2,1.6,4,2.6);
+ c.fillStyle='#0b1a12';c.beginPath();c.ellipse(-1.4,-1,.95,1.25,0,0,TAU);c.ellipse(1.4,-1,.95,1.25,0,0,TAU);c.fill();
+ c.fillRect(-.3,.8,.6,1);c.fillRect(-1.2,2.4,.5,1.5);c.fillRect(.7,2.4,.5,1.5);
+ c.restore();
+}
+// The necromancer's circle: a ring of alternating skulls and hieroglyphs, bone-and-skull crown on the outside, a turning star within
+function necroSigil(c,r,t){
+ var i,a,n=16,band=r*.79,gs=Math.max(4,Math.min(9,r*.075)),ss=Math.max(.9,Math.min(2,r*.017));
+ ring(c,0,0,r,'#8fe0b0',1.8);
+ ring(c,0,0,r*.9,'rgba(143,224,176,.65)',.8);
+ ring(c,0,0,r*.68,'rgba(101,172,119,.6)',.8);
+ // tick marks like a measuring dial
+ c.strokeStyle='rgba(143,224,176,.7)';c.lineWidth=1;
+ for(i=0;i<48;i++){a=i*TAU/48+t*.05;var l=i%4===0?5:2.6;c.beginPath();c.moveTo(Math.cos(a)*r,Math.sin(a)*r);c.lineTo(Math.cos(a)*(r+l),Math.sin(a)*(r+l));c.stroke();}
+ // the band: skull, glyph, skull, glyph...
+ for(i=0;i<n;i++){
+  a=i*TAU/n+t*.16;var px=Math.cos(a)*band,py=Math.sin(a)*band;
+  if(i%2){c.save();c.translate(px,py);c.rotate(a+Math.PI/2);c.strokeStyle='#9be8b8';hglyph(c,(i>>1)+Math.floor(t*.3),gs);c.restore();}
+  else{tinySkull(c,px,py,ss,'#d6f6e0');}
+ }
+ // skulls crowning the outside, joined by crossed bones
+ for(i=0;i<8;i++){
+  a=-i*TAU/8-t*.1;var ox=Math.cos(a)*(r*1.13+4),oy=Math.sin(a)*(r*1.13+4);
+  c.save();c.translate(ox,oy);c.rotate(a+Math.PI/2);
+  c.strokeStyle='rgba(205,236,215,.55)';c.lineWidth=1;c.beginPath();c.moveTo(-5,5);c.lineTo(5,9);c.moveTo(5,5);c.lineTo(-5,9);c.stroke();
+  tinySkull(c,0,0,ss*1.25,'#e2f8ea');
+  c.restore();
+ }
+ // a slowly turning star and wisps within
+ c.save();c.rotate(-t*.35);c.strokeStyle='rgba(143,224,176,.4)';c.lineWidth=1;
+ for(var k=0;k<2;k++){c.rotate(k*Math.PI/3);c.beginPath();for(var j=0;j<3;j++){var sa=j*TAU/3-Math.PI/2;c.lineTo(Math.cos(sa)*r*.6,Math.sin(sa)*r*.6);}c.closePath();c.stroke();}
+ c.restore();
+ for(i=0;i<7;i++){
+  a=i*TAU/7+t*.24;var rr=r*(.34+.07*Math.sin(i+t*1.7)),sx=Math.cos(a)*rr,sy=Math.sin(a)*rr;
+  c.strokeStyle=i%2?'rgba(156,231,173,.5)':'rgba(70,136,99,.75)';c.lineWidth=2;
+  c.beginPath();c.moveTo(sx,sy);c.quadraticCurveTo(sx-4,sy-8,sx+Math.sin(t+i)*6,sy-16);c.stroke();
+  oval(c,sx,sy-4,2.7,4,'rgba(89,193,119,.22)');
+ }
+ oval(c,0,0,Math.max(3,r*.1),Math.max(3,r*.12),'rgba(149,219,167,.3)');
+}
 function sigil(c,cls,x,y,r,col,t){
  c.save();c.translate(x,y);c.lineCap='round';
  if(cls==='swordsman'){
@@ -598,18 +657,7 @@ function sigil(c,cls,x,y,r,col,t){
      oval(c,Math.cos(a)*r*.5,Math.sin(a)*r*.5,2.6,1.7,'rgba(215,67,98,.33)');
    }
  }else{
-   ring(c,0,0,r,'#79d0a0',1.6);
-   ring(c,0,0,r*.81,'rgba(101,172,119,.52)',.8);
-   for(var i=0;i<9;i++){
-     var a=i*TAU/9+t*.24,rr=r*(.66+.1*Math.sin(i+t*1.7)),
-         sx=Math.cos(a)*rr,sy=Math.sin(a)*rr;
-     c.strokeStyle=i%2?'rgba(156,231,173,.48)':'rgba(70,136,99,.73)';
-     c.lineWidth=2;
-     c.beginPath();c.moveTo(sx,sy);
-     c.quadraticCurveTo(sx-4,sy-8,sx+Math.sin(t+i)*6,sy-16);c.stroke();
-     oval(c,sx,sy-4,2.7,4,'rgba(89,193,119,.21)');
-   }
-   oval(c,-3,-2,Math.max(2,r*.10),Math.max(3,r*.12),'rgba(149,219,167,.29)');
+   necroSigil(c,r,t);
  }
  c.restore();
 }
@@ -648,5 +696,5 @@ function drawPreview(c,cam){
 }
 SC.begin=begin;SC.drag=drag;SC.worldAim=worldAim;SC.release=release;SC.cancel=cancel;SC.clear=clear;SC.update=update;SC.land=landing;SC.addRemote=addRemote;
 SC.isActive=isActive;SC.info=info;SC.draw=function(c,cam){drawEffects(c,cam);drawPreview(c,cam);};
-SC.definitions=DEFINITIONS;SC.chargeThreshold=ARM;SC.holdDuration=FULL;
+SC.sigil=sigil;SC.definitions=DEFINITIONS;SC.chargeThreshold=ARM;SC.holdDuration=FULL;
 })(window);

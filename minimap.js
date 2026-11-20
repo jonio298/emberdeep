@@ -148,11 +148,25 @@
       if (e.boss) { ctx.fillStyle = '#fff'; ctx.fillRect(ex2 - 1.5, ey2 - 1, 1, 1.4); ctx.fillRect(ex2 + 0.5, ey2 - 1, 1, 1.4); }
       ctx.globalAlpha = 1;
     }
+    var mpv = CC.Multiplayer && CC.Multiplayer.active && CC.Multiplayer.view, mpOff = null; // your partner in a co-op session
+    if (mpv && CC.Multiplayer.sameScene && !CC.Multiplayer.sameScene()) mpv = null; // your partner is in town or a tent
+    if (mpv && Number.isFinite(mpv.x)) {
+      var pdx = (mpv.x - p.x) / T * sc, pdy = (mpv.y - p.y) / T * sc, pd = Math.hypot(pdx, pdy);
+      if (pd <= inner - 4) { // on the map: a bright cyan diamond with a halo
+        var pxx = cx + pdx, pyy = cy + pdy;
+        ctx.fillStyle = 'rgba(80,230,255,' + (0.22 + 0.15 * pulse) + ')'; ctx.beginPath(); ctx.arc(pxx, pyy, 6, 0, PI2); ctx.fill();
+        ctx.fillStyle = '#7df0ff'; ctx.strokeStyle = '#04222a'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(pxx, pyy - 4.2); ctx.lineTo(pxx + 4.2, pyy); ctx.lineTo(pxx, pyy + 4.2); ctx.lineTo(pxx - 4.2, pyy); ctx.closePath(); ctx.stroke(); ctx.fill();
+      } else mpOff = Math.atan2(pdy, pdx); // off the map: a pointer on the rim, drawn below
+    }
     if (CC.Eagle && CC.Eagle.drawMinimap) CC.Eagle.drawMinimap(ctx, sx, sy, sc); // the eagle: its sight circle and a small bird
     ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.beginPath(); ctx.arc(cx, cy, 6.5, 0, PI2); ctx.fill(); // the hero: a white arrow
     ctx.save(); ctx.translate(cx, cy); ctx.rotate(ang);
     ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#10141c'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(5.5, 0); ctx.lineTo(-3.6, 3.6); ctx.lineTo(-1.6, 0); ctx.lineTo(-3.6, -3.6); ctx.closePath(); ctx.stroke(); ctx.fill();
     ctx.restore();
+    if (mpOff !== null) {
+      ctx.save(); ctx.translate(cx + Math.cos(mpOff) * (inner - 4), cy + Math.sin(mpOff) * (inner - 4)); ctx.rotate(mpOff);
+      ctx.fillStyle = '#7df0ff'; ctx.strokeStyle = '#04222a'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(5, 0); ctx.lineTo(-3.5, 4); ctx.lineTo(-3.5, -4); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+    }
     if (st && st.x > -900 && seen(st.tx, st.ty)) { // stairs off the map: a pointer on the rim
       var ddx = (st.x - p.x) / T * sc, ddy = (st.y - p.y) / T * sc;
       if (Math.hypot(ddx, ddy) > inner - 2) {

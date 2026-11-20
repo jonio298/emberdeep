@@ -263,7 +263,7 @@ async function relay(ws, data) {
     const p = data.player || {};
     const clean = {};
     for (const k of ['x','y','hp','maxHp','mana','maxMana','level','face','anim','atkAnim','swingAng',
-                     'swingSign','castFlash','whirlT','dashT','pwb']) {
+                     'swingSign','castFlash','whirlT','dashT','pwb','sc','pta','ptx','pty','ptr','ptf','ptt','cpa','cpx','cpy','cpf','cpt']) {
       if (Number.isFinite(p[k])) clean[k] = Math.max(-20000, Math.min(20000, p[k]));
     }
     clean.classId = room[role].hero;
@@ -274,8 +274,8 @@ async function relay(ws, data) {
   if (data.type === 'fx') {
     // Visual-only combat effects (slashes, spells, projectiles, minions) mirrored to the partner.
     if (!rate(ws, 'fx', 70)) return;
-    if (!['fx', 'pr', 'sc', 'mn', 'df', 'tb', 'tc', 'opt'].includes(data.k)) return;
-    if ((data.k === 'df' || data.k === 'tb' || data.k === 'opt') && role !== 'host') return; // wave state and crossbow fire come from the host
+    if (!['fx', 'pr', 'sc', 'mn', 'df', 'tb', 'tc', 'opt', 'ch', 'qs', 'qe', 'vf', 'gp'].includes(data.k)) return;
+    if ((data.k === 'df' || data.k === 'tb' || data.k === 'opt' || data.k === 'ch' || data.k === 'qs' || data.k === 'qe' || data.k === 'gp') && role !== 'host') return; // wave state and crossbow fire come from the host
     if (data.k === 'tc' && role !== 'guest') return; // crossbow requests come from the guest
     const d = cleanFx(data.d, 0);
     if (d === undefined || JSON.stringify(d).length > 2500) return;
@@ -303,6 +303,15 @@ async function relay(ws, data) {
     await publish(code, packet('hit', { from: role, id, damage, kind: safeText(data.kind, 24) }));
     return;
   }
+  if (data.type === 'drop_item' && role === 'guest') {
+    if (!rate(ws, 'drop', 5, 5000)) return;
+    const item = data.item;
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return;
+    const js = JSON.stringify(item);
+    if (js.length > 3000) return;
+    await publish(code, packet('drop_item', { from: role, item: JSON.parse(js) }));
+    return;
+  }
   if (data.type === 'pickup_request' && role === 'guest') {
     if (!rate(ws, 'pickup', 8)) return;
     const id = safeText(data.id, 50);
@@ -312,16 +321,18 @@ async function relay(ws, data) {
   if (data.type === 'pickup_grant' && role === 'host') {
     if (!rate(ws, 'pickup_grant', 10)) return;
     const reward = data.reward;
-    if (reward && ['item','gold','potion','hp','mana'].includes(reward.kind) && JSON.stringify(reward).length <= 5000)
+    if (reward && ['item','gold','potion','mpotion','hp','mana'].includes(reward.kind) && JSON.stringify(reward).length <= 5000)
       await publish(code, packet('pickup_grant', { to: 'guest', id: safeText(data.id, 50), reward }));
     return;
   }
   if (data.type === 'scene' && role === 'host') {
     if (!rate(ws, 'scene', 4)) return;
     const scene = data.scene || {};
-    if (!['cave', 'defense'].includes(scene.area) || !Number.isFinite(scene.seed) ||
+    if (!['cave', 'defense', 'forest', 'tree-tunnel', 'plains', 'tree-ascent'].includes(scene.area) || !Number.isFinite(scene.seed) ||
         !Number.isInteger(scene.floor) || scene.floor < 1 || scene.floor > 200) return;
     const clean = { area: scene.area, seed: scene.seed, floor: scene.floor };
+    if (Number.isInteger(scene.tf) && scene.tf >= 1 && scene.tf <= 5) clean.tf = scene.tf;
+    if (Number.isFinite(scene.px) && Number.isFinite(scene.py)) { clean.px = Math.max(-20000, Math.min(20000, scene.px)); clean.py = Math.max(-20000, Math.min(20000, scene.py)); }
     await put('scene:' + code, clean);
     await publish(code, packet('scene', { scene: clean }));
     return;

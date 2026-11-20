@@ -6,7 +6,7 @@
 'use strict';
 var CC=root.CC=root.CC||{}, TAU=Math.PI*2, now=0, active=null, queue=[], held=false;
 var reduced=!!(root.matchMedia&&root.matchMedia('(prefers-reduced-motion: reduce)').matches);
-var LENGTHS={swordsman:.73,thief:.59,wizard:.67,necromancer:.73};
+var LENGTHS={swordsman:1.0,thief:.59,wizard:.67,necromancer:.73};
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 function smooth(t){t=clamp(t,0,1);return t*t*(3-2*t);}
 function L(){return active?active.duration:.65;}
@@ -91,8 +91,8 @@ function view(w,h){
  }
  // Tiny camera compression at the two steel impacts, without harsh shakes.
  var impulse=o.heroClass==='swordsman'&&!o.fin?
-    Math.exp(-Math.pow((now-.23)/.042,2))*.04+
-    Math.exp(-Math.pow((now-.46)/.044,2))*.035:0;
+    Math.exp(-Math.pow((now-.40)/.05,2))*.06+
+    Math.exp(-Math.pow((now-.72)/.05,2))*.05:0;
  return {x:(minX+maxX)/2,y:(minY+maxY)/2,
    scale:zoom+impulse*k,blend:k};
 }
@@ -160,6 +160,147 @@ function swordsman(c,o,t){
      i%3?'#99152c':'#f15c69');
  }
  c.restore();
+}
+// ---- Swordsman critical: kneel, stab UP into the foe, blood, yank it out, more blood, hit, hit ----
+// 0-.13 drop to a knee, blade drawn back | .13-.26 the stab drives up into the body | .26-.44 held in, blood pumping
+// .44-.56 the blade is wrenched out | .56-.66 first slash | .70-.80 second slash | .80-1.08 recoil, drips, rise
+var G=330; // blood gravity
+function hash(i,s){var x=Math.sin(i*127.1+s*311.7)*43758.5453;return x-Math.floor(x);}
+function ease(t){t=clamp(t,0,1);return t*t*(3-2*t);}
+function quadPt(p0,p1,p2,u){var a=1-u;return {x:a*a*p0.x+2*a*u*p1.x+u*u*p2.x,y:a*a*p0.y+2*a*u*p1.y+u*u*p2.y};}
+// A long, sharp, glowing blue sword. Drawn from the grip at (hx,hy) pointing along `ang`; `blood` (0..1) reddens the blade.
+function blueSword(c,hx,hy,ang,L,glowAmt,blood,shake,scl){
+ c.save();c.translate(hx,hy);c.rotate(ang);if(scl)c.scale(scl,scl);
+ if(shake)c.translate(0,Math.sin(now*95)*shake);
+ c.shadowColor='#2f9bff';c.shadowBlur=6+16*glowAmt;
+ var g=c.createLinearGradient(0,-3.6,0,3.6);
+ g.addColorStop(0,'#d8f8ff');g.addColorStop(.42,'#59bcff');g.addColorStop(.58,'#2f7fe0');g.addColorStop(1,'#163f9c');
+ c.fillStyle=g;c.beginPath();
+ c.moveTo(1,-3.6);c.lineTo(L*.86,-2.9);c.lineTo(L+3,0);c.lineTo(L*.86,2.9);c.lineTo(1,3.6);c.closePath();c.fill();
+ c.shadowBlur=0;
+ // fuller groove, bright edge, hairline highlight
+ c.strokeStyle='#0f2f7a';c.lineWidth=1.1;c.beginPath();c.moveTo(5,.6);c.lineTo(L*.8,.3);c.stroke();
+ c.strokeStyle='rgba(235,252,255,.95)';c.lineWidth=.9;c.beginPath();c.moveTo(3,-3);c.lineTo(L*.9,-2.1);c.stroke();
+ c.strokeStyle='rgba(120,200,255,.7)';c.lineWidth=.7;c.beginPath();c.moveTo(4,2.6);c.lineTo(L*.88,1.9);c.stroke();
+ // glinting tip
+ var tw=.6+.4*Math.sin(now*40);
+ c.fillStyle='rgba(255,255,255,'+(.55+.4*tw*glowAmt)+')';c.beginPath();c.moveTo(L+4,0);c.lineTo(L-3,-1.6);c.lineTo(L-3,1.6);c.closePath();c.fill();
+ // blood coats the blade from the tip back
+ if(blood>0){
+  var bl=L*clamp(blood,0,1)*.92;
+  var bg=c.createLinearGradient(L-bl,0,L+2,0);bg.addColorStop(0,'rgba(120,8,22,0)');bg.addColorStop(.35,'rgba(150,10,28,.85)');bg.addColorStop(1,'rgba(205,18,40,.95)');
+  c.fillStyle=bg;c.beginPath();c.moveTo(L-bl,-3.1);c.lineTo(L*.86,-2.9);c.lineTo(L+3,0);c.lineTo(L*.86,2.9);c.lineTo(L-bl,3.1);c.closePath();c.fill();
+  c.fillStyle='rgba(255,120,130,.55)';c.fillRect(L-bl*.8,-2.5,bl*.7,.8);
+ }
+ // gold cross-guard with a gem, wrapped grip, pommel
+ c.fillStyle='#8b6a2a';c.fillRect(-1.5,-8.4,4.4,16.8);
+ c.fillStyle='#f0cf72';c.fillRect(-.8,-8,3,16);
+ c.fillStyle='#fff3b8';c.fillRect(-.8,-8,1,16);
+ c.fillStyle='#f0cf72';c.beginPath();c.arc(.7,-8.4,2,0,TAU);c.arc(.7,8.4,2,0,TAU);c.fill();
+ c.fillStyle='#9ef0ff';c.beginPath();c.arc(1.3,0,1.8,0,TAU);c.fill();
+ c.fillStyle='#4a2c1c';c.fillRect(-10,-1.7,8.6,3.4);
+ c.strokeStyle='#2a170c';c.lineWidth=.8;for(var i=0;i<4;i++){c.beginPath();c.moveTo(-9+i*2.2,-1.7);c.lineTo(-8+i*2.2,1.7);c.stroke();}
+ c.fillStyle='#f0cf72';c.beginPath();c.arc(-11.3,0,2.4,0,TAU);c.fill();
+ c.restore();
+}
+function flare(c,x,y,s,col,rot){
+ c.save();c.translate(x,y);c.rotate(rot||0);c.fillStyle=col;
+ c.beginPath();c.moveTo(0,-s);c.lineTo(s*.16,-s*.16);c.lineTo(s,0);c.lineTo(s*.16,s*.16);c.lineTo(0,s);c.lineTo(-s*.16,s*.16);c.lineTo(-s,0);c.lineTo(-s*.16,-s*.16);c.closePath();c.fill();
+ c.restore();
+}
+// A spurt of blood: a thick opening jet, then droplets that fly, fall and fade, each with a streak behind it.
+function bloodBurst(c,ox,oy,dir,spread,n,t0,t,seed,pw){
+ var age=t-t0;if(age<0||age>.9)return;
+ c.save();c.lineCap='round';
+ if(age<.3){c.globalAlpha=1-age/.3;glow(c,ox,oy,12+pw*16,'rgba(255,36,64,.55)');c.globalAlpha=1;}
+ if(age<.12){ // the jet
+  var k=1-age/.12,jl=pw*(13+6*hash(1,seed))*(.45+.55*Math.min(1,age/.04));
+  c.save();c.translate(ox,oy);c.rotate(dir);c.globalAlpha=Math.min(1,k*1.4);
+  c.fillStyle='#d11a36';c.beginPath();c.moveTo(0,-2*pw);c.quadraticCurveTo(jl*.6,-3.4*pw,jl,0);c.quadraticCurveTo(jl*.6,3.4*pw,0,2*pw);c.closePath();c.fill();
+  c.fillStyle='#ff6a76';c.beginPath();c.moveTo(0,-1);c.quadraticCurveTo(jl*.5,-2,jl*.9,0);c.quadraticCurveTo(jl*.5,2,0,1);c.closePath();c.fill();
+  c.restore();
+ }
+ for(var i=0;i<n;i++){
+  var life=.4+.45*hash(i,seed+2);if(age>life)continue;
+  var a=dir+(hash(i,seed)-.5)*spread,sp=(46+120*hash(i,seed+1))*pw,vx=Math.cos(a)*sp,vy=Math.sin(a)*sp-26*pw;
+  var x=ox+vx*age,y=oy+vy*age+.5*G*age*age,a0=Math.max(0,age-.04),px=ox+vx*a0,py=oy+vy*a0+.5*G*a0*a0,fade=1-age/life;
+  c.globalAlpha=Math.min(1,fade*1.6);
+  c.strokeStyle=i%3?'#b3122b':'#e8283f';c.lineWidth=(1.1+1.9*hash(i,seed+3))*(.5+.5*fade);
+  c.beginPath();c.moveTo(px,py);c.lineTo(x,y);c.stroke();
+  c.fillStyle=i%4?'#c8162f':'#ff5a66';c.beginPath();c.arc(x,y,(.9+1.5*hash(i,seed+4))*(.6+.4*fade),0,TAU);c.fill();
+ }
+ c.restore();
+}
+function bloodPool(c,x,y,rx,t,t0,seed){
+ var u=ease((t-t0)/.45);if(u<=0)return;
+ c.save();c.globalAlpha=.78*u;c.fillStyle='#5e0a16';c.beginPath();c.ellipse(x,y,rx*u,rx*.4*u,0,0,TAU);c.fill();
+ c.fillStyle='#a8132a';c.beginPath();c.ellipse(x-rx*.1,y-1,rx*.62*u,rx*.24*u,0,0,TAU);c.fill();
+ for(var i=0;i<5;i++){c.fillStyle='#9a1228';c.beginPath();c.ellipse(x+(hash(i,seed)-.5)*rx*1.9*u,y+(hash(i,seed+1)-.5)*rx*.7,1.2+hash(i,seed+2)*1.6,.8+hash(i,seed+3),0,0,TAU);c.fill();}
+ c.restore();
+}
+function swordCrit(c,o,t){
+ // 0-.2 drop to a knee, blade drawn back | .2-.46 the blade slides slowly up into the body | .46-.62 held in, blood pumping
+ // .62-.9 the blade is drawn smoothly back out | .9-1 hold. The blade always points away from the hero, hilt toward him.
+ var TI=.40,TP=.72;
+ var f=Math.cos(o.angle)>=0?1:-1,sc=1.35,kneel=ease(t/.16)*(1-ease((t-.88)/.12)),low=kneel*5*sc;
+ var S={x:o.sourceX-o.x,y:o.sourceY-o.y},P={x:0,y:-3};
+ var rest={x:S.x+f*8*sc,y:S.y+1*sc+low*.55+15}; // the hand drops low at the knee, so the blade rises into the foe
+ var vx=P.x-rest.x,vy=P.y-rest.y,dl=Math.hypot(vx,vy)||1;
+ var ux=vx/dl,uy=vy/dl-.1,ul=Math.hypot(ux,uy)||1;ux/=ul;uy/=ul;
+ var dirAng=Math.atan2(uy,ux),SW=.72,Ls=clamp(dl*.8,26,38),Lu=Ls/SW; // a smaller sword; Lu is its length before scaling
+ var reachDot=vx*ux+vy*uy,extIn=reachDot+4-Ls,extOut=extIn-22;
+ var stab=ease((t-.2)/.26),pull=ease((t-.62)/.28),windup=ease(t/.2);
+ var ext=t<.2?extOut-6+6*windup:extOut+(extIn-extOut)*stab-(extIn-extOut)*pull;
+ var hold=t>=.46&&t<.62;
+ var bloodAmt=t<TI?0:t<.62?clamp((t-TI)/.2,0,1)*.75:Math.min(1,.75+(t-.62)*.9);
+ var ang=dirAng,hx=rest.x+ux*ext,hy=rest.y+uy*ext;
+ // arm
+ c.save();c.lineCap='round';
+ c.strokeStyle='#5f6b80';c.lineWidth=4.2;c.beginPath();c.moveTo(S.x+f*5*sc,S.y-3*sc+low);c.lineTo(hx,hy);c.stroke();
+ c.strokeStyle='#9aa8be';c.lineWidth=2.6;c.beginPath();c.moveTo(S.x+f*5*sc,S.y-3*sc+low);c.lineTo(hx,hy);c.stroke();
+ c.fillStyle='#d6ae7e';c.beginPath();c.arc(hx,hy,2.8,0,TAU);c.fill();
+ c.restore();
+ // a soft motion smear behind the moving blade
+ var fast=(t>.26&&t<.46)?1-Math.abs((t-.36)/.1):(t>.64&&t<.9)?1-Math.abs((t-.77)/.13):0;
+ if(fast>0){
+  c.save();c.globalAlpha=.32*clamp(fast,0,1);c.lineCap='round';
+  for(var k=1;k<=3;k++){var bk=ext+(t<.55?-k*4:k*4);
+   c.strokeStyle=k%2?'#2f8bff':'#9fe5ff';c.lineWidth=3.6-k*.7;
+   c.beginPath();c.moveTo(rest.x+ux*bk,rest.y+uy*bk);c.lineTo(rest.x+ux*bk+Math.cos(ang)*Ls,rest.y+uy*bk+Math.sin(ang)*Ls);c.stroke();}
+  c.restore();
+ }
+ blueSword(c,hx,hy,ang,Lu,.55+.45*(hold?1:stab),bloodAmt,hold?.6:0,SW);
+ // the wound: a dark gash and ragged red lips at the point of entry
+ if(t>TI){
+  c.save();c.globalAlpha=clamp((t-TI)/.05,0,1);c.strokeStyle='#3a040c';c.lineWidth=2.6;c.lineCap='round';
+  var wx=P.x+ux*3,wy=P.y+uy*3;c.beginPath();c.moveTo(wx-ux*5+uy*2,wy-uy*5-ux*2);c.lineTo(wx+ux*4-uy*2,wy+uy*4+ux*2);c.stroke();
+  c.strokeStyle='#d41a34';c.lineWidth=1.2;c.beginPath();c.moveTo(wx-ux*4+uy*2,wy-uy*4-ux*2);c.lineTo(wx+ux*3-uy*2,wy+uy*3+ux*2);c.stroke();
+  c.restore();
+ }
+ // blood: a spurt as the blade goes in, pumping while it is held, a heavier gout and a flung spray as it comes out
+ var r=o.r||9,wound={x:P.x+ux*2,y:P.y+uy*2};
+ bloodBurst(c,wound.x,wound.y,dirAng-Math.PI+(f>0?-.5:.5),1.9,34,TI,t,11,1.05);
+ bloodBurst(c,wound.x,wound.y-3,-Math.PI/2,1.3,16,TI+.09,t,12,.7);
+ bloodBurst(c,wound.x,wound.y-3,-Math.PI/2+(f>0?.3:-.3),1.5,14,TI+.17,t,13,.6);
+ bloodBurst(c,wound.x,wound.y,dirAng-Math.PI,1.7,48,TP,t,14,1.35);
+ bloodBurst(c,wound.x+ux*8,wound.y+uy*8,dirAng-Math.PI*.5*f,1.2,22,TP+.03,t,15,1);
+ bloodBurst(c,wound.x,wound.y-3,-Math.PI/2+(f>0?-.3:.3),1.4,16,TP+.12,t,16,.7);
+ bloodPool(c,-2,r*.85,13,t,TI+.05,5);bloodPool(c,9,r*.95,11,t,TP+.04,6);
+ // metal on bone: a spark flare at each of the two beats
+ var beats=[[TI,7,'#c8f2ff'],[TP,6,'#ffd0d4']];
+ for(var b=0;b<beats.length;b++){
+  var ba=t-beats[b][0];if(ba<0||ba>.16)continue;
+  var bu=1-ba/.16;c.save();c.globalAlpha=bu;
+  flare(c,P.x,P.y,beats[b][1]*(.5+bu),beats[b][2],ba*6);flare(c,P.x,P.y,beats[b][1]*.55*(.5+bu),'#ffffff',-ba*4+.7);
+  for(var sp=0;sp<9;sp++){var sa=hash(sp,b+20)*TAU,sr=ba*(120+hash(sp,b+30)*130);c.strokeStyle=sp%2?'#bfeaff':'#ffe9a8';c.lineWidth=1.1;
+   c.beginPath();c.moveTo(P.x+Math.cos(sa)*sr*.6,P.y+Math.sin(sa)*sr*.6);c.lineTo(P.x+Math.cos(sa)*(sr+7),P.y+Math.sin(sa)*(sr+7));c.stroke();}
+  c.restore();
+ }
+ if(t>TI&&t<TI+.1)hitBurst(c,P.x,P.y,(t-TI)/.1,true);if(t>TP&&t<TP+.1)hitBurst(c,P.x-3,P.y+1,(t-TP)/.1,true);
+}
+// a white flash on the stab and on the pull
+function swordFlash(t){
+ return {w:Math.max(.45*Math.exp(-Math.pow((t-.405)/.02,2)),.32*Math.exp(-Math.pow((t-.725)/.022,2))),r:0};
 }
 function thief(c,o,t){
  c.save();
@@ -301,11 +442,16 @@ function drawWorld(c,cam){
    withdraw:smooth((t-.38)/.15)
  };
  if(fin){var hp=CC.Finisher.heroPose(o,t);cp.kneel=hp.kneel;cp.drive=hp.drive;cp.withdraw=hp.withdraw;}
+ else if(o.heroClass==='swordsman'){ // the knee-drop stab: the cinematic paints the arm and the blue blade itself
+   cp.kneel=smooth(t/.16)*(1-smooth((t-.88)/.12));
+   cp.drive=smooth((t-.2)/.26)*(1-smooth((t-.62)/.28));
+   cp.withdraw=0;cp.noBlade=true;
+ }
  if(CC.Classes&&CC.Classes.drawCriticalHero)CC.Classes.drawCriticalHero(c,cam,cp);
  if(fin&&victim){CC.Finisher.drawVictim(c,o,t);c.restore();return;}
  // Primary impact: sharp, hero-specific signature animation.
  c.save();c.translate(o.x-cam.x,o.y-cam.y);c.globalAlpha=fade;
- if(o.heroClass==='swordsman')swordsman(c,o,t);
+ if(o.heroClass==='swordsman')swordCrit(c,o,t);
  else if(o.heroClass==='thief')thief(c,o,t);
  else if(o.heroClass==='necromancer')necromancer(c,o,t);
  else wizard(c,o,t);
@@ -340,6 +486,10 @@ function drawScreen(c,W,H){
  if(fin){ // brief white flash on the instant of the perfect blow
    var fl=CC.Finisher.flash(active.heroClass,t);
    if(fl>.01&&!reduced){c.globalAlpha=Math.min(.75,fl*.7);c.fillStyle='#ffffff';c.fillRect(0,0,W,H);}
+ }else if(active.heroClass==='swordsman'&&!reduced){ // steel flashes white on the stab and the pull, blood flashes red on the two slashes
+   var sf=swordFlash(t);
+   if(sf.w>.01){c.globalAlpha=sf.w;c.fillStyle='#e8f6ff';c.fillRect(0,0,W,H);}
+   if(sf.r>.01){c.globalAlpha=sf.r;c.fillStyle='#d0132e';c.fillRect(0,0,W,H);}
  }
  if(!reduced){
    var h=11*e;
