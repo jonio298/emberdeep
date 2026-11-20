@@ -1364,6 +1364,17 @@
         ctx.fillStyle='rgba(20,7,10,0.88)';ctx.fillRect(b.x+7,b.y+7,20,16);
         ctx.strokeStyle='#b96367';ctx.strokeRect(b.x+7,b.y+7,20,16);
         label(String(count),b.x+17,b.y+15,11,count>0?'#fff2e6':'#ad9394');
+      } else if ((name === 'spell1' || name === 'spell2') && p && p.spells) {
+        // the spell's own name on the button; the second spell shows LVL 4 UNLOCK until it is earned
+        var si = name === 'spell1' ? 0 : 1, locked = si === 1 && (p.level || 1) < 4, sn = String(p.spells[si] || '').toUpperCase(), lines;
+        if (locked) lines = ['LVL 4', 'UNLOCK'];
+        else {
+          font(9); lines = [sn];
+          if (ctx.measureText(sn).width > b.r * 1.75 && sn.indexOf(' ') > 0) { var sp = sn.indexOf(' ', Math.floor(sn.length / 2) - 3); if (sp < 0) sp = sn.indexOf(' '); lines = [sn.slice(0, sp), sn.slice(sp + 1)]; }
+        }
+        if (locked) { ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 6.3); ctx.fillStyle = 'rgba(8,6,14,0.55)'; ctx.fill(); }
+        label(txt, b.x, b.y - (lines.length > 1 ? 14 : 9), 11, locked ? '#9a93b0' : '#d9d2ff');
+        for (var li = 0; li < lines.length; li++) label(lines[li], b.x, b.y + (lines.length > 1 ? 0 : 6) + li * 10, locked ? 9 : 9, locked ? '#ffd36b' : '#fff');
       } else label(txt, b.x, b.y, name==='spell1'||name==='spell2'?15:b.r>35?15:11, '#fff');
       var charge=chargeHUD&&chargeHUD.slot===name?chargeHUD:null;
       if(name==='spell1'||name==='spell2'||name==='dash'){
