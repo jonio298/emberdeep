@@ -84,6 +84,7 @@
     E.cd[kind] = { dive: 2.2, flurry: 5, gale: 7, screech: 9, skyfall: 14 }[kind];
     E.gcd = 0.35;
     if (kind === 'screech') text(E.x, E.y - E.z - 18, 'SCREECH!', '#bfe9ff', 10);
+    if (CC.Audio) CC.Audio.fx('eagle', { x: E.x, y: E.y, vol: kind === 'screech' ? 0.9 : 0.5, gap: 300 });
     if (kind === 'skyfall') text(E.x, E.y - E.z - 18, 'SKYFALL!', '#ffd36b', 11);
   }
 
@@ -192,6 +193,11 @@
     for (var k in E.cd) E.cd[k] = Math.max(0, E.cd[k] - dt);
     for (var i = E.fxs.length - 1; i >= 0; i--) { E.fxs[i].t -= dt; if (E.fxs[i].t <= 0) E.fxs.splice(i, 1); }
     E.reveal -= dt; if (E.reveal <= 0) { E.reveal = 0.2; reveal(); }
+    if (E.script) { // a cutscene flies the eagle (CC.RockPass scouting)
+      var sc = E.script; E.atk = null; E.carry = null; E.x = sc.x; E.y = sc.y; E.z = sc.z; E.bank = 0.3 * Math.sin(clock * 3);
+      E.trail.push({ x: E.x, y: E.y - E.z }); if (E.trail.length > 7) E.trail.shift();
+      return;
+    }
     if (Math.hypot(E.x - p.x, E.y - p.y) > 420) { E.x = p.x; E.y = p.y - 10; E.atk = null; E.carry = null; }
     E.trail.push({ x: E.x, y: E.y - E.z }); if (E.trail.length > 7) E.trail.shift();
 

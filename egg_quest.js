@@ -17,14 +17,17 @@ function notice(s,col){
  if(p&&CC.fx&&CC.fx.text)CC.fx.text(p.x,p.y-25,s,col||'#dfd79f',12);
 }
 function save(){if(CC.SaveGame&&CC.SaveGame.save)CC.SaveGame.save();}
-Q.reset=function(){stage='unstarted';hatched=false;hatching=false;clock=0;if(CC.Eagle&&CC.Eagle.reset)CC.Eagle.reset();};
+Q.reset=function(){stage='unstarted';hatched=false;hatching=false;clock=0;if(CC.Eagle&&CC.Eagle.reset)CC.Eagle.reset();if(CC.RockPass&&CC.RockPass.reset)CC.RockPass.reset();if(CC.HauntedPond)CC.HauntedPond.setDone(false);if(CC.AbandonedVillage)CC.AbandonedVillage.reset();};
 Q.restore=function(o){
  o=o||{};var choices=['unstarted','climbing','gathered','nest','complete'];
  stage=choices.indexOf(o.stage)>=0?o.stage:'unstarted';
  hatching=false;hatched=stage==='complete'&&!!o.hatched;
  if(CC.Eagle&&CC.Eagle.setName)CC.Eagle.setName(hatched&&o.name?o.name:'');
+ if(CC.HauntedPond)CC.HauntedPond.setDone(!!o.pond);
+ if(CC.AbandonedVillage)CC.AbandonedVillage.setHook(!!o.vil);
+ if(CC.RockPass){CC.RockPass.reset();CC.RockPass.setOpen(!!o.rock);} // the rockslide quest rides along in the quest save
 };
-Q.serialize=function(){return {stage:stage,hatched:hatched,name:CC.Eagle&&CC.Eagle.name?CC.Eagle.name():''};};
+Q.serialize=function(){return {stage:stage,hatched:hatched,name:CC.Eagle&&CC.Eagle.name?CC.Eagle.name():'',rock:CC.RockPass&&CC.RockPass.isOpen()?1:0,pond:CC.HauntedPond&&CC.HauntedPond.isDone()?1:0,vil:CC.AbandonedVillage&&CC.AbandonedVillage.hook?1:0};};
 Q.status=function(){return {stage:stage,hatchLevel:HATCH_LEVEL,
  eggCount:stage==='gathered'?3:stage==='nest'?1:stage==='complete'&&!hatched?1:0,
  hatched:hatched,hatching:hatching,complete:stage==='complete',name:CC.Eagle&&CC.Eagle.name?CC.Eagle.name():''};};

@@ -52,7 +52,7 @@ function write(n,data){
  }catch(e){lastError=String(e);}
 })();
 
-var AREA={town:'Town',forest:'Giant Forest','tree-tunnel':'Hollow Tree',plains:'Rolling Plains','tree-ascent':'Eagle Tree',defense:'Town Defense'};
+var AREA={town:'Town',forest:'Giant Forest','tree-tunnel':'Hollow Tree',plains:'Rolling Plains','tree-ascent':'Eagle Tree',defense:'Town Defense','rocky-pass':'Rocky Pass',village:'Abandoned Village','village-cellar':'The Cellar'};
 function info(d){
  if(!d)return null;
  var p=d.player||{},where=d.area==='cave'?'Cave floor '+(d.floor||1):(AREA[d.area]||'Town');

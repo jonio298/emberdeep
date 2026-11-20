@@ -1,4 +1,4 @@
-/* Emberdeep skill tree: one skill point per level above 1, up to level 30 (29 points). The tree has exactly 29 ranks, so level 30 is the full tree.
+/* Emberdeep skill tree: one skill point per level above 1, up to level 99 (98 points): the passive tree below (level-30 sized), the repeatable Training skills and the ability trees (CC.Skills, abilities.js) soak them up.
  *
  * Four columns, six rows: three shared columns (Offense, Defense, Utility: four skills each, the last a capstone) and a class column of six skills that
  * power up the hero's two spells. Every skill also has a character level it needs, so the strong ones come late. Charge attacks unlock at levels
@@ -16,7 +16,7 @@
   'use strict';
   var root = typeof window !== 'undefined' ? window : globalThis;
   var CC = root.CC = root.CC || {};
-  var MAX_LEVEL = 30;
+  var MAX_LEVEL = 99;
 
   function mod(key, per) { return function (p) { p.mods = p.mods || {}; p.mods[key] = (p.mods[key] || 0) + per; }; }
   function flag(key) { return function (p) { p.flags = p.flags || {}; p.flags[key] = (p.flags[key] || 0) + 1; }; }

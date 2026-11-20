@@ -392,6 +392,7 @@ E._kill=function(e){
  var was=e&&e.type==='weaselDemon'&&!e.dead;
  var output=previousKill.apply(this,arguments);
  if(was){
+   if(CC.state&&CC.state.map)CC.state.map.guardianSlain=true; // the nest can only be reached once Veyr has really fallen
    text(e,'THE HOLLOW MAW FALLS','#f6d9a2');burst(e,'#d89b98',38);
    if(CC.fx&&CC.fx.shake)CC.fx.shake(7);
  }

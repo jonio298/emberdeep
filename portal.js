@@ -55,10 +55,10 @@
       var list = [mine, theirs()], i, o;
       for (i = 0; i < list.length; i++) {
         o = list[i];
-        if (o && same(o, s) && Math.hypot(p.x - o.x, p.y - o.y) < 16) { if (CC.portalToTown) CC.portalToTown(); return; }
+        if (o && same(o, s) && Math.hypot(p.x - o.x, p.y - o.y) < 22) { if (CC.portalToTown) CC.portalToTown(); return; }
       }
     } else if (s.mode === 'town' && townOpen() && !(CC.Camp && CC.Camp.isInside && CC.Camp.isInside())) {
-      if (Math.hypot(p.x - TOWN.x, p.y - TOWN.y) < 16 && CC.portalFromTown) CC.portalFromTown();
+      if (Math.hypot(p.x - TOWN.x, p.y - TOWN.y) < 22 && CC.portalFromTown) CC.portalFromTown();
     }
   };
 
@@ -101,17 +101,17 @@
       o = list[i];
       if (!o || !same(o, s)) continue;
       var x = o.x - cam.x, y = o.y - cam.y;
-      if (x < -50 || y < -60 || x > cam.w + 50 || y > cam.h + 50) continue;
-      drawGate(c, x, y, 1, clock + i, o.born);
-      if (o.theirs) tag(c, x, y - 40, ((MP && MP.partnerName && MP.partnerName()) || 'PARTNER').toUpperCase().slice(0, 12) + ' PORTAL');
+      if (x < -70 || y < -90 || x > cam.w + 70 || y > cam.h + 70) continue;
+      drawGate(c, x, y, 1.4, clock + i, o.born); // 40% larger
+      if (o.theirs) tag(c, x, y - 56, ((MP && MP.partnerName && MP.partnerName()) || 'PARTNER').toUpperCase().slice(0, 12) + ' PORTAL');
     }
   };
   P.drawTown = function (c, cam) {
     var s = st();
     if (!s || s.mode !== 'town' || !townOpen() || (CC.Camp && CC.Camp.isInside && CC.Camp.isInside())) return;
     var x = TOWN.x - cam.x, y = TOWN.y - cam.y;
-    if (x < -60 || y < -70 || x > cam.w + 60 || y > cam.h + 60) return;
-    drawGate(c, x, y, 1.15, clock);
-    tag(c, x, y - 46, s.coop ? 'PORTAL BACK TO THE PARTY' : 'PORTAL BACK');
+    if (x < -80 || y < -100 || x > cam.w + 80 || y > cam.h + 80) return;
+    drawGate(c, x, y, 1.61, clock); // 40% larger
+    tag(c, x, y - 64, s.coop ? 'PORTAL BACK TO THE PARTY' : 'PORTAL BACK');
   };
 })(window);

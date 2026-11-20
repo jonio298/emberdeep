@@ -161,7 +161,7 @@ function drag(x,y,viewW,viewH){
  var ax=dx*sx,ay=dy*sy;
  active.drag=dd<8?null:{x:ax,y:ay,distance:Math.hypot(ax,ay)};
 }
-function cancel(){active=null;}
+function cancel(){if(active&&active.snd&&CC.Audio)CC.Audio.chargeEnd(false);active=null;}
 function clear(){active=null;effects.length=0;}
 function isActive(){return !!active;}
 function landingRadius(p){
@@ -368,7 +368,8 @@ function release(slot){
    return tapped;
  }
  var mana=cost(p,slot);
- if(p.mana<mana){fxText(p.x,p.y-20,'NEED '+mana+' MANA','#7bbddd');return false;}
+ if(p.mana<mana){fxText(p.x,p.y-20,'NEED '+mana+' MANA','#7bbddd');if(a.snd&&CC.Audio)CC.Audio.chargeEnd(false);return false;}
+ if(a.snd&&CC.Audio)CC.Audio.chargeEnd(true);
  var where=aim(p,slot,a.drag),power=clamp((a.time-ARM)/(FULL-ARM),0,1);
  if(!where.valid){fxText(p.x,p.y-20,'BLOCKED LANDING','#f3969d');return false;}
  p.mana-=mana;cast(p,slot,where,power);
@@ -443,6 +444,7 @@ function update(dt){
  if(lastArea===null)lastArea=a;
  else if(lastArea!==a){lastArea=a;cancel();effects.length=0;}
  combatTick(dt);
+ if(active&&CC.Audio&&active.time>=ARM){if(!active.snd){active.snd=1;CC.Audio.chargeStart(active.slot==='dash');}CC.Audio.chargeSet(Math.min(1,(active.time-ARM)/(FULL-ARM)));}
 }
 function glow(c,x,y,r,col){
  var g=c.createRadialGradient(x,y,0,x,y,Math.max(1,r));

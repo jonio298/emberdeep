@@ -443,7 +443,7 @@
     if (n.guard) {
       if (!s.bridgeDown) {
         d.text = 'Halt. Beyond this bridge is the Giant Forest, and nothing in it is friendly. The archers will not follow you out there. Still going?';
-        d.actions.push({ label: 'Lower the drawbridge', run: function () { s.bridgeDown = true; Town.bridgeAnim = Math.max(Town.bridgeAnim, 0.001); say('The drawbridge groans down...'); Town.dialog = null; } });
+        d.actions.push({ label: 'Lower the drawbridge', run: function () { s.bridgeDown = true; Town.bridgeAnim = Math.max(Town.bridgeAnim, 0.001); if (CC.Audio) CC.Audio.event('drawbridge'); say('The drawbridge groans down...'); Town.dialog = null; } });
       } else d.text = 'The bridge is down. Follow the lamps south, keep your light close, and find the hollow tree. Good luck, traveler.';
     } else if (n.shop === 'smith') {
       d.text = 'Gear is only worth what it fetches. Hand me your common junk and I will pay fair coin. The good pieces you keep.';

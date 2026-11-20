@@ -55,7 +55,8 @@
     direwolf: ['legLeft', 'armRight', 'head', 'legRight'],
     mawworm: ['chunk', 'chunk', 'head', 'chunk'],
     raven: ['wingLeft', 'wingRight', 'head', 'legLeft'],
-    crow: ['wingLeft', 'wingRight', 'head', 'legLeft']
+    crow: ['wingLeft', 'wingRight', 'head', 'legLeft'],
+    merehorror: ['armLeft', 'armRight', 'chunk', 'head'], screegolem: ['armLeft', 'head', 'armRight', 'legLeft'], cragharpy: ['wingLeft', 'wingRight', 'head', 'legLeft']
   };
   var ARMOR_LOOK = { skeleton: 1, archer: 1, charger: 1, demon: 1, dragon: 1, scorpion: 1 };
   /* Bone piles: every bone/skull left by a death or a torn-off part adds to the pile within PILE_R px. A pile that stays untouched for
@@ -133,6 +134,8 @@
     else if (kind === 'curse') p.cursed = 5;
     else if (kind === 'fire') p._poison = { t: 2.5, dps: Math.max(1, amt * 0.3), acc: 0, fire: true }; // burning reuses the DoT slot
     if (CC.fx) { if (CC.fx.shake) CC.fx.shake(2); if (CC.fx.text) CC.fx.text(p.x, p.y - 14, '-' + dmg, '#ff5a5a', 12); }
+    if (e && CC.Wounds && CC.Wounds.onHit) CC.Wounds.onHit(p, e, dmg); // wolf and bear bites, bird pecks
+    if (CC.Audio) CC.Audio.event('hurt');
     return dmg;
   }
   function move(e, dx, dy) {
@@ -1346,7 +1349,7 @@
         if (CC.Forest && CC.Forest.drawMonster && CC.Forest.drawMonster(ctx, e, r, col, dark, t)) break;
         ctx.fillStyle = col; ctx.beginPath(); ctx.arc(0, 0, r, 0, PI2); ctx.fill();
     }
-    if (!e.collapsed && e.type !== 'grinmask') horrorArt(ctx, e, look, r, col, dark, t); // the mask paints its own gore
+    if (!e.collapsed && e.type !== 'grinmask' && e.type !== 'screegolem') horrorArt(ctx, e, look, r, col, dark, t); // the mask paints its own gore
     ctx.restore(); // restore anatomy clipping
     if (!e.collapsed && CC.WoundArt) CC.WoundArt.paint(ctx,e,look,r,t);
     ctx.restore();

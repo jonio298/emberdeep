@@ -309,10 +309,10 @@
               st.warned = true;
               text(p.x, p.y - 22, st.cool > 0 ? 'Charge ' + st.cool.toFixed(1) + 's' : 'No mana', '#9aa8c8', 9);
             }
-          } else { st.on = true; st.t = 0; st.flashed = false; }
+          } else { st.on = true; st.t = 0; st.flashed = false; if (CC.Audio) CC.Audio.chargeStart(false, 0.6); } // the main attack's charge-up is 40% quieter
         }
       } else {
-        st.t = Math.min(FULL, st.t + dt);
+        st.t = Math.min(FULL, st.t + dt); if (CC.Audio) CC.Audio.chargeSet(st.t / FULL);
         if (st.t >= FULL && !st.flashed) { st.flashed = true; burst(p.x, p.y, COLORS[p.classId] || '#fff', 16, 110); shake(2); }
       }
     } else {
@@ -321,6 +321,7 @@
         else if (!ready(p)) text(p.x, p.y - 22, 'No targets', '#9aa8c8', 9);
         else {
           p.mana -= cost(p);
+          if (CC.Audio) CC.Audio.chargeEnd(true);
           release(p, st.t / FULL);
           st.cool = st.coolMax = COOLDOWN;
         }
@@ -329,7 +330,7 @@
     }
   }
 
-  function cancel() { st.hold = 0; st.on = false; st.t = 0; st.warned = false; st.flashed = false; }
+  function cancel() { if (st.on && CC.Audio) CC.Audio.chargeEnd(false); st.hold = 0; st.on = false; st.t = 0; st.warned = false; st.flashed = false; }
 
   /* ---------- drawing ---------- */
   function arc(ctx, x, y, r, a0, a1, col, w, alpha) {

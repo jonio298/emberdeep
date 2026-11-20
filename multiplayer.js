@@ -8,7 +8,7 @@ var MP=CC.Multiplayer={active:false,role:null,room:null,remote:null,connected:fa
 var ws=null,session=null,reconnectDelay=800,pending=null,opened=false,playing=false;
 var chat=[],trade=null,positionClock=0,snapshotClock=0,roomClock=0,pickupClock=0;
 var lastScene='',lastRemote=0,pendingPickups={},hostPos=null,extClock=0,qsClock=0;
-var SCENES=['cave','defense','forest','tree-tunnel','plains','tree-ascent'];
+var SCENES=['cave','defense','forest','tree-tunnel','plains','tree-ascent','rocky-pass','village','village-cellar'];
 // Partner motion: samples arrive ~20x/s; we draw ~110 ms in the past and blend between them,
 // so movement is smooth on any connection instead of stepping from packet to packet.
 var linkKind='ws',joinCode='',optClock=0,samples=[],lastViewAt=0,minionClock=0,remoteMinions=[],remoteMinionsAt=0,INTERP_MS=110;

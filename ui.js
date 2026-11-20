@@ -207,6 +207,12 @@
 
   /* ---------- panels ---------- */
   function drawSkills(c, addHit, x, y, w, h, p) {
+    var SK = CC.Skills; // sub-tabs: Passives (this tree), Training and Abilities (abilities.js)
+    if (SK && SK.uiBar && p) {
+      var U = { tx: tx, button: button, COL: COL }, mode = SK.uiBar(c, addHit, x, y, w, p, U);
+      y += 26; h -= 26;
+      if (mode !== 'passives') { SK.uiPage(mode, c, addHit, x, y, w, h, p, U); return; }
+    }
     var ST = CC.SkillTree;
     if (!ST || !p) { tx(c, ST ? 'No hero yet' : 'Skill tree unavailable', x + w / 2, y + h / 2, 14, COL.dim, 'center'); return; }
     var pts = ST.points(p), list = ST.nodes(p.classId), detailH = 90, stripH = 64, lvl = p.level || 1;
@@ -531,7 +537,7 @@
       (CC.SkillTree ? CC.SkillTree.spent(p) : 0) + ' skill points invested', x + w / 2, y + h - 12, 11, COL.accent, 'center');
   }
 
-  function drawMap(c, x, y, w, h) {
+  function drawMap(c, x, y, w, h, hit) {
     var D = CC.Dungeon, s = CC.state;
     if (s.mode !== 'dungeon') { tx(c, 'No map in town', x + w / 2, y + h / 2, 14, COL.dim, 'center'); return; }
     if (D && typeof D.drawFullMap === 'function') {
@@ -543,6 +549,11 @@
       c.restore();
     } else tx(c, 'Map not available yet', x + w / 2, y + h / 2, 14, COL.dim, 'center');
     tx(c, 'Floor ' + s.floor, x + 8, y + 10, 12, COL.accent);
+    if (hit && s.testMode && CC.TestMode) { // test mode: click anywhere on the map to teleport, or open the whole world
+      hit(x, y + 44, w, h - 44, function (px, py) { CC.TestMode.teleportFromMap(px - x, py - y, w, h); });
+      tx(c, 'TEST: tap the map to teleport', x + w / 2, y + h - 12, 11, '#d9a8ff', 'center');
+      button(c, hit, x + w - 112, y + 4, 104, 22, 'World map', true, function () { close(); CC.TestMode.openWorld(); }, '#6a2a7a');
+    }
   }
 
   // SETTINGS tab: options remembered in this browser (see settings.js)
@@ -559,6 +570,12 @@
     }
     row('Auto equip', 'Wear loot automatically when it is better than your gear.', S.get('autoEquip') ? 'ON  -  tap to turn off' : 'OFF  -  tap to turn on', S.get('autoEquip'), function () { S.toggle('autoEquip'); });
     row('Auto level', 'Spend skill points and pick level-up perks for you.', S.get('autoLevel') ? 'ON  -  tap to turn off' : 'OFF  -  tap to turn on', S.get('autoLevel'), function () { S.toggle('autoLevel'); });
+    var AU = CC.Audio; // sound and music (audio.js)
+    if (AU) {
+      var au = AU.status();
+      row('Music', '8-bit chiptune that follows where you are.', au.music ? 'ON  -  tap to turn off' : 'OFF  -  tap to turn on', au.music, function () { AU.toggleMusic(); });
+      row('Sound effects', 'Sword slashes, spells, monsters, weather.', au.sfx ? 'ON  -  tap to turn off' : 'OFF  -  tap to turn on', au.sfx, function () { AU.toggleSfx(); });
+    }
     // zoom slider (drag, or tap the bar): 28% .. 220%, on a log scale so the middle feels even
     (function () {
       var rg = CC.zoomRange || [0.28, 2.2], z = CC.getZoomTarget ? CC.getZoomTarget() : 1, tk = x + 28, tw = w - 56, ty = yy + 54, k = Math.log(z / rg[0]) / Math.log(rg[1] / rg[0]);
@@ -625,7 +642,7 @@
       var hit = target ? addHit : noop;
       if (cur === 'skills') drawSkills(c, hit, ax, ay, aw, ah, p);
       else if (cur === 'inv') drawInv(c, hit, ax, ay, aw, ah, p);
-      else if (cur === 'map') drawMap(c, ax, ay, aw, ah);
+      else if (cur === 'map') drawMap(c, ax, ay, aw, ah, hit);
       else if (cur === 'quests' && CC.EggQuest) CC.EggQuest.drawJournal(c,ax,ay,aw,ah);
       else if (cur === 'stats') drawStats(c, ax, ay, aw, ah, p, hit);
       else if (cur === 'party') drawParty(c, hit, ax, ay, aw, ah);
@@ -685,7 +702,7 @@
     hudBar(c, px + 10, py + 9, bw, 15, p.hp / (p.maxHp || 1), '#ff6b6b', '#b01e3a', Math.ceil(p.hp) + ' / ' + Math.ceil(p.maxHp));
     hudBar(c, px + 10, py + 27, bw, 11, p.mana / (p.maxMana || 1), '#6bb8ff', '#2a56c8', null);
     hudBar(c, px + 10, py + 41, bw, 8, p.xp / (p.xpNext || 1), '#9be36b', '#4a9a2a', null);
-    var where = s.mode === 'dungeon' ? (s.area === 'forest' ? 'Giant Forest' : s.area === 'plains' ? 'Rolling Plains' : s.area === 'defense' ? 'Defense' : s.area === 'tree-ascent' ? 'Tree Bough '+(s.treeFloor||1) : 'Floor ' + s.floor) : 'Town';
+    var where = s.mode === 'dungeon' ? (s.area === 'forest' ? 'Giant Forest' : s.area === 'plains' ? 'Rolling Plains' : s.area === 'rocky-pass' ? 'Rocky Pass' : s.area === 'village' ? 'Abandoned Village' : s.area === 'village-cellar' ? 'The Cellar' : s.area === 'defense' ? 'Defense' : s.area === 'tree-ascent' ? 'Tree Bough '+(s.treeFloor||1) : 'Floor ' + s.floor) : 'Town';
     tx(c, 'LV ' + (p.level || 1), px + 12, py + 61, 13, COL.accent);
     tx(c, where, px + pw / 2, py + 61, 11, COL.text, 'center');
     tx(c, Math.floor(s.gold || 0) + ' G', px + pw - 12, py + 61, 13, COL.gold, 'right');

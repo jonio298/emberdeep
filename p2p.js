@@ -153,7 +153,7 @@
     }
     if (t === 'scene' && role === 'host') {
       var sc = d.scene || {};
-      if (['cave', 'defense', 'forest', 'tree-tunnel', 'plains', 'tree-ascent'].indexOf(sc.area) < 0 || !isFinite(sc.seed) || !Number.isInteger(sc.floor) || sc.floor < 1 || sc.floor > 200) return;
+      if (['cave', 'defense', 'forest', 'tree-tunnel', 'plains', 'tree-ascent', 'rocky-pass', 'village', 'village-cellar'].indexOf(sc.area) < 0 || !isFinite(sc.seed) || !Number.isInteger(sc.floor) || sc.floor < 1 || sc.floor > 200) return;
       this.scene = { area: sc.area, seed: sc.seed, floor: sc.floor };
       if (Number.isInteger(sc.tf) && sc.tf >= 1 && sc.tf <= 5) this.scene.tf = sc.tf;
       if (isFinite(sc.px) && isFinite(sc.py)) { this.scene.px = Math.max(-20000, Math.min(20000, sc.px)); this.scene.py = Math.max(-20000, Math.min(20000, sc.py)); }

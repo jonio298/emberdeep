@@ -83,22 +83,22 @@ function chipPaint(c,w,e,t){
   c.save();
   c.shadowColor='#550a16';c.shadowBlur=2;
   c.beginPath();chipPoints(c,w);
-  c.fillStyle=e.type==='scarecrow'?'#3d301f':e.type==='skeleton'?'#292521':'#4b0816';
+  c.fillStyle=e.type==='scarecrow'?'#3d301f':e.type==='skeleton'?'#292521':e.type==='screegolem'?'#2c2823':'#4b0816';
   c.fill();c.shadowBlur=0;
-  c.strokeStyle=e.type==='scarecrow'?'#bb9b52':'#b12f3e';
+  c.strokeStyle=e.type==='scarecrow'?'#bb9b52':e.type==='screegolem'?'#d9822e':'#b12f3e';
   c.lineWidth=1.4;c.stroke();
   // Wound fibers and exposed pale bone, visible at partial damage.
-  for(var k=0;k<4;k++){
+  for(var k=0;k<(e.type==='screegolem'?0:4);k++){
     var off=(k-1.5)*r*.28;
     stroke(c,x+off,y-r*.22,x+off+Math.sin(t*6+k)*1.2,y+r*.42,
-      e.type==='scarecrow'?'#e0c779':k%2?'#d8565d':'#8a1526',.9);
+      e.type==='scarecrow'?'#e0c779':e.type==='screegolem'?'#ffb04a':k%2?'#d8565d':'#8a1526',.9);
   }
   if(e.type==='bear'&&w.seed%3===0){
     stroke(c,x-r*.35,y-r*.18,x+r*.44,y+r*.28,'#efdec2',2.5);
     stroke(c,x-r*.24,y-r*.22,x+r*.36,y+r*.15,'#fff4dd',.8);
   }
   var drip=(t*14+w.seed*5)%(r*2.8+11);
-  if(e.type!=='scarecrow'&&e.type!=='skeleton'){
+  if(e.type!=='scarecrow'&&e.type!=='skeleton'&&e.type!=='screegolem'){
     dot(c,x+r*.15,y+r*.5+drip,1.15,1.8,'#bf1c34');
     stroke(c,x+r*.14,y+r*.33,x+r*.15,y+r*.6+drip*.32,'#8a1329',1);
   }
@@ -124,7 +124,7 @@ function dot(c,x,y,rx,ry,col){
  c.fillStyle=col;c.beginPath();c.ellipse(x,y,rx,ry,0,0,TAU);c.fill();
 }
 function drawWound(c,e,p,r,slot,t,i){
-  var bear=e.type==='bear',bone=e.type==='skeleton' || e.type==='archer',
+  var bear=e.type==='bear',bone=e.type==='skeleton' || e.type==='archer' || e.type==='screegolem',
     scarecrow=e.type==='scarecrow',horror=e.type==='horror';
   var x=p.x,y=p.y,rx=p.rx,ry=p.ry,blood=e.type==='horror'?'#7a1952':bone?'#6e473f':scarecrow?'#a88a42':'#a7112b';
   var onLeft=x<0, edgeX=x+(onLeft?rx*.44:-rx*.44),edgeY=y-ry*.1;
@@ -165,9 +165,9 @@ function drawWound(c,e,p,r,slot,t,i){
       stroke(c,edgeX,edgeY,ex,ey,k%2?'#e8ca79':'#73502e',1.3);
     }
   }else{
-    for(k=0;k<5;k++){
+    for(k=0;k<(e.type==='screegolem'?3:5);k++){
       var a=k*2.399,ex=edgeX+Math.cos(a)*rx*.41,ey=edgeY+Math.sin(a)*ry*.52;
-      stroke(c,edgeX,edgeY,ex,ey,bone?'#a99e90':horror?'#a35bba':'#b73340',1.3);
+      stroke(c,edgeX,edgeY,ex,ey,e.type==='screegolem'?'#ff9a3a':bone?'#a99e90':horror?'#a35bba':'#b73340',e.type==='screegolem'?1:1.3);
     }
     // Scorpion-like cuticle shards or fragments of dark sinew.
     if(e.type==='scorpion'||e.type==='spider'){

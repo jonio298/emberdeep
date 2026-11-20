@@ -891,21 +891,7 @@
         ctx.ellipse(r*1.43+headPush,-r*.02,r*.16,r*.14,0,0,PI2);ctx.fill();
         // Biting teeth: opening dark maw with two rows that actually snap shut.
         var mx=r*1.14+headPush,my=r*.23,open=jaw*r*.74;
-        ctx.fillStyle='#170609';
-        ctx.beginPath();ctx.moveTo(mx-r*.35,my-1);ctx.lineTo(mx+r*.34,my-2);
-        ctx.lineTo(mx+r*.25,my+open+2);ctx.lineTo(mx-r*.22,my+open);ctx.closePath();ctx.fill();
-        ctx.fillStyle='#951d2a';ctx.beginPath();ctx.ellipse(mx,my+open*.72,r*.22,Math.max(1,open*.20),0,0,PI2);ctx.fill();
-        ctx.fillStyle='#f4e6c9';
-        for(k=0;k<4;k++){
-          var tx=mx-r*.29+k*r*.20;
-          ctx.beginPath();ctx.moveTo(tx,my-2);ctx.lineTo(tx+r*.08,my-2);
-          ctx.lineTo(tx+r*.04,my+Math.max(2,open*.42));ctx.fill();
-          if(open>3){ctx.beginPath();ctx.moveTo(tx,my+open);ctx.lineTo(tx+r*.09,my+open);
-            ctx.lineTo(tx+r*.04,my+open*.58);ctx.fill();}
-        }
-        ctx.strokeStyle='#a97869';ctx.lineWidth=2.4;
-        ctx.beginPath();ctx.moveTo(mx-r*.3,my+open);
-        ctx.quadraticCurveTo(mx,my+open+r*.18,mx+r*.38,my+open*.85);ctx.stroke();
+        if(CC.Wounds&&CC.Wounds.drawJaws)CC.Wounds.drawJaws(ctx,mx-r*.38,my-r*.08,r*1.1,jaw*1.2,{fur:'#806251',dark:'#2a1d18',lower:'#2a1d18',tooth:'#f4e6c9',teeth:4});
         // Angry red eye, brow ridge, scar, directional growl flecks.
         ctx.fillStyle='#120b0b';ctx.fillRect(r*.62+headPush,-r*.35,8,4);
         // Wicked red eyes with a breathing ember glow, brighter when roaring or lunging.

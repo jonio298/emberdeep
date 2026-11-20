@@ -19,7 +19,7 @@
   var CC = root.CC = root.CC || {};
   var T = CC.TILE = CC.TILE || 32;
   var PI2 = Math.PI * 2;
-  var W = 96, H = 112;
+  var W = 200, H = 112;
   var P = CC.Plains = { map: null, titleStart: 0, speech: null, W: W, H: H };
 
   function seeded(seed) { var a = seed >>> 0; return function () { a = (a + 0x6D2B79F5) >>> 0; var t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
@@ -29,13 +29,15 @@
   /* ---------- terrain art ---------- */
   var shade = null, tall = null;                     // per-tile hill shading (0..80) and tall-grass mask, built with each map
   function hgt(x, y) { return 0.5 + 0.28 * Math.sin(x * 0.075 + Math.sin(y * 0.05) * 1.6) + 0.2 * Math.sin(y * 0.062 - x * 0.03 + 1.3) + 0.12 * Math.sin((x + y) * 0.16); }
-  function ground(kind, hv, tx, ty) {
+  function ground(kind, hv, tx, ty) { var c0 = groundBase(kind, hv, tx, ty), HP = CC.HauntedPond; return HP && HP.ground ? HP.ground(c0, kind, hv, tx, ty) : c0; }
+  function groundBase(kind, hv, tx, ty) {
     if (kind === 5) return hv < 0.5 ? '#1c3a4a' : '#1e3e50';
     if (kind === 2) return hv < 0.5 ? '#6b5a3c' : '#625236';
     var v = shade && tx >= 0 && ty >= 0 && tx < W && ty < H ? shade[ty * W + tx] : 30;
     return 'rgb(' + Math.floor(40 + v * 0.62 + hv * 6) + ',' + Math.floor(70 + v * 1.05 + hv * 8) + ',' + Math.floor(34 + v * 0.3) + ')';
   }
-  function detail(ctx, kind, sx, sy, hv, t, tx, ty) {
+  function detail(ctx, kind, sx, sy, hv, t, tx, ty) { var HP = CC.HauntedPond; if (HP && HP.detail && HP.detail(ctx, kind, sx, sy, hv, t, tx, ty)) return; detailBase(ctx, kind, sx, sy, hv, t, tx, ty); }
+  function detailBase(ctx, kind, sx, sy, hv, t, tx, ty) {
     var i, x, y, sw;
     if (kind === 5) { // pond ripples and a glint
       var o = Math.sin(t * 1.4 + hv * 20) * 3;
@@ -65,6 +67,7 @@
   }
   function afterLight(ctx, cam) { // clouds' shadows drift over the hills and seed-streaks race downwind (cheap)
     var t = Date.now() / 1000, i, w = cam.w, h = cam.h;
+    if (CC.HauntedPond && CC.HauntedPond.after) CC.HauntedPond.after(ctx, cam); // the haunted pond's darkness, fog and eyes
     ctx.save();
     ctx.fillStyle = 'rgba(8,16,26,0.1)';
     for (i = 0; i < 3; i++) {
@@ -112,7 +115,7 @@
     ctx.fillStyle = 'rgba(80,120,50,0.7)'; ctx.fillRect(cx - 7, by - 5, 14, 5);
   }
   function drawSolid(ctx, kind, sx, sy, hv, t, tx, ty, D) {
-    if (kind === 3) drawTree(ctx, sx, sy, hv, t);
+    if (kind === 3) { var HPt = CC.HauntedPond; if (!(HPt && HPt.tree && HPt.tree(ctx, sx, sy, hv, t, tx, ty))) drawTree(ctx, sx, sy, hv, t); }
     else if (kind === 8) drawStone(ctx, sx, sy, hv, t);
     else if (kind === 9) { var a = D && D.art ? D.art[ty * W + tx] : 0; if (a) drawRock(ctx, sx, sy, hv, a === 2); } // the barrow's block has no art here: its prop draws the mound
   }
@@ -141,7 +144,15 @@
     ctx.fillStyle = '#d8b08a'; ctx.beginPath(); ctx.arc(sx, sy - 10 + bob, 4.5, 0, PI2); ctx.fill();
     ctx.fillStyle = pr.hair; ctx.beginPath(); ctx.arc(sx, sy - 12 + bob, 4.8, Math.PI, 0); ctx.fill();
     var p = CC.state && CC.state.player;
-    if (p && Math.hypot(p.x - pr.x, p.y - pr.y) < 70) { ctx.font = 'bold 9px Georgia, serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffe9b0'; ctx.fillText(pr.name + '  [F] talk', sx, sy - 24); ctx.textAlign = 'left'; }
+    if (pr.chat && p && Math.hypot(p.x - pr.x, p.y - pr.y) < 330 && !(CC.RockPass && CC.RockPass.scouting())) { // the three argue in turn about the slide
+      var cyc = t / 4.2, ci = Math.floor(cyc), turn = ci % 3, ph = cyc - ci;
+      if (turn === pr.slot && ph < 0.92) {
+        var tx = pr.chat[Math.floor(ci / 3) % pr.chat.length]; ctx.font = '9px Georgia, serif'; var bw = Math.min(190, ctx.measureText(tx).width + 14);
+        ctx.save(); ctx.globalAlpha = Math.min(1, ph * 8, (0.92 - ph) * 8); ctx.fillStyle = 'rgba(244,238,222,0.95)'; ctx.fillRect(sx - bw / 2, sy - 46, bw, 17); ctx.beginPath(); ctx.moveTo(sx - 4, sy - 29); ctx.lineTo(sx + 2, sy - 29); ctx.lineTo(sx, sy - 24); ctx.fill();
+        ctx.fillStyle = '#2a2018'; ctx.textAlign = 'center'; ctx.fillText(tx, sx, sy - 34, bw - 8); ctx.restore();
+      }
+    }
+    if (p && Math.hypot(p.x - pr.x, p.y - pr.y) < 70) { ctx.font = 'bold 9px Georgia, serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffe9b0'; ctx.fillText(pr.name + '  [F] talk', sx, sy - (pr.chat ? 60 : 24)); ctx.textAlign = 'left'; }
   }
   function drawBarrow(ctx, sx, sy, t) { // (sx,sy) = bottom-centre of the 5x2 rock block; the barrow mouth is cut into a grassy mound
     var w = 150, h = 74, gl = 0.5 + 0.2 * Math.sin(t * 2.2), i;
@@ -155,6 +166,35 @@
     ctx.strokeStyle = 'rgba(122,224,200,' + (0.3 + 0.3 * gl) + ')'; ctx.lineWidth = 1.2; ctx.beginPath(); for (i = 0; i < 3; i++) { ctx.moveTo(sx - 22 + i * 22, sy - 43); ctx.lineTo(sx - 18 + i * 22, sy - 43); } ctx.stroke();
     var p = CC.state && CC.state.player, m = P.map;
     if (p && m && Math.hypot(p.x - m.stairs.x, p.y - m.stairs.y) < 60) { ctx.font = 'bold 10px Georgia, serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffe08a'; ctx.fillText('[F] Descend into the barrow', sx, sy + 24); ctx.textAlign = 'left'; }
+  }
+
+
+  /* ---------- the rockslide (west path) and the hidden goat trail ---------- */
+  function drawSlide(ctx, sx, sy, t) { // (sx,sy) = centre of the blocked gap; a heap of fallen boulders with dust still sifting down
+    var i, rs = 1234;
+    function rnd() { rs = (Math.imul(rs, 1103515245) + 12345) >>> 0; return rs / 4294967296; }
+    ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.beginPath(); ctx.ellipse(sx + 10, sy + 40, 98, 20, 0, 0, PI2); ctx.fill();
+    ctx.fillStyle = '#4a4740'; ctx.beginPath(); ctx.moveTo(sx - 70, sy + 40); ctx.quadraticCurveTo(sx - 60, sy - 40, sx - 10, sy - 60); ctx.quadraticCurveTo(sx + 50, sy - 66, sx + 84, sy + 40); ctx.closePath(); ctx.fill(); // the heap's mass
+    for (i = 0; i < 26; i++) {
+      var bx = sx - 74 + rnd() * 150, by = sy + 36 - Math.pow(rnd(), 0.8) * 92, w = 9 + rnd() * 17, h = w * (0.6 + rnd() * 0.5), sh = 74 + Math.floor(rnd() * 40), tilt = (rnd() - 0.5) * 0.8;
+      var edge = Math.abs(bx - sx) / 78; by = Math.max(by, sy + 38 - (1 - edge * edge) * 98); // rocks follow the heap's silhouette
+      ctx.save(); ctx.translate(bx, by); ctx.rotate(tilt);
+      ctx.fillStyle = 'rgb(' + (sh - 24) + ',' + (sh - 26) + ',' + (sh - 30) + ')'; ctx.beginPath(); ctx.moveTo(-w, 0); ctx.lineTo(-w * 0.8, -h * 0.7); ctx.lineTo(-w * 0.1, -h); ctx.lineTo(w * 0.8, -h * 0.6); ctx.lineTo(w, 0); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = 'rgb(' + sh + ',' + (sh - 2) + ',' + (sh - 8) + ')'; ctx.beginPath(); ctx.moveTo(-w * 0.8, -h * 0.7); ctx.lineTo(-w * 0.1, -h); ctx.lineTo(w * 0.8, -h * 0.6); ctx.lineTo(0, -h * 0.35); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+    ctx.fillStyle = '#6a5a3c'; for (i = 0; i < 5; i++) { ctx.beginPath(); ctx.ellipse(sx - 40 + i * 22, sy + 36 + (i % 2) * 3, 12, 4, 0, 0, PI2); ctx.fill(); } // spilled earth at the foot
+    ctx.fillStyle = '#8a7a5a'; ctx.fillRect(sx - 96, sy + 6, 14, 3); ctx.fillRect(sx - 90, sy + 12, 10, 3); // a snapped wagon plank
+    ctx.fillStyle = '#c8b898'; for (i = 0; i < 7; i++) { var a = (t * 0.35 + i / 7) % 1; ctx.globalAlpha = 0.5 * (1 - a); ctx.beginPath(); ctx.arc(sx - 50 + i * 18 + Math.sin(t + i) * 5, sy - 30 - a * 38, 3 + a * 5, 0, PI2); ctx.fill(); } ctx.globalAlpha = 1; // dust drifting off
+  }
+  function drawGate(ctx, sx, sy, t, pr) { // the goat trail, once the eagle has found it: a cairn marking the way up
+    var RP = CC.RockPass; if (!RP || !RP.isOpen()) return;
+    var gl = 0.5 + 0.5 * Math.sin(t * 2.2);
+    ctx.fillStyle = 'rgba(255,230,150,' + (0.12 + 0.1 * gl) + ')'; ctx.beginPath(); ctx.ellipse(sx + 8, sy + 4, 40, 18, 0, 0, PI2); ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(sx, sy + 8, 14, 4, 0, 0, PI2); ctx.fill();
+    [[0, 3, 12], [1, -4, 9], [0, -10, 6]].forEach(function (c) { ctx.fillStyle = '#7a776e'; ctx.beginPath(); ctx.ellipse(sx + c[0], sy + c[1], c[2], c[2] * 0.55, 0, 0, PI2); ctx.fill(); ctx.fillStyle = '#9a978c'; ctx.beginPath(); ctx.ellipse(sx + c[0] - 2, sy + c[1] - 2, c[2] * 0.6, c[2] * 0.3, 0, 0, PI2); ctx.fill(); });
+    var p = CC.state && CC.state.player;
+    if (p && Math.hypot(p.x - pr.x, p.y - pr.y) < 100) { ctx.font = 'bold 10px Georgia, serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffe08a'; ctx.fillText('[F] Climb the goat trail', sx, sy + 28); ctx.textAlign = 'left'; }
   }
 
   /* ---------- generation ---------- */
@@ -182,6 +222,10 @@
       reserve(rx, ry, 2.8);
     }
     reserve(spawn.tx, spawn.ty, 5); reserve(stx, sty - 2, 7);
+    // the west path: a track off the road to a gap in the (thickened) west ridge, blocked by a rockslide; the goat trail's pocket lies north of it
+    var sy0 = Math.round(H * 0.46), gtY = sy0 - 11, rsm = samples[Math.round(len * (sy0 - 4) / (sty - 4))], tkx;
+    for (tkx = 5; tkx <= Math.round(rsm.x); tkx++) { disc(tkx, sy0, 1.6, function (xx, yy) { kind[at(xx, yy)] = 2; }); reserve(tkx, sy0, 3); }
+    reserve(9, sy0, 6); reserve(11, gtY, 9);
 
     var chests = [], props = [], lights = [], npcs = [];
     // the drovers' camp, off the road a little way along it
@@ -198,6 +242,25 @@
       props.push(o); npcs.push(o);
     });
     var campC = ctr(cx, cy + 2);
+    var slideC = ctr(4, sy0), gateC = ctr(3, gtY);
+    props.push({ x: slideC.x, y: slideC.y, sortY: 40, draw: drawSlide });
+    props.push({ x: gateC.x, y: gateC.y, sortY: 0, reveal: false, draw: function (c, sx, sy, t, cam, pr) { drawGate(c, sx, sy, t, pr); } });
+    props.push({ x: 18 * T, y: (gtY + 4) * T + 24, sortY: 0, reveal: false, draw: function (c, sx, sy, t) { var RP2 = CC.RockPass; if (!RP2 || !RP2.isOpen()) return; c.fillStyle = 'rgba(0,0,0,.3)'; c.beginPath(); c.ellipse(sx, sy + 4, 12, 4, 0, 0, PI2); c.fill(); [[0, 0, 9], [1, -7, 7], [0, -13, 5]].forEach(function (q) { c.fillStyle = '#7a776e'; c.beginPath(); c.ellipse(sx + q[0], sy + q[1], q[2], q[2] * 0.55, 0, 0, PI2); c.fill(); c.fillStyle = '#9a978c'; c.beginPath(); c.ellipse(sx + q[0] - 2, sy + q[1] - 2, q[2] * 0.6, q[2] * 0.3, 0, 0, PI2); c.fill(); }); } });
+    var slideTalk = function (n) {
+      var RPq = CC.RockPass, p0 = CC.state && CC.state.player, q = CC.EggQuest, hatched = !!(q && q.status && q.status().hatched);
+      if (RPq && RPq.isOpen()) return n.done;
+      if (RPq && RPq.canScout() && P.map && !RPq.scouting()) { P.speech = null; setTimeout(function () { RPq.startScout(P.map); }, 700); return n.ask; }
+      if (hatched && p0 && (p0.level || 1) < 10 && n.young) return n.young;
+      return n.lines[n.line % n.lines.length];
+    };
+    [
+      { name: 'Foreman Brask', cloak: '#7a5a2a', hair: '#5a4a3a', dx: 0, dy: -26, chat: ['Forty tons if it is an ounce. Picks would take a season.', 'The whole hillside let go in the night.'], lines: ['I have a crew of eleven and not one idea. Forty tons of rock, and the next village sits on the far side.', 'We tried levers. We tried prayer. The levers did better.'], done: 'An eagle! Fine bird. My crew is hauling gear up that goat trail already.', ask: 'Wend says your eagle might scout it? Go on then. Show us.', young: 'Your bird is barely out of the egg. Come back when you are both stronger, level ten at least.' },
+      { name: 'Mara the Tinker', cloak: '#4a5a7a', hair: '#b06a3a', dx: 4, dy: 8, chat: ['Black powder would shift it, if anyone sold black powder.', 'Or we wait for the spring thaw.'], lines: ['Blast it, I say. Dynamite. But the nearest powder is a month away.', 'My cart is on the other side. So is my whole stock. Typical.'], done: 'The goat trail! I will have my cart up there by sundown.', ask: 'Your eagle can scout above the slide? Then let it fly!', young: 'A hatchling will not fly this high yet. Level ten, then it can try.' },
+      { name: 'Wend the Mapmaker', cloak: '#5a6a4a', hair: '#d8d4c8', dx: -4, dy: 38, chat: ['If I were an eagle, I could see over this thing.', 'There must be a way around. Mountains always leave one.'], lines: ['If I were an eagle, I could see over this thing. Every mountain leaves a gap somewhere, you only have to see it from above.', 'I have mapped this ridge for thirty years, and never from higher than my own two feet.'], done: 'Thirty years of mapping and an eagle finds the trail in a minute. I will chart it tonight.', ask: 'That bird... you have an eagle? Oh, would it? Please!', young: 'A hatched eagle! But it is too young to climb that high, level ten at least. Come back then.' }
+    ].forEach(function (pp, j) {
+      var o = { x: 9 * T + 16 + pp.dx, y: sy0 * T + 16 + pp.dy, name: pp.name, cloak: pp.cloak, hair: pp.hair, lines: pp.lines, chat: pp.chat, done: pp.done, ask: pp.ask, young: pp.young, line: 0, seed: j * 2.3 + 5, slot: j, draw: drawPerson, npc: true, healed: true, talk: slideTalk };
+      props.push(o); npcs.push(o);
+    });
 
     // ring of standing stones around a chest, on the other side of the road
     var rs = samples[Math.floor(len * 0.62)], rsd = -cside, rcx = clamp(Math.round(rs.x + rsd * 13), 12, W - 13), rcy = Math.round(rs.y);
@@ -205,6 +268,9 @@
     for (k = 0; k < 7; k++) { var sa = k / 7 * PI2 + 0.4, stx2 = Math.round(rcx + Math.cos(sa) * 4), sty2 = Math.round(rcy + Math.sin(sa) * 4); kind[at(stx2, sty2)] = 8; tiles[at(stx2, sty2)] = 1; }
     var ch0 = ctr(rcx, rcy); ch0.opened = false; ch0.tier = 1; chests.push(ch0);
 
+    // the haunted pond: a lovely island pond with a bridge and a woman (hauntedpond.js)
+    var pond = CC.HauntedPond && CC.HauntedPond.carve ? CC.HauntedPond.carve({ W: W, H: H, at: at, rng: rng, samples: samples, res: res, disc: disc, reserve: reserve, kind: kind, tiles: tiles, art: art, props: props, npcs: npcs, lights: lights }) : null;
+    if (!pond && CC.HauntedPond && CC.HauntedPond.carve) return null; // no room for the great pond on this layout: try another seed
     // ponds
     var np = 0, tries = 0;
     while (np < 3 && tries++ < 60) {
@@ -244,6 +310,12 @@
     for (k = 0, tries = 0; k < 34 && tries++ < 400;) if (plant(4 + Math.floor(rng() * (W - 8)), 4 + Math.floor(rng() * (H - 8)), 3, 0)) k++;
     for (k = 0, tries = 0; k < 120 && tries++ < 900;) if (plant(4 + Math.floor(rng() * (W - 8)), 4 + Math.floor(rng() * (H - 8)), 9, 1)) k++;
     for (y = 0; y < H; y++) for (x = 0; x < W; x++) if (x < 2 || y < 2 || x >= W - 2 || y >= H - 2) { kind[at(x, y)] = 9; tiles[at(x, y)] = 1; art[at(x, y)] = 2; } // the ridge ringing the plains
+    for (y = 2; y < H - 2; y++) for (x = 2; x <= 5; x++) { kind[at(x, y)] = 9; tiles[at(x, y)] = 1; art[at(x, y)] = Math.abs(y - sy0) <= 1 ? 0 : 2; } // the west ridge is four tiles thick, with the slide filling its gap (no art: its prop draws the heap)
+    for (y = gtY - 1; y <= gtY + 1; y++) for (x = 2; x <= 3; x++) { kind[at(x, y)] = 2; tiles[at(x, y)] = 0; art[at(x, y)] = 0; } // the goat trail's pocket, sealed by boulders until the eagle finds it
+    for (y = gtY - 1; y <= gtY + 1; y++) for (x = 4; x <= 5; x++) { kind[at(x, y)] = 9; tiles[at(x, y)] = 1; art[at(x, y)] = 1; }
+    for (y = gtY - 6; y <= gtY + 6; y++) for (x = 6; x <= 16; x++) { var ex2 = (x - 11) / 6.2, ey2 = (y - gtY) / 6.6; if (ex2 * ex2 + ey2 * ey2 <= 1) { kind[at(x, y)] = 9; tiles[at(x, y)] = 1; art[at(x, y)] = 2; } } // a rocky massif beside the slide
+    var wp = [[17, gtY + 4], [14, gtY + 4], [12, gtY + 2], [9, gtY + 3], [7, gtY + 1], [9, gtY - 1], [11, gtY - 3], [8, gtY - 4], [6, gtY - 2], [5, gtY - 1], [4, gtY], [3, gtY]], passPath = [], pathSeen = {}, passPts = [];
+    for (k = 0; k < wp.length - 1; k++) { var pa = wp[k], pb = wp[k + 1], stp = Math.ceil(Math.hypot(pb[0] - pa[0], pb[1] - pa[1]) * 3); for (var q2 = 0; q2 <= stp; q2++) { var pxx = pa[0] + (pb[0] - pa[0]) * q2 / stp + Math.sin(q2 * 1.7 + k) * 0.25, pyy = pa[1] + (pb[1] - pa[1]) * q2 / stp; passPts.push({ x: pxx * T + 16, y: pyy * T + 16 }); disc(pxx, pyy, 0.95, function (xx, yy) { var ii = at(xx, yy); if (!pathSeen[ii] && xx >= 4 && tiles[ii]) { pathSeen[ii] = 1; passPath.push(ii); } }); } }
 
     // reachability: start must reach the barrow mouth, every chest and the camp
     var seen = new Uint8Array(N), q = [at(spawn.tx, spawn.ty)], qi = 0;
@@ -252,7 +324,7 @@
       var c0 = q[qi++], cx0 = c0 % W, cy0 = (c0 / W) | 0, nb = [[1, 0], [-1, 0], [0, 1], [0, -1]];
       for (var m = 0; m < 4; m++) { var nx = cx0 + nb[m][0], ny = cy0 + nb[m][1]; if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue; var ni2 = at(nx, ny); if (seen[ni2] || tiles[ni2]) continue; seen[ni2] = 1; q.push(ni2); }
     }
-    var ok = seen[at(stairs.tx, stairs.ty)] === 1 && seen[at(campC.tx, campC.ty)] === 1, ci;
+    var ok = seen[at(stairs.tx, stairs.ty)] === 1 && seen[at(campC.tx, campC.ty)] === 1 && seen[at(8, sy0)] === 1 && seen[at(18, gtY + 4)] === 1 && (!pond || seen[at(pond.ix, pond.iy)] === 1), ci;
     for (ci = 0; ci < chests.length; ci++) if (!seen[at(chests[ci].tx, chests[ci].ty)]) ok = false;
     if (!ok || chests.length < 3) return null;
 
@@ -266,11 +338,14 @@
       var rr = rng();
       spawns.push({ x: sp.x, y: sp.y, type: rr < 0.34 ? 'direwolf' : rr < 0.6 ? 'crow' : rr < 0.78 ? 'scarecrow' : 'mawworm' });
     }
+    if (pond) spawns = spawns.filter(function (s) { return CC.HauntedPond.keepClear(s.x, s.y); });
     var map = CC.Realm.create({
       name: 'Rolling Plains', w: W, h: H, kind: kind, tiles: tiles, spawn: spawn, stairs: stairs, chests: chests, enemySpawns: spawns, props: props, lights: lights,
       ambient: '34,44,66,0.4', playerLight: 190, viewR: 230, fog: 0.08, fogColor: '170,185,175', ground: ground, detail: detail, drawSolid: drawSolid, afterLight: afterLight
     });
     map.art = art; map.npcs = npcs; map.camp = { x: cx * T + 16, y: cy * T + 16 }; map.floor = 1; map.mainPath = samples;
+    map.pond = pond;
+    map.slide = { x: slideC.x, y: slideC.y }; map.passGate = { x: gateC.x, y: gateC.y, gy: gtY }; map.passPath = passPath; map.passPts = passPts; map.pathOpened = 0;
     return map;
   }
 
@@ -281,16 +356,27 @@
     if (!map) throw new Error('Plains generation failed');
     map.seed = seed;
     P.map = map; P.titleStart = Date.now(); P.speech = null;
+    if (CC.RockPass && CC.RockPass.isOpen()) P.openGate(map);
     return map;
   };
+  P.openPath = function (map, f) { // the eagle reveals the trail: open the path tiles up to fraction f (0..1), in order from the plain's edge into the rocks
+    if (!map || !map.passPath) return 0;
+    var n = Math.min(map.passPath.length, Math.ceil(map.passPath.length * f)), i, opened = 0;
+    for (i = map.pathOpened || 0; i < n; i++) { var ii = map.passPath[i]; map.tiles[ii] = 0; map.kind[ii] = 2; if (map.art) map.art[ii] = 0; opened++; }
+    map.pathOpened = Math.max(map.pathOpened || 0, n); if (map.pathOpened >= map.passPath.length) map.gateOpen = true;
+    return opened;
+  };
+  P.openGate = function (map) { P.openPath(map, 1); }; // the whole trail is open
 
   P.interact = function () {
     var s = CC.state, p = s && s.player, m = P.map;
     if (!p || !m || CC.Dungeon !== m) return false;
     var best = null, bd = 56, i;
-    for (i = 0; i < m.npcs.length; i++) { var n = m.npcs[i], d = Math.hypot(p.x - n.x, p.y - n.y); if (d < bd) { bd = d; best = n; } }
+    if (CC.RockPass && CC.RockPass.scouting()) return true;
+    if (m.passGate && CC.RockPass && CC.RockPass.isOpen() && Math.hypot(p.x - m.passGate.x, p.y - m.passGate.y) < 100) return CC.RockPass.enter();
+    for (i = 0; i < m.npcs.length; i++) { var n = m.npcs[i], d = Math.hypot(p.x - n.x, p.y - n.y); if (!n.hidden && d < bd) { bd = d; best = n; } }
     if (!best) return false;
-    var text = best.lines[best.line % best.lines.length]; best.line++;
+    var text = best.talk ? best.talk(best) : best.lines[best.line % best.lines.length]; best.line++;
     P.speech = { name: best.name, text: text, t0: Date.now() };
     if (!best.healed) {
       best.healed = true; p.hp = p.maxHp; p.mana = p.maxMana;
@@ -465,13 +551,10 @@
       ctx.strokeStyle = 'rgba(90,10,14,0.8)'; ctx.beginPath(); ctx.moveTo(r * 0.3, -r * 0.5); ctx.lineTo(r * 0.55, r * 0.1); ctx.stroke();
       var hx = r * 1.2 * st; // head
       ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(hx, -r * 0.2, r * 0.5, r * 0.4, 0, 0, PI2); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(hx + r * 0.3, -r * 0.38); ctx.lineTo(hx + r * 0.95, -r * (open ? 0.3 : 0.12)); ctx.lineTo(hx + r * 0.35, -r * 0.05); ctx.fill();
       ctx.fillStyle = dark; ctx.beginPath(); ctx.moveTo(hx - r * 0.1, -r * 0.5); ctx.lineTo(hx - r * 0.05, -r * 0.95); ctx.lineTo(hx + r * 0.25, -r * 0.5); ctx.fill();
-      if (open) { // jaws agape: lower jaw, fangs, drool
-        ctx.fillStyle = '#3a0a0e'; ctx.beginPath(); ctx.moveTo(hx + r * 0.3, -r * 0.05); ctx.lineTo(hx + r * 0.9, r * 0.22); ctx.lineTo(hx + r * 0.3, r * 0.18); ctx.fill();
-        ctx.fillStyle = '#e8e4d0'; for (k = 0; k < 3; k++) { ctx.beginPath(); ctx.moveTo(hx + r * (0.45 + k * 0.17), -r * 0.12); ctx.lineTo(hx + r * (0.5 + k * 0.17), r * 0.04); ctx.lineTo(hx + r * (0.55 + k * 0.17), -r * 0.12); ctx.fill(); }
-        ctx.strokeStyle = 'rgba(210,220,230,0.7)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(hx + r * 0.6, r * 0.18); ctx.lineTo(hx + r * 0.62, r * 0.5 + Math.sin(an * 8) * 1.5); ctx.stroke();
-      }
+      // the jaws: a long snout over a lower jaw that hangs open when it telegraphs and snaps shut again and again while it lunges
+      var jawOpen = e.state === 'telegraph' ? 0.95 : e.state === 'act' ? Math.max(0.04, 0.5 + 0.55 * Math.cos(an * 24)) : e.state === 'recover' ? 0.3 : 0.13 + 0.04 * Math.sin(an * 3);
+      if (CC.Wounds && CC.Wounds.drawJaws) CC.Wounds.drawJaws(ctx, hx + r * 0.12, -r * 0.12, r * 1.2, jawOpen, { fur: col, dark: dark, lower: dark });
       ctx.fillStyle = '#ffd23a'; ctx.shadowColor = '#ffb020'; ctx.shadowBlur = 6; ctx.fillRect(hx + r * 0.12, -r * 0.4, 3, 2.4); ctx.shadowBlur = 0;
     },
     crow: function (ctx, e, r, col, dark, t) {

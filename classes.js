@@ -60,7 +60,7 @@
     return { dmgPct: 0, hpPct: 0, manaPct: 0, speedPct: 0, cdrPct: 0, critPct: 0, critDmg: 0, lifesteal: 0, regenHp: 0, regenMana: 0, armor: 0, xpPct: 0, aoePct: 0, spell1Pct: 0, spell2Pct: 0, spellCdr: 0 };
   }
   // spell power from the skill tree: 1 + the class's Mastery bonus for spell 1 or 2
-  function sm(p, n) { return 1 + (p.mods['spell' + n + 'Pct'] || 0); }
+  function sm(p, n) { return (1 + (p.mods['spell' + n + 'Pct'] || 0)) * (CC.Skills ? CC.Skills.dmgMul(p, 'spell' + n) : 1); }
   function flag(p, k) { p.flags[k] = (p.flags[k] || 0) + 1; }
   function perk(id, name, desc, fn) { return { id: id, name: name, desc: desc, apply: fn }; }
 
@@ -73,7 +73,8 @@
       perk('fleet', 'Fleet Footed', '+10% move speed', function (p) { p.mods.speedPct += 0.1; }),
       perk('wide', 'Cyclone', 'Whirlwind radius +30%', function (p) { flag(p, 'wide'); }),
       perk('wind', 'Second Wind', 'Regenerate 1.5 HP/s', function (p) { p.mods.regenHp += 1.5; }),
-      perk('stun', 'Skull Rattler', 'Shield Bash stuns 0.6s longer', function (p) { flag(p, 'stun'); })
+      perk('stun', 'Skull Rattler', 'Shield Bash stuns 0.6s longer', function (p) { flag(p, 'stun'); }),
+      perk('gash', 'Deep Wounds', 'Sword wounds bleed 1s longer and hurt 50% more', function (p) { flag(p, 'gash'); })
     ],
     wizard: [
       perk('surge', 'Arcane Surge', '+15% damage', function (p) { p.mods.dmgPct += 0.15; }),
@@ -148,7 +149,7 @@
     if (p.maxHp > oldHp) p.hp += p.maxHp - oldHp;
     if (p.maxMana > oldMana) p.mana += p.maxMana - oldMana;
     p.hp = Math.min(p.hp, p.maxHp); p.mana = Math.min(p.mana, p.maxMana);
-    for (var c in d.cdMax) p.cdMax[c] = d.cdMax[c] * (1 - p.stats.cdr) * ((c === 'spell1' || c === 'spell2') ? 1 - Math.min(0.5, m.spellCdr || 0) : 1);
+    for (var c in d.cdMax) p.cdMax[c] = d.cdMax[c] * (1 - p.stats.cdr) * ((c === 'spell1' || c === 'spell2') ? (1 - Math.min(0.5, m.spellCdr || 0)) * (CC.Skills ? CC.Skills.cdMul(p, c) : 1) : 1);
   }
 
   function create(classId) {
@@ -176,7 +177,7 @@
     p = p || hero();
     if (!p || !(n > 0)) return;
     p.xp += n * (1 + p.mods.xpPct);
-    while (p.xp >= p.xpNext && p.level < 50) {
+    while (p.xp >= p.xpNext && p.level < 99) {
       p.xp -= p.xpNext;
       p.level++;
       p.xpNext = xpToNext(p.level);
@@ -184,7 +185,7 @@
       p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.3);
       p.mana = p.maxMana;
       syncSpells(p);
-      fxText(p.x, p.y - 20, 'LEVEL UP! ' + p.level, '#ffe08a', 14);
+      fxText(p.x, p.y - 20, 'LEVEL UP! ' + p.level, '#ffe08a', 14); if (CC.Audio) CC.Audio.event('levelup');
       if (p.level === SPELL2_LEVEL) fxText(p.x, p.y - 34, p.spells[1] + ' unlocked!', '#9fe3ff', 12);
       if (p.level === 10 || p.level === 20 || p.level === 30) { // a new charge attack, equipped at once (change it on the skill screen)
         var ST = CC.SkillTree, cs = ST && ST.chargeSkills(p.classId)[p.level / 10];
@@ -194,12 +195,12 @@
       addFx({ kind: 'ring', x: p.x, y: p.y, r: 36, t: 0.5, max: 0.5, col: '#ffe08a' });
       if (p.level % 3 === 0) { p.perkQueue++; if (!p.perkOpen) openPerk(p); }
     }
-    if (p.level >= 50) p.xp = Math.min(p.xp, p.xpNext - 1);
+    if (p.level >= 99) p.xp = Math.min(p.xp, p.xpNext - 1);
     // Levelling up no longer throws the skill tree open: the LEVEL UP button in the HUD (main.js) shows the unspent points.
   }
 
   function openPerk(p) {
-    var pool = PERKS[p.classId].filter(function (k) { return p.perks.indexOf(k.id) < 0; });
+    var pool = PERKS[p.classId].filter(function (k) { return p.perks.indexOf(k.id) < 0 && (!k.req || p.perks.indexOf(k.req) >= 0); });
     for (var i = pool.length - 1; i > 0; i--) { var j = (Math.random() * (i + 1)) | 0, t = pool[i]; pool[i] = pool[j]; pool[j] = t; }
     p.perkChoices = pool.slice(0, 3);
     p.perkOpen = p.perkChoices.length > 0;
@@ -342,6 +343,8 @@
     var p = hero();
     if (!alive(e)) return 0;
     opts = opts || {};
+    var meleeT = type === 'slash' || type === 'melee' || type === 'physical';
+    if (e.airborne && meleeT && !opts.splash) { fxText(e.x, e.y - (e.r || 8) - 18, 'OUT OF REACH', '#cfc8d8', 9); return 0; } // a leaping scarecrow can only be hit by projectiles and spells
     var crit = !opts.noCrit && p && (typeof opts.preRolledCrit === 'boolean' ? opts.preRolledCrit : Math.random() < p.stats.crit);
     var back = false;
     if (p && p.classId === 'thief' && !opts.minion && type !== 'poison' && type !== 'fire') {
@@ -350,6 +353,7 @@
       if (back) { dmg *= p.flags.cutthroat ? 2.2 : 1.5; if (p.ambushT > 0) { p.ambushT = 0; crit = true; } }
     }
     if (crit) dmg *= p.stats.critDmg;
+    if (p && CC.Skills && !opts.minion) dmg *= CC.Skills.preHit(p, e, type, opts); // vulnerable foes, war cry, executes...
     // PERFECT CRITICAL (kill shot): a basic-attack crit on a non-boss already at 1/3 health
     // or less has a 1-in-10 chance to be an instant kill with a class finisher cinematic.
     var killShot = !!(crit && opts.basicAttack && !opts.minion && !opts.splash && p && !e.boss && !(p.pw && p.pw.rapid > 0) &&
@@ -361,6 +365,7 @@
     if (viaEnemies) { try { CC.Enemies.damage(e, dmg, type); } catch (err) { e.hp -= dmg; } }
     else e.hp -= dmg;
     fxText(e.x, e.y - (e.r || 8) - 4, crit ? dmg + '!' : String(dmg), crit ? '#f04c57' : back ? '#7de0b8' : '#fff', crit ? 16 : 10);
+    if (CC.Audio && !(opts.noCrit && !opts.basicAttack) && !opts.minion && type !== 'poison') CC.Audio.event('hit', { x: e.x, y: e.y, crit: crit });
     fxBurst(e.x, e.y, crit ? '#ffd24a' : '#ffffff', crit ? 14 : 4, crit ? 110 : 60);
     if (p && !opts.minion && (type === 'slash' || type === 'melee' || type === 'physical') &&
         Math.hypot(p.x - e.x, p.y - e.y) < 72 && !(e.ghost)) {
@@ -409,6 +414,20 @@
     if (p && !opts.minion && p.stats.lifesteal > 0) heal(p, dmg * p.stats.lifesteal);
     if (killShot && alive(e) && CC.Enemies && CC.Enemies._kill) { e.hp = 0; try { CC.Enemies._kill(e); } catch (err) { /* normal damage already applied */ } }
     if (killShot && !alive(e)) fxText(e.x, e.y - (e.r || 8) - 18, 'KILL SHOT', '#ff4b5c', 11);
+    if (alive(e) && e.type === 'scarecrow' && p && CC.ScarecrowFlock && CC.ScarecrowFlock.slashCrows && !(opts.noCrit && !opts.basicAttack) && Math.random() < 0.25) // any hit (slash, arrow, bolt, spell) has a 1 in 4 chance to tear 1-3 crows out of the straw; damage-over-time ticks don't count
+      CC.ScarecrowFlock.slashCrows(e, opts.angle, p);
+    if (alive(e) && p && CC.Skills) CC.Skills.onHit(p, e, dmg, type, opts); // magic blade, synergies, effects
+    if (alive(e) && meleeT && !opts.minion) {
+      if (p && p.classId === 'thief' && opts.basicAttack && !e.ghost && Math.random() < 0.22) { // light fingers: a slash can lift coins off the target
+        var st = CC.state, gl = Math.max(1, Math.round((1 + Math.floor(Math.random() * 3) + Math.floor((p.level || 1) / 4)) * (1 + (p.goldFind || 0) / 100)));
+        if (st) st.gold = (st.gold || 0) + gl;
+        fxText(e.x, e.y - (e.r || 8) - 22, '+' + gl + ' G', '#ffd24a', 10); fxBurst(e.x, e.y - 4, '#ffd24a', 7, 95); fxBurst(e.x, e.y - 4, '#fff2a0', 3, 60);
+      }
+      if (p && p.classId === 'swordsman' && opts.basicAttack && !e.ghost && e.type !== 'screegolem' && CC.Wounds && Math.random() < 0.1 * (1 + ((p.flags && p.flags.crimson) || 0))) { // 1 in 10 sword hits opens a bleeding wound
+        var gsh = (p.flags && p.flags.gash) || 0;
+        CC.Wounds.apply(e, { dur: 2.5 + gsh, dps: Math.max(2, ((p.stats && p.stats.dmg) || 10) * 0.22) * (1 + 0.5 * gsh), src: 'blade' });
+      }
+    }
     if (!alive(e)) onKill(e);
     return dmg;
   }
@@ -580,6 +599,7 @@
       }
     }
     if (p.pw && p.pw.rapid > 0 && !pr.aoe) pr.pierce = true; // rapid fire power-up: shots pass through monsters
+    if (CC.Audio) CC.Audio.fx(kind === 'fire' ? 'fireball' : kind === 'bolt' ? 'zap' : kind === 'wave' || kind === 'orb' ? 'magic' : 'throw', { x: p.x, y: p.y, vol: 0.7, gap: 70 });
     if (projs.length < 80) projs.push(pr);
     if (CC.Multiplayer && CC.Multiplayer.sendFx)
       CC.Multiplayer.sendFx('pr', { x: pr.x, y: pr.y, vx: pr.vx, vy: pr.vy, life: pr.life, r: pr.r, kind: pr.kind,
@@ -594,12 +614,13 @@
       // Only a damaging swipe advances the chain. Multiple targets still count once.
       var step = (p.combo || 0) + 1, fin = step === 3;
       dir = aimDir(p, 56);
+      if (CC.Audio) CC.Audio.slash('sword', step, fin || !!p.flags.magicBlade && step === 3); // the swing
       var mult = fin ? 1.30 * (1 + 0.25 * (p.flags.heavy || 0)) : 0.85 + step * 0.10;
       var range = fin ? 38 : 31, half = fin ? 1.18 : 0.9;
       var hits = cone(p, dir, range, half, mult, 'slash', fin ? 8 : 3, 0, true);
       p.swingAng = dir.a; p.swingSign = step === 2 ? -1 : 1;
       addFx({ kind: 'arc', x: p.x, y: p.y, a: dir.a, half: half, r: range, t: 0.16, max: 0.16,
-        col: hits && fin ? '#a06ed2' : '#ffffff' });
+        col: p.flags.magicBlade ? (fin ? '#7a8cff' : '#4fc0ff') : hits && fin ? '#a06ed2' : '#ffffff' });
       if (hits > 0) {
         p.combo = fin ? 0 : step;
         p.comboT = 1.0;
@@ -625,6 +646,7 @@
       p.cd.attack = p.cdMax.attack; p.castFlash = 0.15;
     } else if (cls === 'thief') {
       dir = aimDir(p, 40);
+      if (CC.Audio) CC.Audio.slash('dagger', ((p.combo || 0) + 1) % 3 + 1, ((p.combo || 0) + 1) === 5);
       var hit = (p.combo || 0) + 1, finish = hit === 5;
       p.swingAng = dir.a; p.swingSign = hit % 2 ? 1 : -1;
       var strikes = cone(p, dir, finish ? 33 : 27, finish ? 0.95 : 0.7,
@@ -691,7 +713,7 @@
     } else if (cls === 'wizard') { // fireball
       if (!spend(p, 'spell1')) return;
       dir = aimDir(p, 190);
-      shoot(p, dir.a, 170, 1.2, 2.4 * sm(p, 1), 6, 'fire', 'fire', '#ff8a3c', { aoe: 40 * (1 + p.mods.aoePct + 0.3 * (p.flags.inferno || 0)) });
+      shoot(p, dir.a, 170, 1.2, 2.4 * sm(p, 1), 6, 'fire', 'fire', '#ff8a3c', { aoe: 40 * (1 + p.mods.aoePct + 0.3 * (p.flags.inferno || 0)) * (CC.Skills ? CC.Skills.radMul(p, 'spell1') : 1), ability: 'spell1' });
       p.castFlash = 0.3; fxShake(2);
     } else if (cls === 'thief') { // throwing knives
       if (!spend(p, 'spell1')) return;
@@ -718,14 +740,14 @@
       if (CC.Vfx) CC.Vfx.spawn('whirl', p.x, p.y, 28, { own: p, life: 0.7 });
     } else if (cls === 'wizard') { // frost nova
       if (!spend(p, 'spell2')) return;
-      var rad = 72 * (1 + p.mods.aoePct);
+      var rad = 72 * (1 + p.mods.aoePct) * (CC.Skills ? CC.Skills.radMul(p, 'spell2') : 1);
       radial(p, p.x, p.y, rad, 1.0 * sm(p, 2), 'frost', 2.5 + 1.5 * (p.flags.frostbite || 0), 0.45);
       if (CC.Vfx) CC.Vfx.spawn('frostNova', p.x, p.y, rad, {});
       else { addFx({ kind: 'ring', x: p.x, y: p.y, r: rad, t: 0.45, max: 0.45, col: '#9fe3ff' }); fxBurst(p.x, p.y, '#9fe3ff', 20, 120); }
       fxShake(3); p.castFlash = 0.3;
     } else if (cls === 'thief') { // smoke bomb: slows nearby foes, brief invulnerability, primes an ambush
       if (!spend(p, 'spell2')) return;
-      radial(p, p.x, p.y, 56, 0.4 * sm(p, 2), 'smoke', 2.5, 0.5);
+      radial(p, p.x, p.y, 56 * (CC.Skills ? CC.Skills.radMul(p, 'spell2') : 1), 0.4 * sm(p, 2), 'smoke', 2.5, 0.5);
       p.iframes = Math.max(p.iframes, 0.5); p.ambushT = 2;
       if (CC.Vfx) CC.Vfx.spawn('smokeBomb', p.x, p.y, 56, {});
       else { addFx({ kind: 'ring', x: p.x, y: p.y, r: 56, t: 0.5, max: 0.5, col: '#8a90a8' }); addFx({ kind: 'puff', x: p.x, y: p.y, r: 22, t: 0.5, max: 0.5, col: '#5a5f78' }); fxBurst(p.x, p.y, '#8a90a8', 16, 90); }
@@ -856,7 +878,7 @@
             if (!s.visual && s.hit.indexOf(e) < 0) {
               s.hit.push(e);
               hitEnemy(e, s.dmg, s.type, { basicAttack: s.kind === 'bolt' || s.kind === 'shard', pw: s.kind === 'wave', attackKind: 'projectile',
-                angle: s.a, color: s.col, preRolledCrit: s.hit.length === 1 ? s.preRolledCrit : false });
+                angle: s.a, color: s.col, ability: s.ability, preRolledCrit: s.hit.length === 1 ? s.preRolledCrit : false });
               fxBurst(s.x, s.y, s.col, 4, 60);
             }
           } else { target = e; end = true; }
@@ -956,6 +978,7 @@
     p.invuln = Math.max(0, p.invuln - dt); p.iframes = Math.max(0, p.iframes - dt);
     if (p.ambushT > 0) p.ambushT = Math.max(0, p.ambushT - dt);
     if (noManaT > 0) noManaT -= dt;
+    if (CC.Skills) CC.Skills.update(p, dt);
     if (p.comboT > 0) { p.comboT -= dt; if (p.comboT <= 0) p.combo = 0; }
     if (p.comboDisplayT > 0) p.comboDisplayT -= dt;
     if (p.hp <= 0) { updateFx(dt); return; }
@@ -1025,8 +1048,11 @@
     if (opts && opts.noCombat) { updateFx(dt); return; }
 
     if (inp.attack && p.cd.attack <= 0) doAttack(p);
-    if (inp.spell1 && p.cd.spell1 <= 0) doSpell1(p);
-    if (inp.spell2 && p.cd.spell2 <= 0 && p.level >= SPELL2_LEVEL) doSpell2(p);
+    if (CC.Skills && CC.Skills.route) CC.Skills.route(p, inp, { doSpell1: doSpell1, doSpell2: doSpell2 });
+    else {
+      if (inp.spell1 && p.cd.spell1 <= 0) doSpell1(p);
+      if (inp.spell2 && p.cd.spell2 <= 0 && p.level >= SPELL2_LEVEL) doSpell2(p);
+    }
     if (inp.dash && p.cd.dash <= 0 && p.dashT <= 0) doDash(p);
 
     if (p.whirlT > 0) {
@@ -1119,7 +1145,10 @@
         else if(p.atkAnim>0)ang=p.swingAng+(p.atkAnim/.2-.5)*2.2*(p.swingSign||1);
         else ang=f>0?-1.1:-2.04;
         var hx0=x+f*7,hy0=y-1+bob;
-        line(c,hx0,hy0,hx0+Math.cos(ang)*14,hy0+Math.sin(ang)*14,'#e6edf7',3);
+        if(p.flags&&p.flags.magicBlade){ // a glowing blue blade
+          c.save();c.globalAlpha=.4+.15*Math.sin(p.anim*6);line(c,hx0,hy0,hx0+Math.cos(ang)*17,hy0+Math.sin(ang)*17,'#3a9bff',7);c.restore();
+          line(c,hx0,hy0,hx0+Math.cos(ang)*16,hy0+Math.sin(ang)*16,'#bff0ff',3);
+        }else line(c,hx0,hy0,hx0+Math.cos(ang)*14,hy0+Math.sin(ang)*14,'#e6edf7',3);
         if(p.bloodTime>0){
           c.save();c.globalAlpha=Math.min(1,p.bloodTime/5);
           line(c,hx0+Math.cos(ang)*5,hy0+Math.sin(ang)*5,
@@ -1379,6 +1408,7 @@
     drawCriticalHero: drawCriticalHero, critRadius: critRadius,
     gainXp: gainXp, xpToNext: xpToNext, damage: damage, heal: heal, damageMinion: damageMinion,
     applyItemStats: applyItemStats, choosePerk: choosePerk, hitEnemy: hitEnemy, status: status,
+    _h: { shoot: shoot, nearest: nearest, aimDir: aimDir, ignite: ignite, addFx: addFx, foes: foes },
     tapAction:tapAction,summonCharged:summonCharged,
     drawPerkOverlay: function (c) { var p = hero(); if (p && p.perkOpen && p.perkChoices) drawPerkPanel(c, p); },
     addRemoteFx: addRemoteFx, addRemoteProjectile: addRemoteProjectile, drawMinion: drawMinion,

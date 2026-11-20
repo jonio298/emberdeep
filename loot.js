@@ -510,7 +510,7 @@
         if (dist < pr + (d.kind === 'item' ? 16 : 8)) {
           this.drops.splice(i, 1);
           if (d.kind === 'gold') {
-            var g = Math.round(d.amount * (1 + (player.goldFind || 0) / 100)); s.gold = (s.gold || 0) + g; this._text(d.x, d.y, '+' + g, '#ffd24a');
+            var g = Math.round(d.amount * (1 + (player.goldFind || 0) / 100)); s.gold = (s.gold || 0) + g; this._text(d.x, d.y, '+' + g, '#ffd24a'); if (CC.Audio) CC.Audio.event('gold', { x: d.x, y: d.y });
           } else if (d.kind === 'hp') {
             player.hp = Math.min(player.maxHp || player.hp + d.amount, player.hp + d.amount); this._text(d.x, d.y, '+' + d.amount + ' HP', '#ff6a78');
           } else if (d.kind === 'mana') {
@@ -525,6 +525,7 @@
             else if (s.inventory.length >= 40) { s.gold = (s.gold || 0) + d.item.value; this._text(d.x, d.y, 'Sold +' + d.item.value, '#ffd24a'); }
             else { s.inventory.push(d.item); this._text(d.x, d.y, d.item.name, d.item.color, d.item.rarity >= 3 ? 12 : 10); }
             if (CC.fx && CC.fx.burst) CC.fx.burst(d.x, d.y, d.item.color, 6 + d.item.rarity * 3, 80);
+            if (CC.Audio) CC.Audio.event(d.item.rarity >= 4 ? 'legendary' : d.item.rarity >= 2 ? 'rare' : 'pickup', { x: d.x, y: d.y });
           }
           got.push(d);
         }

@@ -302,24 +302,36 @@ function swordCrit(c,o,t){
 function swordFlash(t){
  return {w:Math.max(.45*Math.exp(-Math.pow((t-.405)/.02,2)),.32*Math.exp(-Math.pow((t-.725)/.022,2))),r:0};
 }
+function taper(c,x1,y1,x2,y2,bend,w,col){ // a curved sliver: zero width at both ends, `w` wide in the middle
+ var mx=(x1+x2)/2,my=(y1+y2)/2,dx=x2-x1,dy=y2-y1,l=Math.hypot(dx,dy)||1,nx=-dy/l,ny=dx/l,cx=mx+nx*bend,cy=my+ny*bend;
+ c.fillStyle=col;c.beginPath();c.moveTo(x1,y1);c.quadraticCurveTo(cx+nx*w,cy+ny*w,x2,y2);c.quadraticCurveTo(cx-nx*w,cy-ny*w,x1,y1);c.closePath();c.fill();
+}
 function thief(c,o,t){
  c.save();
- var offsets=[-.92,.64,-.33],centers=[.15,.25,.35],angles=[-.82,.80,-.26];
- for(var i=0;i<3;i++){
-   var age=t-centers[i],duration=.18,progress=clamp(age/duration,0,1);
-   if(age<-.045||age>.24)continue;
-   var fade=smooth((age+.045)/.06)*smooth((duration-age)/.09);
-   c.save();c.rotate(o.angle+angles[i]);
-   c.globalAlpha=fade;
-   var x1=-30+progress*25,x2=28+progress*9,oy=(i-1)*4;
-   c.shadowColor='#d31b34';c.shadowBlur=9;
-   stroke(c,x1,oy-14,x2,oy+13,'#861127',7);
-   stroke(c,x1-2,oy-17,x2+1,oy+10,'#f44355',3);
+ // five fine blade cuts: a crossing X first, then three quick finishing lines. Each is a tapered, slightly curved sliver (needle thin at both ends)
+ var centers=[.1,.16,.22,.28,.33],angles=[-.82,.8,-.28,.38,-1.2],bends=[5,-5,4,-4,3],lens=[1,1,.85,.8,.7],n=5;
+ for(var i=0;i<n;i++){
+   var age=t-centers[i],duration=.17,progress=clamp(age/duration,0,1);
+   if(age<-.04||age>.26)continue;
+   var fade=smooth((age+.04)/.05)*smooth((duration+.05-age)/.1);
+   c.save();c.rotate(o.angle+angles[i]);c.globalAlpha=fade;
+   var L=lens[i],x1=-34*L+progress*22,x2=30*L+progress*10,oy=(i-2)*2.2,bend=bends[i];
+   c.shadowColor='#d31b34';c.shadowBlur=7;
+   taper(c,x1,oy-12,x2,oy+11,bend,3.4,'#8a1226');           // dark red body of the cut
    c.shadowBlur=0;
-   stroke(c,x1-3,oy-19,x2+2,oy+8,'#ffd5d7',1.2);
+   taper(c,x1+2,oy-11.5,x2-1,oy+10.5,bend,1.9,'#f2394d');    // bright red edge
+   taper(c,x1+4,oy-11,x2-3,oy+10,bend,.8,'#ffe3e5');         // hair-thin white core
+   // a trailing wisp where the blade has already passed
+   c.globalAlpha=fade*.45;stroke(c,x1-8,oy-15,x1+6,oy-9,'#ff7a86',.8);stroke(c,x1-12,oy-12,x1+2,oy-6,'#ff7a86',.6);
    c.restore();
-   if(age>.025&&age<.15)hitBurst(c,(i-1)*5,(i-1)*4,(age-.025)/.055,true);
+   if(age>.02&&age<.16){hitBurst(c,(i-2)*3,(i-2)*2.5,(age-.02)/.06,true);
+     c.save();c.globalAlpha=fade*.8; // thin blood threads and sparks flicked off the cut
+     for(var k=0;k<4;k++){var a2=o.angle+angles[i]+1.57+(k-1.5)*.55,r0=8+progress*6,r1=r0+8+k*2;stroke(c,Math.cos(a2)*r0,Math.sin(a2)*r0,Math.cos(a2)*r1,Math.sin(a2)*r1,k%2?'#ff4a5c':'#a8162b',.9);}
+     c.restore();}
  }
+ // where the first two cuts cross, a brief thin red X mark glows on the target
+ if(t>.22&&t<.5){var xm=smooth((t-.22)/.05)*smooth((.5-t)/.2);c.save();c.globalAlpha=xm*.8;c.rotate(o.angle);c.shadowColor='#ff2a44';c.shadowBlur=6;
+   stroke(c,-9,-9,9,9,'#ff4a5c',1);stroke(c,-9,9,9,-9,'#ff4a5c',1);stroke(c,-5,-5,5,5,'#ffe3e5',.5);stroke(c,-5,5,5,-5,'#ffe3e5',.5);c.restore();}
  // nimble, semi-transparent thief afterimages dash through the target
  for(var j=0;j<3;j++){
    var pos=smooth((t-(.09+j*.065))/.14);

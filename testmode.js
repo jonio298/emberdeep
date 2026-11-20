@@ -211,6 +211,8 @@
     inn.appendChild(el('h3', { text: 'MAP' }));
     inn.appendChild(row('Map', [select('tm-map', [['testroom', 'Test Room (empty arena)'], ['forest', 'Giant Forest'], ['tree-tunnel', 'Hollow Tree'], ['plains', 'Rolling Plains'], ['tree-ascent', 'Eagle Tree (floor 1-5)'], ['cave', 'Caves (floor)'], ['defense', 'Town Defense'], ['town', 'Town']])]));
     inn.appendChild(row('Floor', [el('input', { id: 'tm-floor', type: 'number', min: 1, max: 60, value: 1 }), btn('Go', function () { goMap(val('tm-map'), +val('tm-floor')); }, 'go')]));
+    inn.appendChild(el('div', { cls: 'row' }, [btn('OPEN WORLD MAP (click a place to teleport)', function () { TM.openWorld(); }, 'go')]));
+    inn.appendChild(el('div', { style: 'color:#9a8aa8;font-size:11px', text: 'Tip: open the map (M) and click any point on it to teleport there.' }));
 
     // --- monsters
     inn.appendChild(el('h3', { text: 'MONSTERS' }));
@@ -225,6 +227,7 @@
     inn.appendChild(el('div', { cls: 'row' }, [btn('CREATE TEST ROOM with this list', createRoom, 'go'), btn('Clear list', function () { plist.length = 0; refreshList(); })]));
 
     // --- cheats
+    inn.appendChild(el('div', { cls: 'row' }, [el('span', { cls: 'chk' }, [el('input', { id: 'tm-eagle', type: 'checkbox', checked: TM.eagleOn(), onchange: function () { TM.setEagle(this.checked); } }), el('span', { text: 'Eagle companion (hatched, follows you)' })])]));
     inn.appendChild(el('h3', { text: 'CHEATS' }));
     inn.appendChild(el('div', { cls: 'row' }, [
       el('span', { cls: 'chk' }, [el('input', { id: 'tm-god', type: 'checkbox', checked: cheats.god, onchange: function () { cheats.god = this.checked; } }), el('span', { text: 'God mode' })]),
@@ -246,6 +249,187 @@
       box.appendChild(el('span', { cls: 'chip', text: m.n + ' x ' + (m.elite ? 'Elite ' : '') + name + '  ✕', onclick: function () { plist.splice(i, 1); refreshList(); }, style: 'cursor:pointer' }));
     });
   }
+
+  /* ---------- teleporting (test mode): click the map, or pick a place on the world map ---------- */
+  TM.teleport = function (x, y) {
+    var p = hero(), D = CC.Dungeon; if (!p) return false;
+    var best = null, k, ring, a;
+    function free(px, py) { return D && D.isSolid ? !(D.isSolid(px, py) || D.isSolid(px + 9, py) || D.isSolid(px - 9, py) || D.isSolid(px, py + 9) || D.isSolid(px, py - 9)) : true; }
+    if (free(x, y)) best = { x: x, y: y };
+    for (ring = 1; ring <= 10 && !best; ring++) for (k = 0; k < 16 && !best; k++) { a = k / 16 * Math.PI * 2; var px = x + Math.cos(a) * ring * 12, py = y + Math.sin(a) * ring * 12; if (free(px, py)) best = { x: px, y: py }; }
+    if (!best) { say('Nothing walkable there', '#ff9a9a'); return false; }
+    p.x = best.x; p.y = best.y; if (st()) st().testMode = true;
+    if (CC.Enemies) { CC.Enemies.projectiles.length = 0; }
+    if (CC.snapCamera) CC.snapCamera();
+    say('Teleported');
+    return true;
+  };
+  TM.teleportFromMap = function (px, py, w, h) { // px, py relative to the full-map panel (same layout as dungeon.js / realm.js drawFullMap)
+    var D = CC.Dungeon; if (!D || !(D.w || D.W)) return false;
+    var W = D.w || D.W, H = D.h || D.H, pad = 24, top = 52, bottom = 40, cell = Math.max(1, Math.min((w - pad * 2) / W, (h - top - bottom) / H));
+    var ox = Math.round((w - cell * W) / 2), oy = Math.round(top + (h - top - bottom - cell * H) / 2), tx = (px - ox) / cell, ty = (py - oy) / cell;
+    if (tx < 0 || ty < 0 || tx >= W || ty >= H) return false;
+    return TM.teleport(tx * T, ty * T);
+  };
+
+  /* ---------- the world map: a stylised continent with every area on it ---------- */
+  var WW = 1000, WH = 700, wmap = null, WS = 1.6;
+  var PLACES = [ // x, y on the 1000x700 map; go = how to get there
+    { id: 'town', name: 'Forest Town', x: 560, y: 150, kind: 'town', go: function () { goMap('town'); } },
+    { id: 'forest', name: 'The Giant Forest', x: 548, y: 300, kind: 'forest', go: function () { goMap('forest'); } },
+    { id: 'tunnel', name: 'The Hollow Tree', x: 640, y: 335, kind: 'tree', go: function () { goMap('tree-tunnel'); } },
+    { id: 'nest', name: 'The Ancient Tree (crown)', x: 462, y: 262, kind: 'tree', go: function () { goMap('tree-ascent', 5); } },
+    { id: 'plains', name: 'The Rolling Plains', x: 520, y: 465, kind: 'plains', go: function () { goMap('plains'); } },
+    { id: 'pond', name: 'The Haunted Pond', x: 585, y: 520, kind: 'pond', go: function () { goMap('plains'); var m = st().map, pd = m && m.pond; if (pd) TM.teleport(pd.startX + pd.dirx * 50, pd.y); } },
+    { id: 'slide', name: 'The Rockslide', x: 440, y: 450, kind: 'rock', go: function () { goMap('plains'); var m = st().map; if (m && m.slide) TM.teleport(m.slide.x + 230, m.slide.y); } },
+    { id: 'barrow', name: 'The Barrow (caves)', x: 480, y: 565, kind: 'cave', go: function () { goMap('cave', 1); } },
+    { id: 'pass', name: 'The Rocky Pass', x: 335, y: 440, kind: 'mountain', go: function () { goMap('rocky-pass'); } },
+    { id: 'village', name: 'The Abandoned Village', x: 150, y: 415, kind: 'village', go: function () { goMap('village'); } },
+    { id: 'graveyard', name: 'The Graveyard', x: 185, y: 365, kind: 'grave', go: function () { goMap('village'); var m = st().map, g = m && m.vil && m.vil.ghosts[2]; if (g) TM.teleport(g.x, g.y + 30); } },
+    { id: 'cellar', name: 'The Cellar', x: 120, y: 460, kind: 'cellar', go: function () { goMap('village-cellar'); } }
+  ];
+  var KNOWN = [[560, 150, 95], [540, 300, 150], [520, 480, 125], [335, 445, 115], [150, 415, 95]]; // the charted lands
+  function vh(x, y) { var n = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263)) | 0; n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; }
+  function vnoise(x, y) { var xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi, u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy); var a = vh(xi, yi), b = vh(xi + 1, yi), c = vh(xi, yi + 1), d = vh(xi + 1, yi + 1); return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v; }
+  function fbm(x, y) { return vnoise(x, y) * 0.5 + vnoise(x * 2.1, y * 2.1) * 0.25 + vnoise(x * 4.3, y * 4.3) * 0.15 + vnoise(x * 8.7, y * 8.7) * 0.1; }
+  function blob(x, y, cx, cy, r) { var d = Math.hypot(x - cx, y - cy) / r; return d >= 1 ? 0 : (1 - d * d) * (1 - d * d); }
+  var MOUNT = [[335, 440, 75], [250, 330, 80], [395, 520, 55], [170, 120, 100], [860, 140, 110], [720, 70, 60], [290, 560, 60], [250, 440, 55], [420, 405, 45], [930, 420, 60]];
+  var FOREST = [[545, 295, 120], [470, 330, 70], [620, 245, 70], [120, 230, 90], [790, 215, 95], [840, 470, 80], [380, 180, 60]];
+  var PLAIN = [[520, 480, 105], [640, 520, 70], [450, 540, 50], [610, 440, 45]];
+  var DESERT = [[830, 590, 135], [700, 650, 95], [900, 520, 70]];
+  var LAKE = [[650, 130, 42], [760, 385, 52], [215, 575, 40], [335, 210, 38], [895, 330, 30], [420, 110, 30]];
+  function sample(x, y) { // -> [r,g,b], class
+    var n = fbm(x * 0.011, y * 0.011), edge = ((x - 500) / 478) * ((x - 500) / 478) + ((y - 350) / 332) * ((y - 350) / 332), coast = edge + (0.5 - fbm(x * 0.007 + 9, y * 0.007 + 4)) * 0.9;
+    if (coast > 1) { var dd = Math.min(1, (coast - 1) * 6); return [[30 + (1 - dd) * 22, 58 + (1 - dd) * 34, 88 + (1 - dd) * 34], 0]; }
+    if (coast > 0.93) return [[198, 186, 142], 1]; // beach
+    var m = 0, f = 0, pl = 0, d = 0, l = 0, i;
+    for (i = 0; i < MOUNT.length; i++) m += blob(x, y, MOUNT[i][0], MOUNT[i][1], MOUNT[i][2]);
+    for (i = 0; i < FOREST.length; i++) f += blob(x, y, FOREST[i][0], FOREST[i][1], FOREST[i][2]);
+    for (i = 0; i < PLAIN.length; i++) pl += blob(x, y, PLAIN[i][0], PLAIN[i][1], PLAIN[i][2]);
+    for (i = 0; i < DESERT.length; i++) d += blob(x, y, DESERT[i][0], DESERT[i][1], DESERT[i][2]);
+    for (i = 0; i < LAKE.length; i++) l += blob(x, y, LAKE[i][0], LAKE[i][1], LAKE[i][2]);
+    var rn = fbm(x * 0.02 + 40, y * 0.02);
+    if (l + (rn - 0.5) * 0.25 > 0.28) return [[66 + n * 20, 118 + n * 20, 158 + n * 14], 2]; // lake
+    var v = blob(x, y, 150, 415, 62); // the dry valley of the village
+    m += (rn - 0.45) * 0.5; if (m > 0.5) { var sn = m > 1.05 ? 1 : 0; return [sn ? [226, 230, 236] : [112 + n * 30 + m * 14, 106 + n * 30 + m * 12, 98 + n * 28], 3]; } // mountains
+    if (d + (rn - 0.5) * 0.3 > 0.3) return [[208 + rn * 22, 178 + rn * 18, 116 + rn * 12], 4]; // desert
+    if (v > 0.3) return [[126 + rn * 14, 122 + rn * 12, 86], 5];
+    if (f + (rn - 0.5) * 0.4 > 0.32) return [[52 + n * 24, 94 + n * 30, 58 + n * 16], 6]; // forest
+    if (pl + (rn - 0.5) * 0.3 > 0.25) return [[148 + rn * 20, 168 + rn * 14, 92], 7]; // plains
+    return [[112 + n * 26, 146 + n * 24, 84 + n * 16], 8]; // grassland
+  }
+  function buildWorld() {
+    var cv = document.createElement('canvas'); cv.width = WW * WS; cv.height = WH * WS; var c = cv.getContext('2d'), CS = 3, gw = Math.ceil(WW / CS), gh = Math.ceil(WH / CS), cls = new Uint8Array(gw * gh), small = document.createElement('canvas'); small.width = gw; small.height = gh;
+    var sc = small.getContext('2d'), img = sc.createImageData(gw, gh), x, y, i, hgt = new Float32Array(gw * gh);
+    for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) { hgt[y * gw + x] = fbm(x * CS * 0.011, y * CS * 0.011); }
+    for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) {
+      var wx = x * CS, wy = y * CS, s = sample(wx, wy), col = s[0], k = s[1];
+      var lit = ((hgt[y * gw + Math.max(0, x - 1)] - hgt[y * gw + Math.min(gw - 1, x + 1)]) + (hgt[Math.max(0, y - 1) * gw + x] - hgt[Math.min(gh - 1, y + 1) * gw + x])) * (k === 3 ? 6 : 2.4); // hill shading from the north-west
+      var known = 0; for (i = 0; i < KNOWN.length; i++) known = Math.max(known, Math.hypot(wx - KNOWN[i][0], wy - KNOWN[i][1]) < KNOWN[i][2] ? 1 : 0);
+      var r = col[0] * (1 + lit), g = col[1] * (1 + lit), b = col[2] * (1 + lit);
+      if (!known && k !== 0) { var gray = (r + g + b) / 3; r = r * 0.3 + gray * 0.3 + 78; g = g * 0.3 + gray * 0.3 + 70; b = b * 0.3 + gray * 0.3 + 56; } // uncharted land: faded, parchment-grey
+      var o = (y * gw + x) * 4; img.data[o] = Math.max(0, Math.min(255, r)); img.data[o + 1] = Math.max(0, Math.min(255, g)); img.data[o + 2] = Math.max(0, Math.min(255, b)); img.data[o + 3] = 255; cls[y * gw + x] = k;
+    }
+    sc.putImageData(img, 0, 0); c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high'; c.drawImage(small, 0, 0, WW * WS, WH * WS);
+    // glyphs: peaks, trees, dunes, grass tufts, ripples
+    c.save(); c.scale(WS, WS);
+    for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) {
+      var k2 = cls[y * gw + x], h2 = vh(x * 7 + 3, y * 13 + 5), wx2 = x * CS + h2 * CS, wy2 = y * CS + vh(x + 9, y + 1) * CS;
+      if (k2 === 3 && h2 < 0.2) { var sz = 6 + h2 * 22, snow = hgt[y * gw + x] > 0.62; c.fillStyle = 'rgba(40,36,34,.35)'; c.beginPath(); c.moveTo(wx2 - sz * 0.5, wy2); c.lineTo(wx2 + sz * 0.9, wy2); c.lineTo(wx2 + sz * 0.1, wy2 - sz * 1.5); c.fill(); c.fillStyle = snow ? '#f4f6f8' : '#8a8478'; c.beginPath(); c.moveTo(wx2 - sz * 0.7, wy2); c.lineTo(wx2 + sz * 0.5, wy2); c.lineTo(wx2 - sz * 0.1, wy2 - sz * 1.5); c.closePath(); c.fill(); c.fillStyle = snow ? '#c8d0dc' : '#625c52'; c.beginPath(); c.moveTo(wx2 - sz * 0.1, wy2 - sz * 1.5); c.lineTo(wx2 + sz * 0.5, wy2); c.lineTo(wx2 + sz * 0.1, wy2); c.closePath(); c.fill(); }
+      else if (k2 === 6 && h2 < 0.55) { var ts = 3.2 + h2 * 5; c.fillStyle = 'rgba(14,34,18,.45)'; c.beginPath(); c.ellipse(wx2 + 1, wy2 + 1, ts, ts * 0.5, 0, 0, 6.3); c.fill(); c.fillStyle = h2 < 0.2 ? '#22502c' : '#2e6638'; c.beginPath(); c.moveTo(wx2 - ts, wy2); c.lineTo(wx2, wy2 - ts * 2.2); c.lineTo(wx2 + ts, wy2); c.fill(); }
+      else if (k2 === 4 && h2 < 0.14) { c.strokeStyle = 'rgba(150,110,60,.55)'; c.lineWidth = 1; c.beginPath(); c.moveTo(wx2 - 8, wy2); c.quadraticCurveTo(wx2, wy2 - 6, wx2 + 8, wy2); c.stroke(); }
+      else if ((k2 === 7 || k2 === 8) && h2 < 0.05) { c.strokeStyle = 'rgba(60,90,40,.6)'; c.lineWidth = 1; c.beginPath(); c.moveTo(wx2, wy2); c.lineTo(wx2 - 1, wy2 - 4); c.moveTo(wx2 + 2, wy2); c.lineTo(wx2 + 3, wy2 - 4); c.stroke(); }
+      else if (k2 === 2 && h2 < 0.08) { c.strokeStyle = 'rgba(220,240,255,.4)'; c.lineWidth = 1; c.beginPath(); c.moveTo(wx2 - 6, wy2); c.lineTo(wx2 + 6, wy2); c.stroke(); }
+      else if (k2 === 5 && h2 < 0.08) { c.strokeStyle = '#4a3a2a'; c.lineWidth = 1.2; c.beginPath(); c.moveTo(wx2, wy2); c.lineTo(wx2, wy2 - 7); c.moveTo(wx2, wy2 - 4); c.lineTo(wx2 + 3, wy2 - 7); c.moveTo(wx2, wy2 - 3); c.lineTo(wx2 - 3, wy2 - 6); c.stroke(); } // dead trees in the valley
+      else if (k2 === 0 && h2 < 0.015) { c.strokeStyle = 'rgba(170,200,230,.25)'; c.lineWidth = 1; c.beginPath(); c.arc(wx2, wy2, 4, 3.5, 5.9); c.stroke(); }
+    }
+    // a river from the northern mountains to the lake, and a road joining the charted places
+    c.strokeStyle = 'rgba(70,120,166,.95)'; c.lineWidth = 3; c.lineCap = 'round'; c.beginPath(); c.moveTo(300, 190); c.bezierCurveTo(360, 200, 330, 240, 380, 260); c.stroke();
+    c.strokeStyle = 'rgba(150,120,80,.8)'; c.setLineDash([6, 5]); c.lineWidth = 2; c.beginPath(); c.moveTo(560, 150); c.lineTo(545, 295); c.lineTo(520, 465); c.lineTo(440, 450); c.lineTo(335, 440); c.lineTo(150, 415); c.stroke(); c.setLineDash([]);
+    c.restore();
+    // old-map finish: a vignette and a thin border
+    var vg = c.createRadialGradient(cv.width / 2, cv.height / 2, cv.width * 0.3, cv.width / 2, cv.height / 2, cv.width * 0.72); vg.addColorStop(0, 'rgba(30,20,10,0)'); vg.addColorStop(1, 'rgba(30,20,10,.5)'); c.fillStyle = vg; c.fillRect(0, 0, cv.width, cv.height);
+    c.strokeStyle = '#3a2a18'; c.lineWidth = 6; c.strokeRect(3, 3, cv.width - 6, cv.height - 6);
+    return cv;
+  }
+  function drawIcon(c, p, s, hot) {
+    c.save(); c.translate(p.x, p.y); c.scale(s, s);
+    c.shadowColor = 'rgba(0,0,0,.6)'; c.shadowBlur = 4;
+    c.fillStyle = hot ? '#ffe08a' : '#f4ead0'; c.strokeStyle = '#2a1a0c'; c.lineWidth = 1.6;
+    if (p.kind === 'town') { c.beginPath(); c.rect(-7, -4, 14, 9); c.fill(); c.stroke(); c.beginPath(); c.moveTo(-9, -4); c.lineTo(0, -12); c.lineTo(9, -4); c.closePath(); c.fillStyle = '#b24a3a'; c.fill(); c.stroke(); }
+    else if (p.kind === 'village') { c.beginPath(); c.rect(-7, -3, 14, 8); c.fillStyle = '#9a9488'; c.fill(); c.stroke(); c.beginPath(); c.moveTo(-9, -3); c.lineTo(-1, -9); c.lineTo(3, -3); c.closePath(); c.fillStyle = '#5a5248'; c.fill(); c.stroke(); }
+    else if (p.kind === 'grave') { c.beginPath(); c.moveTo(-5, 5); c.lineTo(-5, -4); c.arc(0, -4, 5, Math.PI, 0); c.lineTo(5, 5); c.closePath(); c.fillStyle = '#d8dce4'; c.fill(); c.stroke(); c.beginPath(); c.moveTo(0, -6); c.lineTo(0, 1); c.moveTo(-2.5, -3); c.lineTo(2.5, -3); c.stroke(); }
+    else if (p.kind === 'cellar') { c.beginPath(); c.rect(-6, -4, 12, 9); c.fillStyle = '#3a3040'; c.fill(); c.stroke(); c.beginPath(); c.moveTo(0, -4); c.lineTo(0, 5); c.stroke(); }
+    else if (p.kind === 'pond') { c.beginPath(); c.ellipse(0, 0, 9, 6, 0, 0, 6.3); c.fillStyle = '#5aa0d0'; c.fill(); c.stroke(); c.beginPath(); c.arc(0, 0, 2.2, 0, 6.3); c.fillStyle = '#f6e8f0'; c.fill(); }
+    else if (p.kind === 'tree' || p.kind === 'forest') { c.beginPath(); c.moveTo(-8, 5); c.lineTo(0, -10); c.lineTo(8, 5); c.closePath(); c.fillStyle = '#3a8a4a'; c.fill(); c.stroke(); c.fillStyle = '#5a3a1c'; c.fillRect(-1.5, 5, 3, 4); }
+    else if (p.kind === 'mountain' || p.kind === 'rock') { c.beginPath(); c.moveTo(-9, 6); c.lineTo(-2, -8); c.lineTo(3, 0); c.lineTo(6, -4); c.lineTo(10, 6); c.closePath(); c.fillStyle = '#c8c0b0'; c.fill(); c.stroke(); }
+    else if (p.kind === 'cave') { c.beginPath(); c.arc(0, 3, 8, Math.PI, 0); c.closePath(); c.fillStyle = '#6a6458'; c.fill(); c.stroke(); c.beginPath(); c.arc(0, 3, 4, Math.PI, 0); c.closePath(); c.fillStyle = '#10080c'; c.fill(); }
+    else { c.beginPath(); c.arc(0, 0, 7, 0, 6.3); c.fill(); c.stroke(); }
+    c.restore();
+  }
+  TM.openWorld = function () {
+    if (!hero()) return; var old = document.getElementById('tm-world'); if (old) { old.remove(); return; }
+    if (!wmap) wmap = buildWorld();
+    var box = document.createElement('div'); box.id = 'tm-world'; box.style.cssText = 'position:fixed;inset:0;z-index:100001;background:#0b1118;display:flex;flex-direction:column;font:13px Georgia,serif;color:#f0e4c8';
+    var bar = document.createElement('div'); bar.style.cssText = 'display:flex;gap:8px;align-items:center;padding:8px 12px;background:#1a1410;border-bottom:2px solid #5a4630;flex-wrap:wrap';
+    bar.innerHTML = '<b style="font-size:15px;color:#ffd36b">THE WORLD</b><span style="opacity:.7">drag to pan, wheel / + - to zoom, click a place to teleport there (test mode)</span>';
+    function mkb(t, fn) { var b = document.createElement('button'); b.textContent = t; b.style.cssText = 'background:#3a2a18;color:#f0e4c8;border:1px solid #8a6a3a;border-radius:6px;padding:5px 12px;cursor:pointer;font:inherit'; b.onclick = fn; return b; }
+    var cv = document.createElement('canvas'); cv.style.cssText = 'flex:1;width:100%;touch-action:none;cursor:grab'; var c = cv.getContext('2d');
+    var view = { x: WW / 2, y: WH / 2, z: 1 }, hover = null, drag = null, pinch = null, moved = 0, tip = document.createElement('div');
+    var spacer = document.createElement('span'); spacer.style.flex = '1'; bar.appendChild(spacer);
+    bar.appendChild(mkb('+', function () { zoomBy(1.3); })); bar.appendChild(mkb('-', function () { zoomBy(1 / 1.3); })); bar.appendChild(mkb('Fit', function () { fit(); })); bar.appendChild(mkb('Close', function () { box.remove(); }));
+    box.appendChild(bar); box.appendChild(cv); document.body.appendChild(box);
+    function size() { cv.width = cv.clientWidth; cv.height = cv.clientHeight; } size();
+    function fit() { view.x = WW / 2; view.y = WH / 2; view.z = Math.min(cv.width / WW, cv.height / WH) * 0.97; draw(); }
+    function zoomBy(f, cx, cy) { var nz = Math.max(Math.min(cv.width / WW, cv.height / WH) * 0.6, Math.min(5, view.z * f)); if (cx !== undefined) { var wx = (cx - cv.width / 2) / view.z + view.x, wy = (cy - cv.height / 2) / view.z + view.y; view.z = nz; view.x = wx - (cx - cv.width / 2) / view.z; view.y = wy - (cy - cv.height / 2) / view.z; } else view.z = nz; draw(); }
+    function toScreen(x, y) { return { x: (x - view.x) * view.z + cv.width / 2, y: (y - view.y) * view.z + cv.height / 2 }; }
+    function pick(mx, my) { var best = null, bd = 22; PLACES.forEach(function (pl) { var s = toScreen(pl.x, pl.y), d = Math.hypot(s.x - mx, s.y - my); if (d < bd) { bd = d; best = pl; } }); return best; }
+    function draw() {
+      c.fillStyle = '#0b1118'; c.fillRect(0, 0, cv.width, cv.height); c.imageSmoothingEnabled = true;
+      c.drawImage(wmap, (0 - view.x) * view.z + cv.width / 2, (0 - view.y) * view.z + cv.height / 2, WW * view.z, WH * view.z);
+      var p = hero(), pl, i;
+      c.textAlign = 'center'; c.font = 'italic ' + Math.max(11, 13 * Math.min(1.6, view.z)) + 'px Georgia,serif';
+      [['Uncharted Peaks', 180, 130], ['Frozen Wilds', 870, 120], ['The Sunscar Desert', 820, 595], ['Greenwild', 120, 235], ['Mistwater', 760, 385], ['The Sunken Reach', 215, 590]].forEach(function (rg) { var s = toScreen(rg[1], rg[2]); c.fillStyle = 'rgba(30,20,10,.55)'; c.fillText(rg[0], s.x + 1, s.y + 1); c.fillStyle = 'rgba(240,226,190,.7)'; c.fillText(rg[0], s.x, s.y); });
+      for (i = 0; i < PLACES.length; i++) {
+        pl = PLACES[i]; var s2 = toScreen(pl.x, pl.y), hot = hover === pl, sc = Math.min(1.7, 0.8 + view.z * 0.5) * (hot ? 1.25 : 1);
+        drawIcon(c, { x: s2.x, y: s2.y, kind: pl.kind }, sc, hot);
+        c.font = 'bold ' + Math.max(11, 12 * Math.min(1.5, view.z)) + 'px Georgia,serif'; c.textAlign = 'center'; c.fillStyle = 'rgba(20,12,6,.8)'; c.fillText(pl.name, s2.x + 1, s2.y + 21 * sc + 1); c.fillStyle = hot ? '#ffe08a' : '#fff6dc'; c.fillText(pl.name, s2.x, s2.y + 21 * sc);
+      }
+      // you are here
+      var cur = st() && st().area, here = { town: 'town', forest: 'forest', 'tree-tunnel': 'tunnel', 'tree-ascent': 'nest', plains: 'plains', cave: 'barrow', 'rocky-pass': 'pass', village: 'village', 'village-cellar': 'cellar' }[cur || 'town'];
+      PLACES.forEach(function (q) { if (q.id === here) { var s3 = toScreen(q.x, q.y); c.strokeStyle = '#ff5a5a'; c.lineWidth = 2; c.beginPath(); c.arc(s3.x, s3.y, 16 + 3 * Math.sin(Date.now() / 300), 0, 6.3); c.stroke(); c.fillStyle = '#ff9a9a'; c.font = 'bold 10px Georgia,serif'; c.fillText('YOU ARE HERE', s3.x, s3.y - 22); } });
+      // compass
+      c.save(); c.translate(cv.width - 56, cv.height - 56); c.strokeStyle = '#e8dcc4'; c.fillStyle = '#e8dcc4'; c.lineWidth = 1.5; c.beginPath(); c.arc(0, 0, 22, 0, 6.3); c.stroke(); c.beginPath(); c.moveTo(0, -30); c.lineTo(5, 0); c.lineTo(0, 30); c.lineTo(-5, 0); c.closePath(); c.globalAlpha = .6; c.fill(); c.globalAlpha = 1; c.beginPath(); c.moveTo(-30, 0); c.lineTo(30, 0); c.stroke(); c.font = 'bold 12px Georgia,serif'; c.textAlign = 'center'; c.fillText('N', 0, -36); c.restore();
+      if (hover) { c.font = '12px Georgia,serif'; var t = 'Click to teleport: ' + hover.name; var w = c.measureText(t).width + 18; c.fillStyle = 'rgba(14,10,6,.9)'; c.fillRect(cv.width / 2 - w / 2, cv.height - 34, w, 24); c.fillStyle = '#ffe08a'; c.textAlign = 'center'; c.fillText(t, cv.width / 2, cv.height - 17); }
+    }
+    cv.addEventListener('wheel', function (e) { e.preventDefault(); var r = cv.getBoundingClientRect(); zoomBy(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+    cv.addEventListener('pointerdown', function (e) { cv.setPointerCapture(e.pointerId); drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y }; moved = 0; cv.style.cursor = 'grabbing'; });
+    cv.addEventListener('pointermove', function (e) {
+      var r = cv.getBoundingClientRect();
+      if (drag) { var dx = e.clientX - drag.x, dy = e.clientY - drag.y; moved = Math.max(moved, Math.hypot(dx, dy)); view.x = drag.vx - dx / view.z; view.y = drag.vy - dy / view.z; draw(); }
+      else { var h2 = pick(e.clientX - r.left, e.clientY - r.top); if (h2 !== hover) { hover = h2; cv.style.cursor = h2 ? 'pointer' : 'grab'; draw(); } }
+    });
+    cv.addEventListener('pointerup', function (e) {
+      cv.style.cursor = hover ? 'pointer' : 'grab';
+      if (drag && moved < 6) { var r = cv.getBoundingClientRect(), pl = pick(e.clientX - r.left, e.clientY - r.top); if (pl) { box.remove(); try { pl.go(); } catch (err) { say('Teleport failed: ' + err.message, '#ff9a9a'); } say('Teleported to ' + pl.name); } }
+      drag = null;
+    });
+    var tc = {}; cv.addEventListener('touchstart', function (e) { if (e.touches.length === 2) { pinch = { d: Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY), z: view.z }; drag = null; } }, { passive: true });
+    cv.addEventListener('touchmove', function (e) { if (pinch && e.touches.length === 2) { var d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); view.z = Math.max(Math.min(cv.width / WW, cv.height / WH) * 0.6, Math.min(5, pinch.z * d / pinch.d)); draw(); } }, { passive: true });
+    cv.addEventListener('touchend', function () { pinch = null; }, { passive: true });
+    window.addEventListener('resize', function () { size(); draw(); });
+    fit(); var anim = setInterval(function () { if (!document.getElementById('tm-world')) { clearInterval(anim); return; } draw(); }, 400);
+    window.addEventListener('keydown', function esc(e) { if (e.code === 'Escape') { var b = document.getElementById('tm-world'); if (b) b.remove(); window.removeEventListener('keydown', esc); } });
+  };
+  // the eagle companion, on or off, whatever the quest says (test mode)
+  TM.setEagle = function (on) {
+    var Q = CC.EggQuest; if (!Q) return; var q = Q.serialize(); st().testMode = true;
+    if (on) { q.stage = 'complete'; q.hatched = true; q.name = q.name || 'Skye'; } else { q.stage = 'unstarted'; q.hatched = false; q.name = ''; }
+    Q.restore(q); if (!on && CC.Eagle && CC.Eagle.reset) CC.Eagle.reset();
+    say(on ? 'Eagle companion ON' : 'Eagle companion OFF');
+  };
+  TM.eagleOn = function () { var q = CC.EggQuest && CC.EggQuest.status && CC.EggQuest.status(); return !!(q && q.hatched); };
+
   TM.open = function () {
     if (!hero()) return;
     if (st().coop) { if (CC.fx) CC.fx.text(hero().x, hero().y - 20, 'Test mode is single player only', '#ff9a9a', 11); return; }

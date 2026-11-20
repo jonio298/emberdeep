@@ -328,7 +328,7 @@ async function relay(ws, data) {
   if (data.type === 'scene' && role === 'host') {
     if (!rate(ws, 'scene', 4)) return;
     const scene = data.scene || {};
-    if (!['cave', 'defense', 'forest', 'tree-tunnel', 'plains', 'tree-ascent'].includes(scene.area) || !Number.isFinite(scene.seed) ||
+    if (!['cave', 'defense', 'forest', 'tree-tunnel', 'plains', 'tree-ascent', 'rocky-pass', 'village', 'village-cellar'].includes(scene.area) || !Number.isFinite(scene.seed) ||
         !Number.isInteger(scene.floor) || scene.floor < 1 || scene.floor > 200) return;
     const clean = { area: scene.area, seed: scene.seed, floor: scene.floor };
     if (Number.isInteger(scene.tf) && scene.tf >= 1 && scene.tf <= 5) clean.tf = scene.tf;
