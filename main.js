@@ -1535,13 +1535,20 @@
       label(l[0], W / 2 - 10, y + n * 30, 15, '#cfc5ff', 'right');
       label(String(l[1]), W / 2 + 10, y + n * 30, 17, '#ffe08a', 'left');
     });
-    if (CC.Camp && CC.Camp.hasCamp && CC.Camp.hasCamp()) {
-      addButton(W / 2 - 110, H * 0.59, 220, 48, 'Respawn at Camp', '#5b6341', function () {
-        if (call('Camp', 'respawn')) { resetInputHeld(); snapCamera(); }
-      });
-      addButton(W / 2 - 110, H * 0.69, 220, 44, 'Return to Town', '#3a6a3a', function () { CC.returnToTown(); });
-    } else addButton(W / 2 - 100, H * 0.72, 200, 47, 'Return to Town', '#3a6a3a', function () { CC.returnToTown(); });
-    addButton(W/2-110,H*.57,220,45,'Respawn — preserve map','#657446',function(){CC.respawnHere();});
+    // The map is always kept (monsters, loot and layout stay as you left them). Two ways back in:
+    addButton(W / 2 - 110, H * 0.59, 220, 46, 'Respawn in town', '#3a6a3a', function () {
+      var p = CC.state.player, MP = CC.Multiplayer;
+      if (CC.state.coop && MP && MP.active && p) { // the party's world keeps going: revive on the spot, then step through to town
+        p.hp = p.maxHp; p.mana = p.maxMana; p.invuln = 2; p.grabbedBy = null; p.grabT = 0; p.psyT = 0; p.psyPull = null;
+        CC.state.mode = 'dungeon'; resetInputHeld();
+        if (!(CC.portalToTown && CC.portalToTown())) CC.returnToTown();
+      } else CC.returnToTown();
+    });
+    var hasCamp = !!(CC.Camp && CC.Camp.hasCamp && CC.Camp.hasCamp());
+    addButton(W / 2 - 110, H * 0.69, 220, 46, hasCamp ? 'Respawn at camp' : 'Respawn at camp (no camp set)', hasCamp ? '#5b6341' : '#3a3a40', function () {
+      if (!hasCamp) return;
+      if (call('Camp', 'respawn')) { resetInputHeld(); snapCamera(); }
+    });
   }
 
   function drawFallbackTownPanel() {
