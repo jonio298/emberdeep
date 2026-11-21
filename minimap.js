@@ -26,35 +26,48 @@
   var CAVE_FLOOR = [[96, 112, 90], [112, 106, 98], [82, 106, 126], [130, 94, 82]], CAVE_WALL = [[38, 50, 40], [50, 46, 46], [30, 46, 64], [64, 36, 32]];
   var cache = null;
 
+  var DET = 2; // the terrain is painted at 2 pixels per tile, with shading, so edges, trees and water read as real detail
   function paint(D, p) {
-    var W = D.w, H = D.h, k = cache, i, x, y, o;
+    var W = D.w, H = D.h, k = cache, i, x, y, o, sx, sy;
     if (!k || k.D !== D) {
-      var cv = mk(W, H);
+      var cv = mk(W * DET, H * DET);
       cache = k = { D: D, cv: cv, c: cv && cv.getContext ? cv.getContext('2d') : null, img: null, t: 0 };
-      if (k.c && k.c.createImageData) k.img = k.c.createImageData(W, H);
+      if (k.c && k.c.createImageData) k.img = k.c.createImageData(W * DET, H * DET);
     }
     if (!k.img) return;
     var now = Date.now();
     if (now - k.t < 200) return;
     k.t = now;
     var d = k.img.data, kind = D.realm ? D.kind : null, tiles = D.tiles, ex = D.explored, vis = D.vis, all = D.name === 'Hollowpine Hold';
-    var plains = D.name === 'Rolling Plains', forest = D.name === 'Giant Forest', bi = clamp(D.biome | 0, 0, 3);
-    var ptx = p ? p.x / T : -999, pty = p ? p.y / T : -999, c, kd, dim, n, dx, dy, solid;
+    var plains = D.name === 'Rolling Plains', forest = D.name === 'Giant Forest', bi = clamp(D.biome | 0, 0, 3), WW = W * DET;
+    var ptx = p ? p.x / T : -999, pty = p ? p.y / T : -999, c, kd, dim, n, dx, dy, solid, tree, water, sh, wallUp, wallDn, wallL, wallR;
+    function S(xx, yy) { return xx < 0 || yy < 0 || xx >= W || yy >= H || !!tiles[yy * W + xx]; }
     for (y = 0; y < H; y++) for (x = 0; x < W; x++) {
-      i = y * W + x; o = i * 4;
-      if (!all && !(ex && ex[i])) { d[o + 3] = 0; continue; }
-      solid = tiles[i];
+      i = y * W + x;
+      if (!all && !(ex && ex[i])) { for (sy = 0; sy < DET; sy++) for (sx = 0; sx < DET; sx++) d[((y * DET + sy) * WW + x * DET + sx) * 4 + 3] = 0; continue; }
+      solid = !!tiles[i]; tree = false; water = false;
       if (kind) {
-        kd = kind[i];
+        kd = kind[i]; tree = kd === 3; water = kd === 5;
         c = REALM[kd < 10 ? kd : 0];
         if (kd === 0 && plains) c = [86, 124, 60];
         else if (kd === 6 && forest) c = [66, 52, 44];       // the creepy side trails
         else if (kd === 2 && forest) c = [118, 100, 70];
       } else c = solid ? CAVE_WALL[bi] : CAVE_FLOOR[bi];
-      n = ((x * 7 + y * 13) % 5) * 2 - 4;
       dx = x - ptx; dy = y - pty;
       dim = vis ? (vis[i] ? 1 : 0.62) : all ? 0.9 : (dx * dx + dy * dy > 120 ? 0.7 : 1);
-      d[o] = clamp((c[0] + n) * dim, 0, 255); d[o + 1] = clamp((c[1] + n) * dim, 0, 255); d[o + 2] = clamp((c[2] + n) * dim, 0, 255); d[o + 3] = 255;
+      wallUp = !S(x, y - 1); wallDn = !S(x, y + 1); wallL = !S(x - 1, y); wallR = !S(x + 1, y); // open neighbours (for solid tiles: lit edges)
+      for (sy = 0; sy < DET; sy++) for (sx = 0; sx < DET; sx++) {
+        n = ((x * 7 + y * 13 + sx * 3 + sy * 5) % 5) * 2 - 4; sh = 0;
+        if (tree) { sh = (sx === 0 && sy === 0) ? 34 : (sx === 1 && sy === 1) ? -14 : 0; if ((x + y) % 3 === 0 && sx === 1 && sy === 0) sh += 14; } // canopies: a lit crown on each tree
+        else if (solid) { if (sy === 0 && wallUp) sh += 30; if (sy === 1 && wallDn) sh -= 32; if (sx === 0 && wallL) sh += 12; if (sx === 1 && wallR) sh -= 16; } // walls: lit top edge, shaded bottom
+        else {
+          if (sy === 0 && S(x, y - 1)) sh -= 24; if (sx === 0 && S(x - 1, y)) sh -= 14; // floors: shadow under walls
+          if (water && ((x + y * 2 + sx + sy) % 4 === 0)) sh += 30; // sparkle on water
+          else if (!water && (x * 31 + y * 17 + sx * 7 + sy * 3) % 11 === 0) sh += 14; // pebbles and grass tufts
+        }
+        o = ((y * DET + sy) * WW + x * DET + sx) * 4;
+        d[o] = clamp((c[0] + n + sh) * dim, 0, 255); d[o + 1] = clamp((c[1] + n + sh) * dim, 0, 255); d[o + 2] = clamp((c[2] + n + sh) * dim, 0, 255); d[o + 3] = 255;
+      }
     }
     k.c.putImageData(k.img, 0, 0);
   }
@@ -114,7 +127,7 @@
     ctx.beginPath(); ctx.arc(cx, cy, inner, 0, PI2); ctx.fillStyle = '#070912'; ctx.fill();
     ctx.save(); ctx.clip();
     if (cache && cache.cv && cache.D === D) { // terrain, centred on the hero
-      ctx.save(); ctx.imageSmoothingEnabled = false; ctx.translate(cx, cy); ctx.scale(sc, sc); ctx.translate(-ptx, -pty); ctx.drawImage(cache.cv, 0, 0); ctx.restore();
+      ctx.save(); ctx.imageSmoothingEnabled = false; ctx.translate(cx, cy); ctx.scale(sc / DET, sc / DET); ctx.translate(-ptx * DET, -pty * DET); ctx.drawImage(cache.cv, 0, 0); ctx.restore();
     }
     var near = ZOOMS[zi] * 1.15, k, e, pr, st = D.stairs, pulse = 0.5 + 0.5 * Math.sin(now * 4);
     if (st && st.x > -900 && seen(st.tx, st.ty)) { // stairs: pulsing gold diamond with a glow
@@ -159,9 +172,15 @@
       } else mpOff = Math.atan2(pdy, pdx); // off the map: a pointer on the rim, drawn below
     }
     if (CC.Eagle && CC.Eagle.drawMinimap) CC.Eagle.drawMinimap(ctx, sx, sy, sc); // the eagle: its sight circle and a small bird
-    ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.beginPath(); ctx.arc(cx, cy, 6.5, 0, PI2); ctx.fill(); // the hero: a white arrow
+    if (CC.QuestNav && CC.QuestNav.minimap) CC.QuestNav.minimap(ctx, cx, cy, inner, sc, p, pulse); // the next quest step
+    // the radar: green rings pulse out from the hero and a faint sweep turns round, so the hero is easy to find
+    var rf, rr;
+    for (rf = 0; rf < 2; rf++) { var ph = ((now + rf * 1.3) % 2.6) / 2.6; rr = 4 + ph * (inner - 6); ctx.strokeStyle = 'rgba(90,255,140,' + (0.55 * (1 - ph)) + ')'; ctx.lineWidth = 1.6 * (1 - ph) + 0.4; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, PI2); ctx.stroke(); }
+    var sw = now * 2.2; for (i = 0; i < 16; i++) { ctx.fillStyle = 'rgba(90,255,140,' + (0.13 * (1 - i / 16)) + ')'; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, inner, sw - i * 0.06 - 0.06, sw - i * 0.06); ctx.closePath(); ctx.fill(); }
+    ctx.strokeStyle = 'rgba(150,255,185,0.35)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(sw) * inner, cy + Math.sin(sw) * inner); ctx.stroke();
+    var hg = ctx.createRadialGradient(cx, cy, 0, cx, cy, 10); hg.addColorStop(0, 'rgba(110,255,160,' + (0.5 + 0.25 * pulse) + ')'); hg.addColorStop(1, 'rgba(110,255,160,0)'); ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(cx, cy, 10, 0, PI2); ctx.fill(); // the hero: a green arrow in a green glow
     ctx.save(); ctx.translate(cx, cy); ctx.rotate(ang);
-    ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#10141c'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(5.5, 0); ctx.lineTo(-3.6, 3.6); ctx.lineTo(-1.6, 0); ctx.lineTo(-3.6, -3.6); ctx.closePath(); ctx.stroke(); ctx.fill();
+    ctx.fillStyle = '#58ff8a'; ctx.strokeStyle = '#04210f'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(5.5, 0); ctx.lineTo(-3.6, 3.6); ctx.lineTo(-1.6, 0); ctx.lineTo(-3.6, -3.6); ctx.closePath(); ctx.fill(); ctx.stroke();
     ctx.restore();
     if (mpOff !== null) {
       ctx.save(); ctx.translate(cx + Math.cos(mpOff) * (inner - 4), cy + Math.sin(mpOff) * (inner - 4)); ctx.rotate(mpOff);

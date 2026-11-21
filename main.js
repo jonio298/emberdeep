@@ -1288,6 +1288,7 @@
       if(!s.coop)call('EggQuest','drawCompanion',ctx,cam);
       if(s.area==='tree-ascent')call('TreeAscent','drawEggs',ctx,cam);
       call('Charge', 'draw', ctx, cam);
+      call('QuestNav', 'draw', ctx, cam); // the faint arrow toward the next quest step
       if (CC.Dungeon && typeof CC.Dungeon.drawFront === 'function') CC.Dungeon.drawFront(ctx, dcam); // trees and props in front of the hero redraw over the entities
       if (CC.Dungeon && CC.Dungeon.realm) CC.Dungeon.drawLighting(ctx, dcam); // open-air maps light the whole scene after the entities
       call('Vfx','draw',ctx,cam); // spell particles, nova rings, explosions and lightning
@@ -1298,6 +1299,7 @@
       else { drawFallbackFloor(); call('Classes', 'drawPlayer', ctx, cam); }
       call('Waypoints','draw',ctx,cam);
       call('Portal', 'drawTown', ctx, cam);
+      call('QuestNav', 'draw', ctx, cam);
       call('Multiplayer', 'drawWorld', ctx, cam);
     }
     if (s.mode === 'town') call('Camp', 'drawWorldMarker', ctx, cam);
@@ -1648,6 +1650,7 @@
     if (m === 'dungeon') call('Vfx', 'drawScreen', ctx, W, H); // the sky flashes yellow for chain lightning
     if (m === 'dungeon') call('CriticalScene', 'drawScreen', ctx, W, H);
     if (m === 'dungeon') call('Wounds', 'drawScreen', ctx, W, H);
+    if ((m === 'dungeon' || m === 'dead') && call('AbandonedVillage', 'drawCinema', ctx, W, H) && m === 'dungeon') return; // the tree's strike covers everything, HUD included
     // No floating HUD/buttons/other overlays during the brief critical close-up.
     if(m==='dungeon'&&call('CriticalScene','isActive'))return;
     if (tunnel && m === 'dungeon') drawTunnel();
@@ -1747,6 +1750,7 @@
       else {
         dt *= call('CriticalScene', 'rate') || 1;
         acc += dt;
+        if (call('AbandonedVillage', 'frozen')) acc = 0; // the impaling freeze-frame: the world holds still
         while (acc >= STEP) { update(STEP); acc -= STEP; }
       }
       draw();

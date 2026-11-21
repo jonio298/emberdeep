@@ -614,6 +614,7 @@
   function doAttack(p) {
     var cls = p.classId, dir, i;
     p.atkAnim = 0.2;
+    if ((cls === 'swordsman' || cls === 'thief') && CC.AbandonedVillage && CC.AbandonedVillage.onSwing) CC.AbandonedVillage.onSwing(p, aimDir(p, 56).a, cls === 'swordsman' ? 34 : 26); // slashes can reach the village's apparitions and watching trees
     if (cls === 'swordsman') {
       // Only a damaging swipe advances the chain. Multiple targets still count once.
       var step = (p.combo || 0) + 1, fin = step === 3;

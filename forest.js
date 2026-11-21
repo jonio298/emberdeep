@@ -255,12 +255,7 @@
       ctx.beginPath();ctx.moveTo(sx-34-k*5,sy+4);
       ctx.quadraticCurveTo(sx-43-k*3,sy-42,sx-31+k*7,sy-102);ctx.stroke();
     }
-    // Sanctuary icon: little eggs in a crescent nest. Readable on mobile.
-    ctx.fillStyle='#e3c788';ctx.beginPath();ctx.ellipse(sx,sy-49,10,3.6,0,0,Math.PI*2);ctx.fill();
-    for(k=-1;k<=1;k++){
-      ctx.fillStyle=k===0?'#fff1d0':'#e6d4b2';
-      ctx.beginPath();ctx.ellipse(sx+k*5,sy-53,2.7,4.2,0,0,Math.PI*2);ctx.fill();
-    }
+    // The eggs are NOT visible from outside: nothing in the trunk shows them. The player only finds them at the very top of the climb.
     var g=ctx.createRadialGradient(sx,sy-42,0,sx,sy-42,49);
     g.addColorStop(0,'rgba(139,241,174,.38)');g.addColorStop(1,'rgba(0,0,0,0)');
     ctx.fillStyle=g;ctx.fillRect(sx-49,sy-91,98,100);
@@ -273,13 +268,63 @@
     }
     ctx.restore();
   }
-  function drawEagleSign(ctx,sx,sy){
-    ctx.fillStyle='#523922';ctx.fillRect(sx-2,sy-26,4,30);
-    ctx.fillStyle='#ba9362';ctx.beginPath();
-    ctx.moveTo(sx-20,sy-37);ctx.lineTo(sx+10,sy-37);ctx.lineTo(sx+21,sy-31);
-    ctx.lineTo(sx+10,sy-25);ctx.lineTo(sx-20,sy-25);ctx.closePath();ctx.fill();
-    ctx.fillStyle='#281a11';ctx.textAlign='center';ctx.font='bold 7px Georgia,serif';
-    ctx.fillText('EAGLE NEST',sx-1,sy-28.5);ctx.textAlign='left';
+  function drawEagleSign(ctx,sx,sy){ // a weathered, slightly crooked board: faded painted eagle, worn lettering, moss, cracks and three deep claw gouges
+    var k,h=function(n){var q=Math.sin(n*127.1+sx*0.37)*43758.5453;return q-Math.floor(q);};
+    ctx.save();
+    ctx.fillStyle='rgba(0,0,0,.3)';ctx.beginPath();ctx.ellipse(sx,sy+4,13,3.6,0,0,PI2);ctx.fill();
+    // the post: split, grey and leaning a little
+    ctx.fillStyle='#3e2c1c';ctx.beginPath();ctx.moveTo(sx-3,sy+4);ctx.lineTo(sx-2.4,sy-30);ctx.lineTo(sx+2.8,sy-30);ctx.lineTo(sx+3.2,sy+4);ctx.closePath();ctx.fill();
+    ctx.strokeStyle='#241810';ctx.lineWidth=.8;ctx.beginPath();ctx.moveTo(sx-.5,sy+2);ctx.lineTo(sx-.9,sy-22);ctx.moveTo(sx+1.2,sy-4);ctx.lineTo(sx+1.5,sy-18);ctx.stroke();
+    ctx.fillStyle='rgba(84,120,58,.8)';ctx.fillRect(sx-3,sy-2,2.4,6);ctx.fillRect(sx+.6,sy+1,2.6,3); // moss on the foot of the post
+    ctx.translate(sx,sy-40);ctx.rotate(-0.05); // the board hangs a little crooked
+    var bw=46,bh=30,x0=-bw/2,y0=-bh/2;
+    ctx.fillStyle='#6a4e30';ctx.beginPath();ctx.moveTo(x0+1,y0);ctx.lineTo(x0+bw-3,y0+1);ctx.lineTo(x0+bw,y0+bh*.4);ctx.lineTo(x0+bw-2,y0+bh);ctx.lineTo(x0+4,y0+bh-1);ctx.lineTo(x0,y0+bh*.6);ctx.closePath();ctx.fill();
+    ctx.save();ctx.clip(); // three weathered planks
+    var cols=['#8a6c46','#7a5d3b','#8e7048'];
+    for(k=0;k<3;k++){ctx.fillStyle=cols[k];ctx.fillRect(x0,y0+k*bh/3,bw,bh/3-.8);}
+    ctx.fillStyle='rgba(30,20,10,.5)';ctx.fillRect(x0,y0+bh/3-1,bw,1);ctx.fillRect(x0,y0+2*bh/3-1,bw,1);
+    for(k=0;k<22;k++){ctx.fillStyle='rgba(40,28,16,'+(.12+h(k)*.14)+')';ctx.fillRect(x0+h(k+3)*bw,y0+h(k+9)*bh,1+h(k+5)*5,.7);} // wood grain and wear
+    for(k=0;k<7;k++){ctx.fillStyle='rgba(190,170,130,'+(.12+h(k+20)*.14)+')';ctx.fillRect(x0+h(k+30)*bw,y0+h(k+40)*bh,2+h(k+50)*4,1.2);} // bleached patches
+    // the painted eagle, faded and flaking
+    ctx.save();ctx.translate(0,-3);ctx.globalAlpha=.8;ctx.fillStyle='#e0d0a0';ctx.strokeStyle='#4a3420';ctx.lineWidth=.7;
+    for(var sd=-1;sd<=1;sd+=2){
+      ctx.beginPath();ctx.moveTo(sd*2,-3);ctx.quadraticCurveTo(sd*9,-12,sd*17,-9);ctx.lineTo(sd*13.5,-6);ctx.lineTo(sd*15,-3.4);ctx.lineTo(sd*10.5,-2);ctx.lineTo(sd*12,.8);ctx.lineTo(sd*6.5,1);ctx.lineTo(sd*5.5,4.5);ctx.lineTo(sd*2,2.5);ctx.closePath();ctx.fill();ctx.stroke();
+    }
+    ctx.beginPath();ctx.ellipse(0,2,3.2,6.4,0,0,PI2);ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.moveTo(-2.6,7);ctx.lineTo(2.6,7);ctx.lineTo(3.4,12.5);ctx.lineTo(-3.4,12.5);ctx.closePath();ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.arc(0,-6.4,2.7,0,PI2);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#c9a24a';ctx.beginPath();ctx.moveTo(2.2,-6.8);ctx.lineTo(5.6,-5.4);ctx.lineTo(2.2,-4.6);ctx.closePath();ctx.fill();
+    ctx.fillStyle='#2a1c10';ctx.fillRect(.4,-7.4,1.2,1.2);
+    ctx.restore();
+    for(k=0;k<26;k++){ctx.fillStyle=cols[k%3];ctx.fillRect(-18+h(k+60)*36,-13+h(k+70)*26,1+h(k+80)*3,1+h(k+90)*2);} // paint flaked away
+    ctx.fillStyle='rgba(224,208,160,.6)';ctx.font='bold 5.5px Georgia,serif';ctx.textAlign='center';ctx.fillText('EAGLE NEST',0,bh/2-3.5); // the lettering has almost gone
+    for(k=0;k<9;k++){ctx.fillStyle=cols[k%3];ctx.fillRect(-14+h(k+100)*28,bh/2-6+h(k+110)*3,1.5+h(k+120)*2.5,1.4);}
+    // the animal scratches: three deep parallel gouges across the board, pale where the wood is torn
+    for(k=0;k<3;k++){
+      var gx=-9+k*7.4,gy=-15;
+      ctx.strokeStyle='#241608';ctx.lineWidth=1.3;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(gx+11,gy);ctx.quadraticCurveTo(gx+5,gy+14,gx-4+k*.8,gy+30);ctx.stroke();
+      ctx.strokeStyle='#d8bc86';ctx.lineWidth=.45;ctx.beginPath();ctx.moveTo(gx+10.4,gy+.4);ctx.quadraticCurveTo(gx+4.6,gy+14,gx-4.4+k*.8,gy+29.4);ctx.stroke();
+      ctx.strokeStyle='rgba(216,188,134,.8)';ctx.lineWidth=.6;ctx.beginPath(); // splinters along the gouge
+      ctx.moveTo(gx+7,gy+7);ctx.lineTo(gx+9,gy+8.4);ctx.moveTo(gx+3,gy+18);ctx.lineTo(gx+5.4,gy+18.8);ctx.moveTo(gx-1,gy+25);ctx.lineTo(gx+1.2,gy+25.4);ctx.stroke();
+    }
+    ctx.fillStyle='rgba(84,120,58,.75)';ctx.fillRect(x0,y0+bh-3,9,3);ctx.fillRect(x0+bw-12,y0+bh-2.4,10,2.4);ctx.fillRect(x0+14,y0+bh-1.8,6,1.8); // moss along the bottom
+    ctx.restore(); // end clip
+    ctx.strokeStyle='#2a1c10';ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(x0+1,y0);ctx.lineTo(x0+bw-3,y0+1);ctx.lineTo(x0+bw,y0+bh*.4);ctx.lineTo(x0+bw-2,y0+bh);ctx.lineTo(x0+4,y0+bh-1);ctx.lineTo(x0,y0+bh*.6);ctx.closePath();ctx.stroke();
+    ctx.fillStyle='#2a2622';ctx.fillRect(x0+3,y0+3,1.8,1.8);ctx.fillRect(x0+bw-6,y0+4,1.8,1.8);ctx.fillRect(x0+4,y0+bh-5,1.8,1.8); // rusted nails
+    ctx.fillStyle='#7a3a1a';ctx.fillRect(x0+3.4,y0+4.8,1,2.6);ctx.fillRect(x0+bw-5.6,y0+5.8,1,2.4);
+    ctx.restore();
+  }
+  // a feather lying on the trail (the trail of them leads from the start of the forest to the Eagle Nest tree)
+  function drawFeather(ctx,sx,sy,t,f){
+    var tw=Math.sin(t*1.2+f.seed)*.05;
+    ctx.save();ctx.translate(sx,sy);ctx.rotate(f.rot+tw);
+    var g=ctx.createRadialGradient(0,0,0,0,0,11);g.addColorStop(0,'rgba(255,236,170,'+(.1+.08*Math.sin(t*1.6+f.seed*3))+')');g.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=g;ctx.fillRect(-11,-11,22,22); // a faint gleam so it can be followed
+    ctx.fillStyle='rgba(0,0,0,.25)';ctx.beginPath();ctx.ellipse(.5,1.6,6.6,1.6,0,0,PI2);ctx.fill();
+    ctx.fillStyle=f.col;ctx.strokeStyle=f.edge;ctx.lineWidth=.6;
+    ctx.beginPath();ctx.moveTo(-6.5,0);ctx.quadraticCurveTo(-1,-4.4,6.4,-.4);ctx.quadraticCurveTo(0,3.4,-6.5,0);ctx.closePath();ctx.fill();ctx.stroke();
+    ctx.strokeStyle=f.edge;ctx.lineWidth=.6;ctx.beginPath();ctx.moveTo(-7.5,.4);ctx.lineTo(5.6,-.5);ctx.stroke(); // the quill
+    for(var k=0;k<5;k++){var bx=-4+k*2.2;ctx.beginPath();ctx.moveTo(bx,-.2);ctx.lineTo(bx+1.6,-2.4+Math.abs(k-2)*.5);ctx.moveTo(bx,-.1);ctx.lineTo(bx+1.4,1.9-Math.abs(k-2)*.4);ctx.stroke();} // barbs
+    ctx.restore();
   }
   function drawPerson(ctx, sx, sy, t, c, pr) {
     var bob = Math.sin(t * 2 + pr.seed) * 0.8;
@@ -561,6 +606,22 @@
       draw:function(ctx,sx,sy,tm){drawEagleTree(ctx,sx,sy,tm);}});
     var first=side[0];
     props.push({x:first.x*T+16,y:first.y*T+16,draw:drawEagleSign});
+    // The trail of feathers: the shortest walk from the arrival point to the eagle tree, a feather every few steps, all the way up to it.
+    (function(){
+      var stx=Math.floor(spawn.x/T),sty=Math.floor(spawn.y/T),prev=new Int32Array(W*H).fill(-2),qu=[at(stx,sty)],qi=0,goal=at(sx0,sy0),i2,dd=[[1,0],[-1,0],[0,1],[0,-1]];
+      prev[qu[0]]=-1;
+      while(qi<qu.length&&prev[goal]===-2){
+        var cur=qu[qi++],cx2=cur%W,cy2=(cur-cx2)/W;
+        for(var d2=0;d2<4;d2++){var nx2=cx2+dd[d2][0],ny2=cy2+dd[d2][1];if(nx2<1||ny2<1||nx2>=W-1||ny2>=H-1)continue;var ni=at(nx2,ny2);if(prev[ni]!==-2||tiles[ni]||kind[ni]===5)continue;prev[ni]=cur;qu.push(ni);}
+      }
+      if(prev[goal]===-2)return;
+      var path=[],c3=goal;while(c3!==-1){path.push(c3);c3=prev[c3];}path.reverse();
+      var FC=[['#f2ecde','#8a7a5c'],['#d9a84a','#7a5a22'],['#8b6a44','#3a2a18'],['#f6f1e6','#9a8a6c'],['#b8a07a','#5a4a30']];
+      for(i2=2;i2<path.length-2;i2+=3){
+        var pi=path[i2],px2=pi%W,py2=(pi-px2)/W,hh=Math.sin(i2*12.9898)*43758.5453;hh-=Math.floor(hh);var fc=FC[Math.floor(hh*FC.length)],fo={seed:i2*1.7,rot:(hh-.5)*3.4,col:fc[0],edge:fc[1]};
+        (function(fo){props.push({x:px2*T+16+(hh-.5)*18,y:py2*T+16+(((hh*7)%1)-.5)*14,draw:function(ctx,sx,sy,tm){drawFeather(ctx,sx,sy,tm,fo);}});})(fo);
+      }
+    })();
     lights.push({x:ascentEntrance.x,y:ascentEntrance.y-36,r:130,
       color:'137,221,157',inten:.65,flicker:.08});
 

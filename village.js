@@ -301,7 +301,7 @@
           eye(c, ex, ey, 1.6 + u * 1.8, p ? Math.sign(p.x - tx * T) : 0, bl > -0.8 ? 1 : 0.1, u > 0.6 ? '#ff2a2a' : '#ffd23a'); }
       }
       // apparitions drifting in and out between the trees
-      for (i = 0; i < v.wisps.length; i++) { var w = v.wisps[i], a = Math.pow(Math.sin(Math.PI * clamp(w.age / w.life, 0, 1)), 1.3) * 0.5; ghostShape(c, w.x - cam.x, w.y - cam.y + Math.sin(t * 1.4 + w.seed) * 3, a, p && p.x < w.x ? -1 : 1, w.sc, t, w.seed, w.blue ? '#5ac8ff' : '#aaff9a', false); }
+      drawWisps(c, cam, v, t, p);
       c.restore();
     }
     // the village's ghosts (friendly): they fade in and out and can be spoken to
@@ -417,7 +417,7 @@
     if (v.u > 0.28) { v.nextFlash -= dt; if (v.nextFlash <= 0) { v.flash = 0.5; v.flashPat = 0.35; v.bolt = { x: 0.1 + R() * 0.8, seed: (R() * 99) | 0 }; v.nextFlash = (3 + R() * 8) * (1.4 - 0.7 * v.u); v.thunder = 0.5 + R() * 0.9; } }
     if (v.thunder > 0) { v.thunder -= dt; if (v.thunder <= 0) { if (CC.fx && CC.fx.shake) CC.fx.shake(3 + v.u * 5); if (CC.Audio) CC.Audio.event('thunder', { vol: 0.5 + 0.5 * v.u }); } }
     // apparitions
-    for (i = v.wisps.length - 1; i >= 0; i--) { var w = v.wisps[i]; w.age += dt; w.x += w.vx * dt; w.y += w.vy * dt; if (w.age >= w.life) v.wisps.splice(i, 1); }
+    for (i = v.wisps.length - 1; i >= 0; i--) { var w = v.wisps[i]; if (w.fx) { stepWisp(w, dt); continue; } w.age += dt; w.x += w.vx * dt; w.y += w.vy * dt; if (w.age >= w.life) v.wisps.splice(i, 1); }
     if (p && v.u > 0.25 && v.wisps.length < 1 + Math.floor(v.u * 4) && R() < dt * (0.2 + v.u * 0.9)) { var a = R() * TAU, d = 100 + R() * 220; v.wisps.push({ x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d * 0.7, age: 0, life: 3 + R() * 3, vx: (R() - 0.5) * 8, vy: (R() - 0.5) * 6, seed: R() * 50, sc: 0.95 + R() * 0.5, blue: R() < 0.6 }); }
     // the graveyard ghosts fade in and out on their own slow tides (but never while you are speaking to one)
     var t = Date.now() / 1000;
@@ -435,6 +435,137 @@
     var lvl = s.area === 'village-cellar' ? 4 : 3, grp = 12000;
     for (var i = 0; i < points.length; i++) { var pt = points[i], e = this.spawn(pt.type, pt.x, pt.y, lvl); if (e && (pt.type === 'ghoul' || pt.type === 'skeleton')) { e.group = grp + (i >> 2); } }
     return this.list;
+  };
+
+  /* =================== slashing the village: apparitions and the watching trees =================== */
+  // The wandering apparitions (not the friendly graveyard ghosts) can be cut at: the blade passes through, the ghost reforms, blinks away a little and says "Hey!".
+  // The trees with eyes can be slashed too (it sounds like it hurts them). Do it 10 swings in a row and the tree strikes back: see impale below.
+  function angd(a, b) { var d = a - b; while (d > Math.PI) d -= TAU; while (d < -Math.PI) d += TAU; return d; }
+  function wispAlpha(w) { return Math.pow(Math.sin(Math.PI * clamp(w.age / w.life, 0, 1)), 1.3) * 0.5; }
+  function stepWisp(w, dt) {
+    var f = w.fx; f.t += dt;
+    if (f.t >= 0.9 && !f.moved) { // blink: sparks where it was, and it reappears a little way off
+      f.moved = true; var m = village(), ox = w.x, oy = w.y, tries = 0, nx = ox, ny = oy;
+      for (; tries < 10; tries++) { var a = R() * TAU, d = 75 + R() * 55; nx = ox + Math.cos(a) * d; ny = oy + Math.sin(a) * d * 0.8; if (!(CC.Dungeon && CC.Dungeon.isSolid && CC.Dungeon.isSolid(nx, ny))) break; }
+      if (CC.fx && CC.fx.burst) { CC.fx.burst(ox, oy - 12, '#9fd8ff', 7, 60); CC.fx.burst(nx, ny - 12, '#9fd8ff', 7, 60); }
+      w.x = nx; w.y = ny; w.vx = (R() - 0.5) * 6; w.vy = (R() - 0.5) * 4;
+    }
+    if (f.t >= 0.98 && !f.said) { f.said = true; if (CC.Audio) CC.Audio.fx('m_ghost_atk', { x: w.x, y: w.y, vol: 0.7, k: 1.5, gap: 0 }); }
+    if (f.t >= 2.8) w.fx = null;
+  }
+  function drawWisps(c, cam, v, t, p) {
+    for (var i = 0; i < v.wisps.length; i++) {
+      var w = v.wisps[i], a = wispAlpha(w), x = w.x - cam.x, y = w.y - cam.y + Math.sin(t * 1.4 + w.seed) * 3, face = p && p.x < w.x ? -1 : 1, col = w.blue ? '#5ac8ff' : '#aaff9a', f = w.fx;
+      if (!f) { ghostShape(c, x, y, a, face, w.sc, t, w.seed, col, false); continue; }
+      var vis = Math.max(a, 0.55) * (f.t < 0.7 ? 1 : f.t < 0.9 ? 1 - (f.t - 0.7) / 0.2 : f.t < 1.15 ? (f.t - 0.9) / 0.25 : 1); // it stays visible while it is being cut
+      var th = f.ang + 1.2, cy2 = y - 14 * w.sc, sep = f.t < 0.18 ? 11 * clamp(f.t / 0.18, 0, 1) : 11 * (1 - clamp((f.t - 0.18) / 0.37, 0, 1)), s2 = 0;
+      if (sep > 0.2) for (s2 = -1; s2 <= 1; s2 += 2) { // the two halves, each clipped to its side of the cut and pushed apart
+        c.save(); c.translate(x, cy2); c.rotate(th); c.beginPath(); c.rect(-120, s2 < 0 ? -120 : 0, 240, 120); c.clip(); c.translate(0, s2 * sep); c.rotate(-th); c.translate(-x, -cy2);
+        ghostShape(c, x, y, vis, face, w.sc, t, w.seed, col, false); c.restore();
+      } else ghostShape(c, x, y, vis, face, w.sc, t, w.seed, col, false);
+      if (f.t < 0.3) { // the bright line where the blade went through
+        var la = 1 - f.t / 0.3; c.save(); c.globalCompositeOperation = 'lighter'; c.translate(x, cy2); c.rotate(th); c.globalAlpha = la; c.strokeStyle = '#eaf8ff'; c.lineWidth = 2.2 * la + 0.6; c.lineCap = 'round'; c.beginPath(); c.moveTo(-26, 0); c.lineTo(26, 0); c.stroke(); c.restore();
+      }
+      if (f.t > 0.98 && f.t < 2.6) { // "Hey!"
+        var sa = f.t - 0.98, al = sa < 0.15 ? sa / 0.15 : clamp((2.6 - f.t) / 0.5, 0, 1), pop = 1 + (sa < 0.15 ? (1 - sa / 0.15) * 0.4 : 0);
+        c.save(); c.globalAlpha = al; c.textAlign = 'center'; c.font = 'bold ' + Math.round(13 * pop) + 'px Georgia, serif'; c.lineWidth = 3.2; c.strokeStyle = 'rgba(8,16,30,.9)'; c.fillStyle = '#e8f6ff'; c.strokeText('Hey!', x, y - 50 * w.sc - sa * 4); c.fillText('Hey!', x, y - 50 * w.sc - sa * 4); c.restore();
+      }
+    }
+  }
+  function treeEyed(m, tx, ty) { var u = m.vil.u, pe = clamp((u - 0.12) / 0.88, 0, 1); return u > 0.12 && m.kind[ty * m.w + tx] === 3 && hash(tx * 3, ty * 5) <= 0.05 + pe * 0.4; }
+  V.treeHits = 0; var lastTreeHit = 0;
+  V.onSwing = function (p, ang, reach) {
+    var s = CC.state, m = village(); if (!m || !p || s.coop || V.impale) return; var v = m.vil, i, hit = false;
+    for (i = 0; i < v.wisps.length; i++) { // the blade passes through an apparition
+      var w = v.wisps[i]; if (w.fx || wispAlpha(w) < 0.06) continue; var dx = w.x - p.x, dy = w.y - 12 - p.y;
+      if (Math.hypot(dx, dy) > reach + 24 || Math.abs(angd(Math.atan2(dy, dx), ang)) > 1.25) continue;
+      w.age = w.life * 0.5; w.fx = { t: 0, ang: ang }; hit = true;
+      if (CC.Audio) { CC.Audio.fx('m_ghost_cast', { x: w.x, y: w.y, vol: 0.6, k: 1.2, gap: 0 }); CC.Audio.fx('dash', { x: w.x, y: w.y, vol: 0.4, gap: 0 }); }
+      if (CC.fx && CC.fx.burst) CC.fx.burst(w.x, w.y - 12, '#bfe9ff', 6, 70);
+    }
+    var best = null, bd = 1e9, tx0 = Math.floor((p.x - reach - 30) / T), tx1 = Math.floor((p.x + reach + 30) / T), ty0 = Math.floor((p.y - reach - 40) / T), ty1 = Math.floor((p.y + reach + 30) / T);
+    for (var ty = ty0; ty <= ty1; ty++) for (var tx = tx0; tx <= tx1; tx++) { // an eyed tree in front of the swing
+      if (tx < 0 || ty < 0 || tx >= m.w || ty >= m.h || !treeEyed(m, tx, ty)) continue;
+      var cx = tx * T + 16, cy = ty * T + 18, ddx = cx - p.x, ddy = cy - p.y, d = Math.hypot(ddx, ddy);
+      if (d > reach + 18 || Math.abs(angd(Math.atan2(ddy, ddx), ang)) > 1.35) continue; if (d < bd) { bd = d; best = { x: cx, y: cy, tx: tx, ty: ty }; }
+    }
+    var now = Date.now();
+    if (best) {
+      if (now - lastTreeHit > 5000) V.treeHits = 0; lastTreeHit = now; V.treeHits++; hit = true;
+      if (CC.Audio) { CC.Audio.fx('hit', { x: best.x, y: best.y, vol: 0.85, gap: 0 }); CC.Audio.fx('m_plant_atk', { x: best.x, y: best.y, vol: 0.7, gap: 0 }); if (V.treeHits >= 4) CC.Audio.fx('m_plant_amb', { x: best.x, y: best.y, vol: 0.4 + V.treeHits * 0.05, k: 1 - V.treeHits * 0.04, gap: 0 }); }
+      if (CC.fx) { if (CC.fx.burst) { CC.fx.burst(best.x, best.y - 14, '#3a2a1c', 9, 80); CC.fx.burst(best.x, best.y - 14, '#150e0c', 5, 60); } if (CC.fx.shake) CC.fx.shake(1 + V.treeHits * 0.15); }
+      if (V.treeHits >= 10) { V.treeHits = 0; startImpale(p, best); }
+    } else if (!hit) V.treeHits = 0; // anything but a tree swing breaks the streak
+  };
+
+  /* ---- the tree strikes back: the screen cuts to black on a freeze-frame of the hero and the tree; a branch drives through his chest and lifts him off the ground ---- */
+  var IMP_DUR = 4.8;
+  function startImpale(p, tr) {
+    V.impale = { t0: Date.now(), dur: IMP_DUR, done: false, cls: p.classId, hit: false, s0: false, s1: false, s2: false };
+    if (CC.Audio) CC.Audio.fx('m_plant_amb', { vol: 0.9, k: 0.7, gap: 0 });
+  }
+  V.frozen = function () { return !!(V.impale && !V.impale.done); };
+  function sm01(x) { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); }
+  function limb(c, x0, y0, x1, y1, w0, w1, bloodFrom) { // a gnarled, tapering branch from (x0,y0) to (x1,y1); it turns red from `bloodFrom` (0..1 along its length)
+    var n = 14, i, L = Math.hypot(x1 - x0, y1 - y0) || 1, nx = -(y1 - y0) / L, ny = (x1 - x0) / L;
+    for (i = 0; i < n; i++) {
+      var f0 = i / n, f1 = (i + 1) / n, o0 = Math.sin(f0 * 9 + 1) * 1.6, o1 = Math.sin(f1 * 9 + 1) * 1.6, a0 = x0 + (x1 - x0) * f0 + nx * o0, b0 = y0 + (y1 - y0) * f0 + ny * o0, a1 = x0 + (x1 - x0) * f1 + nx * o1, b1 = y0 + (y1 - y0) * f1 + ny * o1;
+      var wd = w0 + (w1 - w0) * f0, bl = bloodFrom !== undefined && f0 >= bloodFrom;
+      c.lineCap = 'round'; c.strokeStyle = bl ? '#3a0a0e' : '#1c1412'; c.lineWidth = wd + 1.4; c.beginPath(); c.moveTo(a0, b0); c.lineTo(a1, b1); c.stroke();
+      c.strokeStyle = bl ? '#7a0f18' : '#3a2c22'; c.lineWidth = wd * 0.55; c.beginPath(); c.moveTo(a0 - nx * wd * 0.15, b0 - ny * wd * 0.15); c.lineTo(a1 - nx * wd * 0.15, b1 - ny * wd * 0.15); c.stroke();
+    }
+    for (i = 1; i < 5; i++) { var f = i / 5.5, px = x0 + (x1 - x0) * f, py = y0 + (y1 - y0) * f, bl2 = bloodFrom !== undefined && f >= bloodFrom; c.strokeStyle = bl2 ? '#5a0c12' : '#241a14'; c.lineWidth = 1.2; c.beginPath(); c.moveTo(px, py); c.lineTo(px + nx * (i % 2 ? 5 : -5) + (x1 - x0) / L * 2, py + ny * (i % 2 ? 5 : -5) + (y1 - y0) / L * 2); c.stroke(); }
+  }
+  V.drawCinema = function (c, W, H) {
+    var im = V.impale; if (!im) return false; var s = CC.state, p = hero();
+    if (im.done && s.mode !== 'dead') { V.impale = null; return false; }
+    var T = (Date.now() - im.t0) / 1000, A = CC.Audio;
+    if (!im.done && T >= im.dur) { im.done = true; if (p) { p.hp = 0; p.invuln = 0; } } // the hero dies; the game's own death screen takes over
+    // sounds on the beats
+    if (A) {
+      if (!im.s0 && T > 0.5) { im.s0 = true; A.fx('m_plant_amb', { vol: 1, k: 0.55, gap: 0 }); }
+      if (!im.s1 && T >= 1.05) { im.s1 = true; A.fx('crunch', { vol: 1, gap: 0 }); A.fx('wet', { vol: 0.9, gap: 0 }); A.fx('thump', { vol: 0.9, gap: 0 }); A.fx('hit', { vol: 1, gap: 0 }); if (CC.MonsterSound && p) CC.MonsterSound.ugh(p); if (CC.fx && CC.fx.shake) CC.fx.shake(10); }
+      if (!im.s2 && T >= 1.5) { im.s2 = true; A.play('bloodsplatter3', { vol: 0.8, gap: 0 }); }
+    }
+    var fade = sm01(T / 0.18), S = Math.min(W / 175, H / 120), cx = W / 2, cy = H * 0.5, shake = T > 1.05 && T < 1.6 ? (1.6 - T) / 0.55 * 3 : 0;
+    c.save(); c.globalAlpha = fade; c.fillStyle = '#020104'; c.fillRect(0, 0, W, H); c.globalAlpha = 1;
+    if (fade < 0.02) { c.restore(); return true; }
+    c.translate(cx + (R() - 0.5) * shake * 2, cy + (R() - 0.5) * shake * 2); c.scale(S, S);
+    var pulse = 0.5 + 0.5 * Math.sin(T * 5), rg = c.createRadialGradient(0, 8, 8, 0, 8, 150); rg.addColorStop(0, 'rgba(120,10,16,' + (0.28 + 0.06 * pulse) + ')'); rg.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = rg; c.fillRect(-170, -120, 340, 260);
+    c.globalAlpha = fade;
+    // the geometry: hero stands at (hx,hy) facing the tree on the right; the branch starts high on the trunk at B0
+    var lift = sm01((T - 1.35) / 1.0) * 12, hx = -10, hy = 30 - lift, B0x = 44, B0y = 2, chx = hx + 3, chy = hy - 4, ex = chx - 30, ey = chy - 12 * 0 + 6;
+    var Lt = Math.hypot(ex - B0x, ey - B0y), Lc = Math.hypot(chx - B0x, chy - B0y), rc = Lc / Lt;
+    var reach = T < 1.0 ? 0.32 * sm01(T / 1.0) * (1 + 0.04 * Math.sin(T * 9)) : T < 1.14 ? 0.32 + 0.68 * sm01((T - 1.0) / 0.14) : 1;
+    var tipx = B0x + (ex - B0x) * reach, tipy = B0y + (ey - B0y) * reach;
+    // ground shadow and the blood pool that grows under him
+    c.fillStyle = 'rgba(0,0,0,.5)'; c.beginPath(); c.ellipse(hx, 46, 14, 4, 0, 0, TAU); c.fill();
+    if (T > 1.4) { var pa = clamp((T - 1.4) / 3, 0, 1); c.fillStyle = 'rgba(90,6,12,.9)'; c.beginPath(); c.ellipse(hx - 2, 47, 5 + pa * 15, 1.8 + pa * 3.2, 0, 0, TAU); c.fill(); }
+    // the tree: black and bare, with two red eyes in the trunk that open as the branch comes
+    tree(c, 30, 16, 0.55, T, 1, 3, 3);
+    var eo = sm01((T - 0.1) / 0.5); eye(c, 45, -6, 3.2, -1, eo, '#ff2a2a'); eye(c, 53, -1, 2.6, -1, eo, '#ff2a2a');
+    // the part of the branch that has already come out the far side of the hero (behind him)
+    if (reach > rc) limb(c, chx, chy, tipx, tipy, 4.6, 2.2, 0);
+    // the hero: a freeze-frame at first; after the strike he is slumped, lifted off his feet and swaying
+    var slump = T < 1.1 ? 0 : -0.32 * sm01((T - 1.1) / 0.4) + Math.sin(T * 1.7) * 0.03 * sm01((T - 1.6) / 0.6), tremble = T < 1.0 ? Math.sin(T * 40) * 0.25 * sm01(T / 1.0) : 0;
+    c.save(); c.translate(chx, chy); c.rotate(slump); c.translate(-chx + tremble, -chy);
+    if (p && CC.Classes && CC.Classes.drawCriticalHero) CC.Classes.drawCriticalHero(c, { x: 0, y: 0 }, { heroClass: im.cls, sourceX: hx, sourceY: hy, angle: 0, distance: 0, kneel: 0, drive: 0, withdraw: 0, noBlade: true });
+    c.restore();
+    // the part still in front of him, and the wound it made
+    if (reach > 0.02) limb(c, B0x, B0y, Math.min(tipx, chx + 2), reach > rc ? chy : tipy, 6.2, 4.6, reach > rc ? 0.8 : undefined);
+    if (T > 1.0) { c.fillStyle = '#6a0a12'; c.beginPath(); c.ellipse(chx + 1, chy, 4.5, 6, 0, 0, TAU); c.fill(); c.fillStyle = '#b01824'; c.beginPath(); c.ellipse(chx + 1, chy, 2.4, 3.4, 0, 0, TAU); c.fill(); }
+    // blood: a burst at the strike, then streaks down his body, down the branch and drips from his feet
+    var k, bt = T - 1.08;
+    if (bt > 0) for (k = 0; k < 22; k++) { var ba = (k * 2.399) % TAU, v = 30 + (k * 37 % 50), x = chx + Math.cos(ba) * v * bt, y = chy + Math.sin(ba) * v * bt * 0.8 + 110 * bt * bt, al = clamp(1 - bt / 0.9, 0, 1); if (al > 0) { c.globalAlpha = al * fade; c.fillStyle = k % 3 ? '#a8101a' : '#5a060c'; c.fillRect(x - 1, y - 1, 2.2, 2.2); } }
+    c.globalAlpha = fade;
+    if (T > 1.3) {
+      var gr = clamp((T - 1.3) / 1.5, 0, 1); c.strokeStyle = '#7a0a12'; c.lineWidth = 2; c.lineCap = 'round'; c.beginPath(); c.moveTo(chx + 1, chy + 3); c.lineTo(chx + 1.5, chy + 3 + 16 * gr); c.stroke(); c.beginPath(); c.moveTo(chx - 3, chy + 1); c.lineTo(chx - 3.5, chy + 1 + 11 * gr); c.stroke();
+      for (k = 0; k < 4; k++) { var ph = (T * 1.4 + k * 0.27) % 1, dx = k < 2 ? chx + 1 + k * 0.5 : tipx - 1 + (k - 2) * 2, dy0 = k < 2 ? hy + 14 : tipy + 3; c.globalAlpha = (1 - ph * 0.5) * fade; c.fillStyle = '#9a0f18'; c.beginPath(); c.ellipse(dx, dy0 + ph * ph * (47 - dy0 + (k < 2 ? 0 : 20)), 1, 1.7, 0, 0, TAU); c.fill(); }
+      c.globalAlpha = fade;
+    }
+    c.restore();
+    if (T > 1.04 && T < 1.22) { c.save(); c.globalAlpha = (1 - (T - 1.04) / 0.18) * 0.85; c.fillStyle = '#fff'; c.fillRect(0, 0, W, H); c.restore(); } // the white flash of the blow
+    c.restore(); return true;
   };
 
   /* =================== screen: title and the ghosts' speech =================== */

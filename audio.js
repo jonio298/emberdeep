@@ -55,7 +55,7 @@
   A.setSfx = function (v) { vol.sfx = clamp(v, 0, 1); applyVol(); save(); };
   A.toggleMusic = function () { mute.music = !mute.music; applyVol(); save(); return !mute.music; };
   A.toggleSfx = function () { mute.sfx = !mute.sfx; applyVol(); save(); return !mute.sfx; };
-  A.status = function () { return { ready: !!ctx, state: ctx && ctx.state, loaded: Object.keys(bufs).length, music: !mute.music, sfx: !mute.sfx, track: track && track.id, vol: vol }; };
+  A.status = function () { return { ready: !!ctx, state: ctx && ctx.state, loaded: Object.keys(bufs).length, music: !mute.music, sfx: !mute.sfx, track: track && track.id, file: fileKey, vol: vol }; };
 
   /* ---------- positional helper: pan and fade with distance from the hero ---------- */
   function spatial(o) {
@@ -328,8 +328,8 @@
     var stepLen = 60 / track.bpm / 4;
     while (nextT < ctx.currentTime + 0.14) { if (nextT >= ctx.currentTime - 0.05) schedule(track, step, nextT); nextT += stepLen; step++; if (step >= song.bars * 16) step = 0; }
   }
-  A.music = function (id) {
-    if (!ctx || !unlocked || id === curId) return; var tr = TRACKS[id]; if (!tr) return; tr.id = id; curId = id;
+  function synthMusic(id) {
+    stopFile(); var tr = TRACKS[id]; if (!tr) return; tr.id = id; curId = id;
     var old = trackGain; if (old) { old.gain.setTargetAtTime(0, ctx.currentTime, 0.25); setTimeout(function () { try { old.disconnect(); } catch (e) { /* gone */ } }, 1800); }
     var oldE = echoNodes; if (oldE) setTimeout(function () { try { oldE.forEach(function (n) { n.disconnect(); }); } catch (e) { /* gone */ } }, 3500);
     trackGain = ctx.createGain(); trackGain.gain.setValueAtTime(0.0001, ctx.currentTime); trackGain.gain.setTargetAtTime(1, ctx.currentTime + 0.3, 0.35); trackGain.connect(musBus); musBus2 = trackGain;
@@ -339,8 +339,60 @@
       leadBus.connect(dl); dl.connect(lp); lp.connect(fb); fb.connect(dl); lp.connect(wet); wet.connect(trackGain); echoNodes = [leadBus, dl, fb, lp, wet];
     }
     track = tr; song = build(tr, id); step = 0; nextT = ctx.currentTime + 0.35; if (!timer) timer = setInterval(tick, 40);
+  }
+
+  /* ---------- recorded music: assets/music/<name>.mp3 plays instead of the generated track for these areas (looped, crossfaded) ---------- */
+  // a name plays on a loop; a list plays through in turn (each song fades out as it finishes and the next fades in)
+  var MUS_FILES = { title: 'theme', town: 'foresttown', forest: 'forest', plains: 'plains', cave: 'cave', tunnel: 'insidetree', ascent: 'insidetree', village: ['ghosttown', 'ghosttown2'], boss: 'bossbattle' };
+  var FILE_GAIN = 2.4; // the recorded songs are louder than the generated ones, so they are trimmed to sit at the same level
+  var musBufs = {}, musWait = {}, fileSrc = null, fileGain = null, fileKey = null, fileList = null, fileTimers = [], fileFading = false;
+  function loadMusic(name, cb) {
+    if (musBufs[name] !== undefined) return cb(musBufs[name]);
+    if (musWait[name]) { musWait[name].push(cb); return; } musWait[name] = [cb];
+    fetch('assets/music/' + name + '.mp3').then(function (r) { if (!r.ok) throw new Error('missing'); return r.arrayBuffer(); })
+      .then(function (ab) { return new Promise(function (res, rej) { ctx.decodeAudioData(ab, res, rej); }); })
+      .then(function (b) { musBufs[name] = b; }).catch(function () { musBufs[name] = false; })
+      .then(function () { var l = musWait[name]; delete musWait[name]; l.forEach(function (f) { f(musBufs[name]); }); });
+  }
+  function fadeOutFile(g, sr, secs) { g.gain.setTargetAtTime(0, ctx.currentTime, secs / 4); setTimeout(function () { try { sr.stop(); g.disconnect(); } catch (e) { /* gone */ } }, secs * 1000 + 600); }
+  function stopFile() {
+    fileTimers.forEach(clearTimeout); fileTimers = [];
+    if (fileGain) fadeOutFile(fileGain, fileSrc, 1.8);
+    fileGain = fileSrc = null; fileKey = null; fileList = null; fileFading = false;
+  }
+  function dropSynth() {
+    if (trackGain) { var og = trackGain; og.gain.setTargetAtTime(0, ctx.currentTime, 0.25); setTimeout(function () { try { og.disconnect(); } catch (e) { /* gone */ } }, 1800); trackGain = null; }
+    var oe = echoNodes; if (oe) setTimeout(function () { try { oe.forEach(function (n) { n.disconnect(); }); } catch (e) { /* gone */ } }, 3500); echoNodes = null; leadBus = null; track = null;
+  }
+  // how loud a recorded song plays right now: normally the full level, but the ghost town starts almost silent and swells as you walk in (never past the full level)
+  function fileTarget() {
+    if (!fileKey || fileKey.indexOf('ghosttown') !== 0) return FILE_GAIN;
+    var s = CC.state, vu = s && s.area === 'village' && s.map && s.map.vil ? s.map.vil.u : 0;
+    return FILE_GAIN * (0.06 + 0.94 * Math.min(1, Math.max(0, vu)));
+  }
+  function playFile(list, idx, id, lk) {
+    var name = list[idx];
+    loadMusic(name, function (b) {
+      if (curId !== id || fileList !== lk) return; if (!b) { curId = null; fileList = null; return; } // no file: the next frame falls back to the generated track
+      var sr = ctx.createBufferSource(), g = ctx.createGain(), many = list.length > 1; sr.buffer = b; sr.loop = !many; fileKey = name; fileFading = false;
+      g.gain.setValueAtTime(0.0001, ctx.currentTime); g.gain.setTargetAtTime(fileTarget(), ctx.currentTime + 0.1, 0.7); sr.connect(g); g.connect(musBus); sr.start(); fileSrc = sr; fileGain = g;
+      if (many) { // fade this one out over its last 4 seconds, then the next fades in
+        fileTimers.push(setTimeout(function () { if (fileSrc === sr) { fileFading = true; g.gain.setTargetAtTime(0, ctx.currentTime, 1); } }, Math.max(0, b.duration - 4) * 1000));
+        fileTimers.push(setTimeout(function () { if (fileSrc !== sr) return; fadeOutFile(g, sr, 0.5); fileGain = fileSrc = null; playFile(list, (idx + 1) % list.length, id, lk); }, b.duration * 1000));
+      }
+    });
+  }
+  A.music = function (id) {
+    if (!ctx || !unlocked || id === curId) return;
+    var f = MUS_FILES[id], list = f ? (Array.isArray(f) ? f : [f]) : null, lk = list && list.join('|');
+    if (list && musBufs[list[0]] !== false) {
+      curId = id; if (fileList === lk && (fileSrc || fileTimers.length)) return; // the same music carries on (up the tree and through the tunnel)
+      dropSynth(); stopFile(); fileList = lk; playFile(list, 0, id, lk);
+      return;
+    }
+    synthMusic(id);
   };
-  A.stopMusic = function () { if (trackGain) trackGain.gain.setTargetAtTime(0, ctx.currentTime, 0.2); track = null; curId = null; };
+  A.stopMusic = function () { stopFile(); if (trackGain) trackGain.gain.setTargetAtTime(0, ctx.currentTime, 0.2); track = null; curId = null; };
   A.musicState = function () { return { id: curId, bpm: track && track.bpm }; };
 
   // pick the track from where you are and what is happening
@@ -358,6 +410,7 @@
     if (E && E.bossBar && mode === 'dungeon') id = 'boss';
     if (mode === 'dead') id = null;
     if (id) A.music(id); else if (curId) A.stopMusic();
+    if (fileGain && !fileFading) fileGain.gain.setTargetAtTime(fileTarget(), ctx.currentTime, 0.8); // the ghost town swells as you walk in
     // ambience: rain in the storm, the crackle of burning trees
     var vu = area === 'village' && s.map && s.map.vil ? s.map.vil.u : 0; ambience('rain', Math.pow(vu, 1.6), 'x', 700, 4200, 0.2);
     var pdd = area === 'plains' && s.map && s.map.pond; ambience('fire', pdd ? pdd.fire : 0, 'x', 500, 5000, 0.12); if (pdd && pdd.fire > 0.3 && R() < dt * 3 * pdd.fire) A.fx('crackle', { vol: 0.5, gap: 60 });
