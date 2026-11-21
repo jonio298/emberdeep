@@ -7,3 +7,6 @@ services:
     plan: free
     buildCommand: npm install
     startCommand: npm start
+    envVars:
+      - key: STATS_KEY   # the secret for /stats?key=... (the traffic monitor). Set it in the Render dashboard; never commit it.
+        sync: false

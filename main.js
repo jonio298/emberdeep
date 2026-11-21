@@ -404,6 +404,7 @@
   function startGame(classId) {
     var s = CC.state;
     s.coop = false;
+    try { if (navigator.sendBeacon) navigator.sendBeacon('/api/hit?e=start&c=' + encodeURIComponent(classId)); } catch (e) { /* the traffic counter is optional */ } // counts a new game by hero only
     clearWorldCache();CC.state.testMode=false;call('SaveGame','newGame');call('EggQuest','reset');
     s.gold=0;s.inventory=[];s.potions=2;s.manaPotions=1;s.bridgeDown=false;s.treeFloor=1;s.treeBest=1;
     call('Camp', 'clear'); // a fresh hero must not inherit a previous run's fence or checkpoint
