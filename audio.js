@@ -214,17 +214,17 @@
   //   pad (soft held chords), echo (dotted-eighth delay on the melody and arpeggio), harm (a second voice a third below in the second half), contour (sigh = falling
   //   phrases, rise, calm), rest (chance to leave a breath out of the melody)
   var TRACKS = {
-    title: { bpm: 76, root: 57, scale: 'minor', prog: [0, 5, 2, 6, 0, 3, 4, 0], rhy: ['walk', 'long'], bass: 'long', drums: 'soft', arp: true, duty: 0.25, vib: 1, pad: true, echo: 0.38, harm: true, contour: 'sigh', rest: 0.1 },
-    town: { bpm: 84, root: 60, scale: 'major', prog: [0, 5, 3, 0, 0, 5, 3, 4], rhy: ['town', 'sparse'], bass: 'long', drums: 'none', arp: true, duty: 0.125, pad: true, echo: 0.3, contour: 'calm', rest: 0.08 },
-    forest: { bpm: 70, root: 52, scale: 'minor', prog: [0, 5, 2, 6, 0, 3, 6, 4], rhy: ['long', 'walk'], bass: 'long', drums: 'none', arp: true, duty: 0.25, pad: true, echo: 0.42, harm: true, contour: 'sigh', rest: 0.15 },
-    tunnel: { bpm: 60, root: 50, scale: 'phrygian', prog: [0, 1, 0, 6, 0, 1, 5, 0], rhy: ['sparse', 'long'], bass: 'long', drums: 'heart', arp: false, duty: 0.5, pad: true, echo: 0.45, contour: 'sigh', rest: 0.25 },
-    ascent: { bpm: 80, root: 62, scale: 'lydian', prog: [0, 1, 4, 5, 0, 1, 3, 4], rhy: ['syncop', 'walk'], bass: 'oompah', drums: 'soft', arp: true, duty: 0.125, pad: true, echo: 0.35, harm: true, contour: 'rise', rest: 0.1 },
-    plains: { bpm: 90, root: 55, scale: 'mixo', prog: [0, 6, 3, 0, 0, 6, 4, 0], rhy: ['walk', 'pickup'], bass: 'walk', drums: 'soft', arp: true, duty: 0.25, pad: true, echo: 0.35, harm: true, contour: 'calm', rest: 0.1 },
-    pass: { bpm: 68, root: 50, scale: 'dorian', prog: [0, 4, 6, 3, 0, 4, 6, 0], rhy: ['long', 'walk'], bass: 'long', drums: 'timp', arp: false, duty: 0.5, vib: 1, pad: true, echo: 0.4, harm: true, contour: 'sigh', rest: 0.12 },
+    title: { bpm: 112, root: 57, scale: 'minor', prog: [0, 5, 2, 6, 0, 3, 4, 0], rhy: ['syncop', 'walk'], bass: 'drive', drums: 'march', arp: true, arpSpeed: 2, duty: 0.25, vib: 1, echo: 0.2, harm: true, contour: 'rise', rest: 0 },
+    town: { bpm: 108, root: 60, scale: 'major', prog: [0, 5, 3, 4, 0, 5, 3, 4], rhy: ['town', 'walk'], bass: 'oompah', drums: 'light', arp: true, duty: 0.125, echo: 0.2, harm: true, contour: 'rise', rest: 0.04 },
+    forest: { bpm: 124, root: 52, scale: 'minor', prog: [0, 5, 2, 6, 0, 3, 6, 4], rhy: ['syncop', 'walk'], bass: 'drive', drums: 'march', arp: true, arpSpeed: 2, duty: 0.25, echo: 0.22, harm: true, contour: 'rise', rest: 0.04 },
+    tunnel: { bpm: 118, root: 50, scale: 'phrygian', prog: [0, 1, 0, 6, 0, 1, 5, 0], rhy: ['syncop', 'fury'], bass: 'pulse', drums: 'march', arp: true, arpSpeed: 2, duty: 0.25, echo: 0.22, harm: true, contour: 'rise', rest: 0.05 },
+    ascent: { bpm: 126, root: 62, scale: 'lydian', prog: [0, 1, 4, 5, 0, 1, 3, 4], rhy: ['syncop', 'walk'], bass: 'walk', drums: 'march', arp: true, arpSpeed: 2, duty: 0.125, echo: 0.2, harm: true, contour: 'rise', rest: 0.04 },
+    plains: { bpm: 132, root: 55, scale: 'mixo', prog: [0, 6, 3, 0, 0, 6, 4, 0], rhy: ['walk', 'pickup'], bass: 'walk', drums: 'march', arp: true, arpSpeed: 2, duty: 0.25, echo: 0.2, harm: true, contour: 'rise', rest: 0.04 },
+    pass: { bpm: 116, root: 50, scale: 'dorian', prog: [0, 4, 6, 3, 0, 4, 6, 0], rhy: ['syncop', 'fury'], bass: 'drive', drums: 'march', arp: true, arpSpeed: 2, duty: 0.25, vib: 1, echo: 0.22, harm: true, contour: 'rise', rest: 0.04 },
     village: { bpm: 54, root: 52, scale: 'phrygian', prog: [0, 0, 1, 0, 0, 6, 1, 0], rhy: ['sparse', 'sparse'], bass: 'drone', drums: 'rain', arp: false, duty: 0.125, layers: 'storm', pad: true, echo: 0.5, contour: 'sigh', rest: 0.3 },
     pond: { bpm: 60, root: 64, scale: 'lydian', prog: [0, 3, 0, 4, 0, 5, 3, 4], rhy: ['pickup', 'sparse'], bass: 'long', drums: 'none', arp: true, duty: 0.125, layers: 'horror', pad: true, echo: 0.5, contour: 'calm', rest: 0.15 },
-    cellar: { bpm: 66, root: 45, scale: 'harm', prog: [0, 0, 5, 4, 0, 3, 4, 0], rhy: ['sparse', 'syncop'], bass: 'pulse', drums: 'heart', arp: true, arpSpeed: 2, duty: 0.25, pad: true, echo: 0.4, contour: 'sigh', rest: 0.2 },
-    cave: { bpm: 66, root: 48, scale: 'minor', prog: [0, 6, 5, 6, 0, 3, 6, 4], rhy: ['long', 'syncop'], bass: 'pulse', drums: 'heart', arp: true, duty: 0.25, pad: true, echo: 0.4, harm: true, contour: 'sigh', rest: 0.15 },
+    cellar: { bpm: 120, root: 45, scale: 'harm', prog: [0, 0, 5, 4, 0, 3, 4, 0], rhy: ['syncop', 'fury'], bass: 'pulse', drums: 'march', arp: true, arpSpeed: 2, duty: 0.25, echo: 0.2, harm: true, contour: 'rise', rest: 0.05 },
+    cave: { bpm: 134, root: 48, scale: 'harm', prog: [0, 5, 6, 4, 0, 3, 5, 4], rhy: ['fury', 'syncop'], bass: 'gallop', drums: 'rock', arp: true, arpSpeed: 2, duty: 0.25, vib: 1, echo: 0.18, harm: true, contour: 'rise', rest: 0 },
     battle: { bpm: 138, root: 50, scale: 'harm', prog: [0, 5, 3, 4, 0, 5, 3, 4], rhy: ['syncop', 'walk'], bass: 'gallop', drums: 'rock', arp: true, arpSpeed: 2, duty: 0.25, echo: 0.15, harm: true, contour: 'rise', rest: 0 },
     boss: { bpm: 150, root: 47, scale: 'harm', prog: [0, 0, 5, 6, 0, 3, 5, 4], rhy: ['fury', 'syncop'], bass: 'gallop', drums: 'rock', arp: true, arpSpeed: 2, duty: 0.125, vib: 1, echo: 0.2, harm: true, contour: 'rise', rest: 0 }
   };
@@ -290,7 +290,7 @@
     else if (kind === 'r') noise(t, 0.09, 0.07 * v, 'highpass', 5000, 7000, 0.6, dest, 0.01);
   }
   var DR = { // 16-step patterns
-    soft: 'K...H...K...H.H.', march: 'k.h.s.h.k.h.s.hh', rock: 'k.hhs.hhk.hhs.kh', heart: 'k.......k..k....', timp: 't.......t..t....', rain: 'r.r.r.r.r.r.r.rr', none: '................'
+    light: 'k...h...s...h...', soft: 'K...H...K...H.H.', march: 'k.h.s.h.k.h.s.hh', rock: 'k.hhs.hhk.hhs.kh', heart: 'k.......k..k....', timp: 't.......t..t....', rain: 'r.r.r.r.r.r.r.rr', none: '................'
   };
   function schedule(tr, st, t) {
     var bar = Math.floor(st / 16) % song.bars, sp = st % 16, ch = chordNotes(tr, bar), stepLen = 60 / tr.bpm / 4, mus = musBus2, lb = leadBus || mus, layers = layerState(tr);
