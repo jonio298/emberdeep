@@ -357,7 +357,7 @@
   function loadFloor() {
     var s=CC.state,p=s.player,map,E=CC.Enemies,L=CC.Loot,
         cached=worldCache[key(s.area,s.floor,s.treeFloor)];
-    particles.length=0;texts.length=0;decals.length=0;call('Vfx','clear');call('Wounds','clear');
+    particles.length=0;texts.length=0;decals.length=0;call('Vfx','clear');call('Wounds','clear');call('LevelBurst','clear');call('HeroBlood','clear');
     if(cached&&cached.map){
       map=cached.map;CC.Dungeon=map;s.map=map;
       if(s.area==='forest'&&CC.Forest)CC.Forest.map=map;
@@ -627,6 +627,12 @@
     }
     return true;
   };
+  var pauseSaved = 0;
+  function exitToTitle() { // back to the title screen (progress since the last save is kept only if you saved)
+    paused = false; resetInputHeld(); call('SpellCharge', 'clear'); if (CC.Audio) CC.Audio.chargeEnd(false);
+    if (CC.state.coop && CC.Multiplayer && CC.Multiplayer.leave) { try { CC.Multiplayer.leave(); } catch (e) { /* offline */ } }
+    CC.state.mode = 'title'; titlePage = 'mode';
+  }
   function togglePause() {
     if (!playing()) return;
     paused = !paused;
@@ -1082,7 +1088,7 @@
         var isGuestNow = !!(CC.Multiplayer && CC.Multiplayer.isGuest && CC.Multiplayer.isGuest());
         if (s.area === 'tree-tunnel' && !isGuestNow) call('TreeTunnel', 'update', dt);
         if (s.area === 'tree-ascent') call('TreeAscent','update',dt);
-        call('Wounds','update',dt);
+        call('Wounds','update',dt);call('LevelBurst','update',dt);call('HeroBlood','update',dt);
         // Walk through the living tunnel and defeat its miniboss before entering the plains.
         var ex = s.map && s.map.stairs;
         if (ex && p && !p.stub && !isGuestNow && (
@@ -1275,7 +1281,7 @@
       call('Enemies', 'draw', ctx, cam);
       call('Classes', 'draw', ctx, cam);
       call('Skills','draw',ctx,cam);
-      call('Wounds','draw',ctx,cam);
+      call('Wounds','draw',ctx,cam);call('LevelBurst','draw',ctx,cam);call('HeroBlood','draw',ctx,cam);
       call('Multiplayer','drawWorld',ctx,cam);
       call('Defense','drawWorld',ctx,cam);
       if(!s.coop)call('EggQuest','drawCompanion',ctx,cam);
@@ -1698,8 +1704,16 @@
         ui.push({ x: cxp - 14, y: cyp - 14, w: 28, h: 28, cb: function () { call('UI', 'open', 'skills'); } });
       }
       if (paused && !uiOpen()) {
-        ctx.fillStyle = 'rgba(8,4,16,0.65)'; ctx.fillRect(0, H * 0.4, W, 80);
-        label('PAUSED', W / 2, H * 0.4 + 40, 28, '#ffe08a');
+        ctx.fillStyle = 'rgba(8,4,16,0.72)'; ctx.fillRect(0, 0, W, H);
+        var pmY = Math.max(40, H * 0.5 - 150), pmX = W / 2 - 100;
+        label('PAUSED', W / 2, pmY, 28, '#ffe08a');
+        addButton(pmX, pmY + 34, 200, 40, 'Resume', '#4a3a6a', togglePause);
+        addButton(pmX, pmY + 82, 200, 40, 'Inventory', '#5a4a2a', function () { call('UI', 'open', 'inv'); });
+        addButton(pmX, pmY + 130, 200, 40, 'Settings', '#3a4a6a', function () { call('UI', 'open', 'settings'); });
+        addButton(pmX, pmY + 178, 200, 40, Date.now() < pauseSaved ? 'Saved!' : 'Save', '#466b53', function () {
+          if (!CC.state.coop && call('SaveGame', 'save')) { pauseSaved = Date.now() + 1500; if (CC.state.player) CC.fx.text(CC.state.player.x, CC.state.player.y - 18, 'GAME SAVED', '#b5efb6', 12); }
+        });
+        addButton(pmX, pmY + 226, 200, 40, 'Exit game', '#6a3030', exitToTitle);
       }
       var addHit = function (x, y, w, h, cb, drag) { ui.push({ x: x, y: y, w: w, h: h, cb: cb, drag: drag ? cb : null }); }; // drag: a slider that follows the finger
       if (m === 'town') call('Town', 'drawPanel', ctx, W, H, addHit);

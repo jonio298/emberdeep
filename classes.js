@@ -185,7 +185,7 @@
       p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.3);
       p.mana = p.maxMana;
       syncSpells(p);
-      fxText(p.x, p.y - 20, 'LEVEL UP! ' + p.level, '#ffe08a', 14); if (CC.Audio) CC.Audio.event('levelup');
+      fxText(p.x, p.y - 20, 'LEVEL UP! ' + p.level, '#ffe08a', 14); if (CC.LevelBurst && CC.state.mode === 'dungeon') CC.LevelBurst.start(p); else if (CC.Audio) CC.Audio.event('levelup'); // the surge (with its sounds), or just the sounds in town
       if (p.level === SPELL2_LEVEL) fxText(p.x, p.y - 34, p.spells[1] + ' unlocked!', '#9fe3ff', 12);
       if (p.level === 10 || p.level === 20 || p.level === 30) { // a new charge attack, equipped at once (change it on the skill screen)
         var ST = CC.SkillTree, cs = ST && ST.chargeSkills(p.classId)[p.level / 10];
@@ -364,8 +364,9 @@
     var viaEnemies = CC.Enemies && typeof CC.Enemies.damage === 'function';
     if (viaEnemies) { try { CC.Enemies.damage(e, dmg, type); } catch (err) { e.hp -= dmg; } }
     else e.hp -= dmg;
-    fxText(e.x, e.y - (e.r || 8) - 4, crit ? dmg + '!' : String(dmg), crit ? '#f04c57' : back ? '#7de0b8' : '#fff', crit ? 16 : 10);
-    if (CC.Audio && !(opts.noCrit && !opts.basicAttack) && !opts.minion && type !== 'poison') CC.Audio.event('hit', { x: e.x, y: e.y, crit: crit });
+    var necroCinema = crit && p && p.classId === 'necromancer' && opts.basicAttack && !opts.minion && !opts.splash && !killShot && CC.state.mode === 'dungeon' && CC.CriticalScene && !(opts.attackGroup && opts.attackGroup.cinematicStarted) && !(p.pw && p.pw.rapid > 0);
+    if (!necroCinema) fxText(e.x, e.y - (e.r || 8) - 4, crit ? dmg + '!' : String(dmg), crit ? '#f04c57' : back ? '#7de0b8' : '#fff', crit ? 16 : 10); // a necromancer crit shows its damage as three counters in the cinematic instead
+    if (CC.Audio && !(opts.noCrit && !opts.basicAttack) && !opts.minion && type !== 'poison') CC.Audio.event('hit', { x: e.x, y: e.y, crit: crit, skip: !!necroCinema, plasma: !!(opts.basicAttack && p && (p.classId === 'wizard' || p.classId === 'necromancer') && !crit && !opts.minion), slash: !!(opts.basicAttack && p && (p.classId === 'swordsman' || p.classId === 'thief') && !e.ghost) });
     fxBurst(e.x, e.y, crit ? '#ffd24a' : '#ffffff', crit ? 14 : 4, crit ? 110 : 60);
     if (p && !opts.minion && (type === 'slash' || type === 'melee' || type === 'physical') &&
         Math.hypot(p.x - e.x, p.y - e.y) < 72 && !(e.ghost)) {
@@ -599,7 +600,10 @@
       }
     }
     if (p.pw && p.pw.rapid > 0 && !pr.aoe) pr.pierce = true; // rapid fire power-up: shots pass through monsters
-    if (CC.Audio) CC.Audio.fx(kind === 'fire' ? 'fireball' : kind === 'bolt' ? 'zap' : kind === 'wave' || kind === 'orb' ? 'magic' : 'throw', { x: p.x, y: p.y, vol: 0.7, gap: 70 });
+    var basicSnd = CC.Audio && (kind === 'bolt' || kind === 'shard') && (p.classId === 'wizard' || p.classId === 'necromancer') ? (pr.preRolledCrit ? 'critprojectile' : p.classId === 'necromancer' ? 'necrobasic' : 'basicprojectile') : null; // the necromancer has his own basic shot sound
+    if (p.classId === 'thief' && type === 'knife' && CC.Audio && CC.Audio.has('thiefknife')) CC.Audio.play('thiefknife', { x: p.x, y: p.y, vol: 0.8, gap: 120, vary: 0.04 }); // the knife-throw spell
+    else if (basicSnd && CC.Audio.has(basicSnd)) CC.Audio.play(basicSnd, { x: p.x, y: p.y, vol: pr.preRolledCrit ? 0.2 : 0.18, gap: 40, vary: 0.04 }); // the wizard's and necromancer's own shot sounds
+    else if (CC.Audio) CC.Audio.fx(kind === 'fire' ? 'fireball' : kind === 'bolt' ? 'zap' : kind === 'wave' || kind === 'orb' ? 'magic' : 'throw', { x: p.x, y: p.y, vol: 0.7, gap: 70 });
     if (projs.length < 80) projs.push(pr);
     if (CC.Multiplayer && CC.Multiplayer.sendFx)
       CC.Multiplayer.sendFx('pr', { x: pr.x, y: pr.y, vx: pr.vx, vy: pr.vy, life: pr.life, r: pr.r, kind: pr.kind,
@@ -773,6 +777,7 @@
     if (Math.abs(dx) + Math.abs(dy) < 0.2) { dx = p.face || 1; dy = 0; }
     var l = Math.sqrt(dx * dx + dy * dy) || 1; dx /= l; dy /= l;
     p.iframes = 0.22;
+    if (CC.Audio) CC.Audio.fx('dash', { vol: 0.9, gap: 60 }); // the dash whoosh, for every class
     if (p.classId === 'swordsman' || p.classId === 'thief') {
       var attack = p.classId === 'thief';
       p.cd.dash = attack ? 0 : p.cdMax.dash; // the thief's cool-down starts when the chain ends
@@ -1341,8 +1346,12 @@
     }
     // squash and stretch: lean into movement, stretch on attack
     var sq = p.moving ? 1 + Math.sin(p.anim * 14) * 0.04 : 1 + Math.sin(p.anim * 3) * 0.015, st = (p.atkAnim || 0) > 0 ? 1.08 : 1;
-    c.save(); c.translate(px, py + 10); c.scale(st / sq, sq * (2 - st)); c.translate(-px, -(py + 10));
+    var fh = CC.HeroBlood && CC.HeroBlood.flinch(p); // hit reaction: lean and recoil away from the blow
+    c.save();
+    if (fh) { c.translate(px + fh.ox, py + 10 + fh.oy); c.rotate(fh.rot); c.translate(-px, -(py + 10)); }
+    c.translate(px, py + 10); c.scale(st / sq, sq * (2 - st)); c.translate(-px, -(py + 10));
     drawHero(c, p, px, py);
+    if (CC.HeroBlood) CC.HeroBlood.overlay(c, p, px, py); // blood builds up as health drops, washes off as it comes back
     c.restore();
     if (p.hp > 0 && p.maxHp && p.hp / p.maxHp < 0.3) { // wounded: blood drip
       c.globalAlpha = 0.8; R(c, px - 3 + Math.sin(p.anim * 2) * 2, py + 2 + ((p.anim * 14) % 8), 1, 3, '#a01418');

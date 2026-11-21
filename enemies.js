@@ -37,7 +37,9 @@
   var SPURT = { ghoul: { n: 9, pow: 130 }, charger: { n: 7, pow: 110 }, demon: { n: 8, pow: 120 }, spitter: { n: 8, pow: 100 }, scorpion: { n: 6, pow: 100 } };
 
   /* Toughness: every base monster HP is multiplied by HP_MULT (basic enemies took ~2 hits of 10 damage before, ~4 now). */
-  var HP_MULT = 2.90; // +34.9% baseline HP vs the previous 2.15 multiplier
+  var HP_MULT = 2.46; // was 2.90: everything 15% softer (the forest felt far too beefy)
+  // the Giant Forest is eased further: forest monsters had 30% less health and 40% less damage than the original; now another 20% less health and 40% less damage on top
+  function areaMul() { var a = CC.state && CC.state.area; return a === 'forest' ? { hp: 0.7 / 0.85 * 0.8, dmg: 0.6 / 0.8 * 0.6 } : { hp: 1, dmg: 1 }; }
   /* Dismemberment: parts that fly off in this order as HP falls (one per equal slice of the HP bar). The enemy keeps fighting. */
   // Anatomy profiles: each detached piece is also hidden from the still-living sprite.
   var PARTS = ['armLeft', 'armRight', 'head', 'legLeft'];
@@ -238,15 +240,15 @@
   }
 
   function make(type, x, y, floor, opts) {
-    var d = TYPES[type], hs = 1 + 0.18 * (floor - 1), e = {
-      id: nextId++, type: type, name: d.name, x: x, y: y, r: d.r, hp: 0, maxHp: 0, dmg: Math.round(d.dmg * (1 + 0.12 * (floor - 1)) * 1.19),
+    var d = TYPES[type], hs = 1 + 0.18 * (floor - 1), am = areaMul(), e = {
+      id: nextId++, type: type, name: d.name, x: x, y: y, r: d.r, hp: 0, maxHp: 0, dmg: Math.max(1, Math.round(d.dmg * (1 + 0.12 * (floor - 1)) * 0.95 * am.dmg)),
       spd: d.spd * 1.12, xp: d.xp, color: d.color, state: 'idle', t: 0, cd: 0.42 + R() * 1.1, face: 1, flash: 0, slow: 0, burn: 0,
       asleep: true, dead: false, contact: 0, size: 0, floor: floor, ang: 0, tele: null, group: 0, anim: R() * 10, strafe: R() < 0.5 ? 1 : -1
     };
     opts = opts || {};
-    e.maxHp = Math.round(d.hp * hs * HP_MULT); e.hp = e.maxHp;
+    e.maxHp = Math.round(d.hp * hs * HP_MULT * am.hp); e.hp = e.maxHp;
     e.poison = !!d.poison; e.ghost = !!d.ghost; e.fireproof = !!d.fire; e.vamp = !!d.vamp; e.armored = !!d.armored; if (d.telRad) e.telRad = d.telRad;
-    if (type === 'slime') { e.size = opts.size === undefined ? 2 : opts.size; e.r = [6, 9, 13][e.size]; e.maxHp = e.hp = Math.round(d.hp * hs * HP_MULT * [0.3, 0.55, 1][e.size]); e.dmg = Math.round(e.dmg * [0.6, 0.8, 1][e.size]); }
+    if (type === 'slime') { e.size = opts.size === undefined ? 2 : opts.size; e.r = [6, 9, 13][e.size]; e.maxHp = e.hp = Math.round(d.hp * hs * HP_MULT * am.hp * [0.3, 0.55, 1][e.size]); e.dmg = Math.round(e.dmg * [0.6, 0.8, 1][e.size]); }
     return settle(e); // never spawn inside / overlapping a wall
   }
   function makeElite(e) {

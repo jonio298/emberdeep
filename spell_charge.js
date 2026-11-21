@@ -444,7 +444,7 @@ function update(dt){
  if(lastArea===null)lastArea=a;
  else if(lastArea!==a){lastArea=a;cancel();effects.length=0;}
  combatTick(dt);
- if(active&&CC.Audio&&active.time>=ARM){if(!active.snd){active.snd=1;CC.Audio.chargeStart(active.slot==='dash');}CC.Audio.chargeSet(Math.min(1,(active.time-ARM)/(FULL-ARM)));}
+ if(active&&CC.Audio&&active.time>=ARM){if(!active.snd){active.snd=1;CC.Audio.chargeStart(false,0.6);}CC.Audio.chargeSet(Math.min(1,(active.time-ARM)/(FULL-ARM)));}
 }
 function glow(c,x,y,r,col){
  var g=c.createRadialGradient(x,y,0,x,y,Math.max(1,r));

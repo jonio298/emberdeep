@@ -471,7 +471,7 @@
       if (tt > 2.4 && pd.said < 2) { pd.said = 2; P.speech = { name: 'The Lady of the Pond', text: 'Stay. Forever.', t0: Date.now() }; }
       if (tt >= 3.2) { // she is gone; something else stands where she stood
         pd.stage = 'fight'; if (pd.lady) { pd.lady.hidden = true; }
-        if (CC.Audio) CC.Audio.event('laugh');
+        if (CC.Audio) { CC.Audio.event('laugh'); CC.Audio.play('pondspawn', { vol: 1, gap: 0, vary: 0 }); } // the lady is gone and the Mere Horror rises
         var b = E.spawn('merehorror', pd.x, pd.y, 2); if (b) { b.state = 'rise'; b.t = 1.4; b.miniBoss = true; b.asleep = false; b.cd = 1.5; pd.boss = b; }
         if (CC.Vfx && CC.Vfx.skyFlash) CC.Vfx.skyFlash('#ff3a3a', 0.3, 0.4);
         if (CC.fx) { if (CC.fx.shake) CC.fx.shake(14); if (CC.fx.burst) { CC.fx.burst(pd.x, pd.y, '#3a2a58', 40, 180); CC.fx.burst(pd.x, pd.y, '#9ad0c0', 24, 140); } fxText(pd.x, pd.y - 60, 'THE MERE HORROR RISES', '#ff6a6a', 15); }

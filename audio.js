@@ -12,14 +12,14 @@
   'use strict';
   var CC = root.CC = root.CC || {}, A = CC.Audio = {}, TAU = Math.PI * 2;
   var duck = 1, ctx = null, master = null, sfxBus = null, musBus = null, noiseBuf = null, bufs = {}, loading = {}, voices = 0, lastPlay = {}, unlocked = false;
-  var vol = { music: 0.5, sfx: 0.8 }, mute = { music: false, sfx: false };
-  try { var sv = JSON.parse(localStorage.getItem('emberdeep-audio') || 'null'); if (sv) { vol.music = sv.m != null ? sv.m : vol.music; vol.sfx = sv.s != null ? sv.s : vol.sfx; mute.music = !!sv.mm; mute.sfx = !!sv.ms; } } catch (e) { /* optional */ }
-  function save() { try { localStorage.setItem('emberdeep-audio', JSON.stringify({ m: vol.music, s: vol.sfx, mm: mute.music, ms: mute.sfx })); } catch (e) { /* optional */ } }
+  var vol = { music: 0.5, sfx: 0.8, master: 1 }, mute = { music: false, sfx: false };
+  try { var sv = JSON.parse(localStorage.getItem('emberdeep-audio') || 'null'); if (sv) { vol.master = sv.v != null ? sv.v : 1; vol.music = sv.m != null ? sv.m : vol.music; vol.sfx = sv.s != null ? sv.s : vol.sfx; mute.music = !!sv.mm; mute.sfx = !!sv.ms; } } catch (e) { /* optional */ }
+  function save() { try { localStorage.setItem('emberdeep-audio', JSON.stringify({ v: vol.master, m: vol.music, s: vol.sfx, mm: mute.music, ms: mute.sfx })); } catch (e) { /* optional */ } }
   function R() { return Math.random(); }
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
   function hero() { var s = CC.state; return s && s.player && !s.player.stub ? s.player : null; }
 
-  var FILES = ['charge', 'legendarycharge', 'charge_up_boss', 'charge_blast', 'bat_squeak', 'bat_attack', 'explosion', 'splash_explosion', 'thunder_clap', 'enemyhit', 'enemydie', 'player_hit', 'skeleton_attack', 'skeleton_bone_sound', 'skeleton_death', 'ghost_moan', 'ghost_call_2', 'ghost_death', 'level_up', 'item_pickup_gen', 'special_item', 'awesome_legendary', 'door_open', 'door_close', 'door_slam', 'waterdrop1', 'waterdrop2', 'evil_laugh', 'boss_death_scream', 'boss_shot', 'jet_stream_fire', 'friend_summon', 'friend_summon2', 'blob_death', 'blob_hop1', 'radioactive_death', 'splash_hit_1', 'splash_hit_2', 'fountain_entrance'];
+  var FILES = ['thiefknife', 'necrocrithit', 'necrobasic', 'pondspawn', 'critprojectile', 'basicprojectile', 'beargrowl', 'bearroar', 'beardeath', 'newquest', 'levelup', 'levelupvoice', 'thiefcrit', 'blood1', 'swordcrit', 'charge', 'legendarycharge', 'charge_up_boss', 'charge_blast', 'bat_squeak', 'bat_attack', 'explosion', 'splash_explosion', 'thunder_clap', 'enemyhit', 'enemydie', 'player_hit', 'skeleton_attack', 'skeleton_bone_sound', 'skeleton_death', 'ghost_moan', 'ghost_call_2', 'ghost_death', 'level_up', 'item_pickup_gen', 'special_item', 'awesome_legendary', 'door_open', 'door_close', 'door_slam', 'waterdrop1', 'waterdrop2', 'evil_laugh', 'boss_death_scream', 'boss_shot', 'jet_stream_fire', 'friend_summon', 'friend_summon2', 'blob_death', 'blob_hop1', 'radioactive_death', 'splash_hit_1', 'splash_hit_2', 'fountain_entrance'];
   A.names = FILES;
 
   /* ---------- the context ---------- */
@@ -27,7 +27,7 @@
     if (ctx) return true;
     var AC = root.AudioContext || root.webkitAudioContext; if (!AC) return false;
     try { ctx = new AC(); } catch (e) { return false; }
-    master = ctx.createGain(); master.gain.value = 1;
+    master = ctx.createGain(); master.gain.value = vol.master;
     var comp = ctx.createDynamicsCompressor(); comp.threshold.value = -14; comp.knee.value = 18; comp.ratio.value = 4; comp.attack.value = 0.004; comp.release.value = 0.18;
     sfxBus = ctx.createGain(); musBus = ctx.createGain(); sfxBus.connect(comp); musBus.connect(comp); comp.connect(master); master.connect(ctx.destination);
     applyVol();
@@ -50,6 +50,7 @@
       return new Promise(function (res, rej) { ctx.decodeAudioData(ab, res, rej); });
     }).then(function (b) { bufs[n] = b; }).catch(function () { loading[n] = false; });
   }
+  A.setMaster = function (v) { vol.master = clamp(v, 0, 1); if (master) master.gain.value = vol.master; save(); };
   A.setMusic = function (v) { vol.music = clamp(v, 0, 1); applyVol(); save(); };
   A.setSfx = function (v) { vol.sfx = clamp(v, 0, 1); applyVol(); save(); };
   A.toggleMusic = function () { mute.music = !mute.music; applyVol(); save(); return !mute.music; };
@@ -137,7 +138,27 @@
     wet: function (o, out, t) { noise(t, 0.18, 0.3, 'bandpass', 700, 280, 2.5, out, 0.01); osc('sine', 300, 90, t, 0.12, 0.1, 0.004, out, 0.04); },
     thump: function (o, out, t) { osc('sine', 78, 44, t, 0.2, 0.55, 0.004, out, 0.06); osc('sine', 78, 44, t + 0.2, 0.18, 0.4, 0.004, out, 0.06); }, // a heartbeat
     crunch: function (o, out, t) { noise(t, 0.12, 0.5, 'bandpass', 1500, 500, 1.2, out, 0.002); noise(t + 0.05, 0.1, 0.4, 'bandpass', 900, 350, 1.2, out, 0.002); osc('sine', 110, 50, t, 0.14, 0.3, 0.003, out, 0.04); },
-    dash: function (o, out, t) { noise(t, 0.2, 0.3, 'bandpass', 1200, 4200, 1, out, 0.02); },
+    // three plasma hits (wizard and necromancer shots landing): a crackling snap, a sizzle and a low thud, each a little different
+    plasma1: function (o, out, t) {
+      osc('sawtooth', 1500, 180, t, 0.12, 0.2, 0.002, out, 0.03); osc('square', 2600, 400, t, 0.07, 0.1, 0.002, out, 0.02); noise(t, 0.16, 0.32, 'bandpass', 3200, 800, 1.4, out, 0.002); osc('sine', 110, 48, t, 0.14, 0.34, 0.003, out, 0.05);
+    },
+    plasma2: function (o, out, t) {
+      osc('sine', 2400, 260, t, 0.2, 0.2, 0.002, out, 0.04); osc('sawtooth', 900, 140, t, 0.16, 0.14, 0.002, out, 0.03); noise(t, 0.12, 0.3, 'highpass', 5000, 8000, 1, out, 0.001); noise(t + 0.03, 0.18, 0.2, 'bandpass', 1800, 500, 2, out, 0.01); osc('sine', 85, 45, t, 0.16, 0.3, 0.003, out, 0.05);
+    },
+    plasma3: function (o, out, t) {
+      osc('sawtooth', 700, 80, t, 0.24, 0.22, 0.003, out, 0.05); noise(t, 0.26, 0.3, 'lowpass', 2600, 300, 1.2, out, 0.002); for (var i = 0; i < 4; i++) noise(t + 0.04 + i * 0.04, 0.02, 0.28, 'bandpass', 2500 + R() * 2500, 2000, 3, out, 0.001);
+      osc('sine', 70, 38, t, 0.2, 0.38, 0.004, out, 0.06); osc('triangle', 420, 120, t, 0.12, 0.12, 0.002, out, 0.03);
+    },
+    raise: function (o, out, t) { // earth rumbling, a cold rising breath, then bones knocking together as they pull themselves up
+      noise(t, 0.55, 0.32, 'lowpass', 380, 120, 1.2, out, 0.06); osc('sine', 95, 52, t, 0.5, 0.3, 0.04, out, 0.1);
+      noise(t + 0.05, 0.5, 0.14, 'bandpass', 900, 2600, 2, out, 0.25);
+      for (var i = 0; i < 6; i++) { var tt = t + 0.18 + i * (0.045 + R() * 0.03); noise(tt, 0.03, 0.34, 'bandpass', 1500 + R() * 1500, 1200, 3, out, 0.001); osc('triangle', 260 + R() * 160, 150, tt, 0.05, 0.08, 0.002, out, 0.03); }
+      noise(t + 0.55, 0.12, 0.2, 'bandpass', 2400, 1800, 3, out, 0.002);
+    },
+    dash: function (o, out, t) { // a rush of air, the scuff of boots and a soft thump of weight shifting
+      noise(t, 0.24, 0.34, 'bandpass', 800, 5200, 1.1, out, 0.04); noise(t, 0.1, 0.28, 'lowpass', 600, 160, 0.8, out, 0.006); osc('sine', 150, 55, t, 0.13, 0.3, 0.003, out, 0.04);
+      noise(t + 0.1, 0.12, 0.14, 'highpass', 4000, 6500, 0.8, out, 0.01);
+    },
     jump: function (o, out, t) { osc('square', 300, 700, t, 0.1, 0.06, 0.003, out, 0.03); },
     peck: function (o, out, t) { osc('square', 1900, 900, t, 0.04, 0.12, 0.001, out, 0.02); osc('square', 1700, 800, t + 0.06, 0.04, 0.1, 0.001, out, 0.02); },
     bell: function (o, out, t) { var f = 523 * (o && o.n ? o.n : 1); osc('sine', f, f, t, 0.9, 0.16, 0.004, out, 0.9); osc('sine', f * 2.76, f * 2.76, t, 0.5, 0.06, 0.004, out, 0.5); },
@@ -155,26 +176,16 @@
     var out = bus(o); if (!out) return; FX[name](o || {}, out, ctx.currentTime + 0.002 + ((o && o.delay) || 0));
   };
 
-  // blood: a squelchy splat (the blob-hop sample, pitched down a touch), wet splash hits, then lots of little drops hitting the ground (water drops and
-  // tiny blob hops, pitched up and cut short), scattered over about half a second
+  // blood: one sound, blood1.mp3, played just after the slash. Criticals keep their own intense slashing sounds, so no blood layer goes over them.
   A.splatter = function (n, x, y) {
-    if (!ctx || !unlocked || mute.sfx) return; var k = Math.min(9, Math.max(0, Math.round(n * 0.7))), i, tt = 0.03, pick;
-    if (n >= 3) { // the impact itself
-      A.play('blob_hop1', { x: x, y: y, vol: 0.4 + Math.min(0.25, n * 0.02), rate: 0.85 + R() * 0.3, vary: 0.04, dur: 0.32, gap: 0 });
-      A.play(R() < 0.5 ? 'splash_hit_1' : 'splash_hit_2', { x: x, y: y, vol: 0.3 + R() * 0.1, rate: 0.95 + R() * 0.3, delay: 0.015, dur: 0.3, gap: 0 });
-    }
-    if (n < 3) { A.play(R() < 0.6 ? 'waterdrop2' : 'blob_hop1', { x: x, y: y, vol: 0.14 + R() * 0.08, rate: 1.3 + R() * 0.8, dur: 0.14, gap: 40 }); return; }
-    for (i = 0; i < k; i++) { // the drops landing, one after another
-      tt += 0.02 + R() * (0.04 + 0.012 * i); if (tt > 0.55) break; pick = R();
-      if (pick < 0.45) A.play(R() < 0.5 ? 'waterdrop1' : 'waterdrop2', { x: x, y: y, vol: 0.1 + R() * 0.16, rate: 1.0 + R() * 1.0, vary: 0.08, delay: tt, dur: 0.16 + R() * 0.14, gap: 0 });
-      else if (pick < 0.8) A.play('blob_hop1', { x: x, y: y, vol: 0.1 + R() * 0.12, rate: 1.4 + R() * 0.9, vary: 0.08, delay: tt, dur: 0.1 + R() * 0.08, gap: 0 });
-      else A.play(R() < 0.5 ? 'splash_hit_1' : 'splash_hit_2', { x: x, y: y, vol: 0.1 + R() * 0.1, rate: 1.5 + R() * 0.7, delay: tt, dur: 0.12, gap: 0 });
-    }
+    if (!ctx || !unlocked || mute.sfx || n < 2) return;
+    if (CC.CriticalScene && CC.CriticalScene.isActive && CC.CriticalScene.isActive()) return;
+    A.play('blood1', { x: x, y: y, vol: 0.55 + Math.min(0.35, n * 0.03), vary: 0.06, delay: 0.07, gap: 140 });
   };
   /* ---------- the charge-up loop (rises with power) and its blast ---------- */
   var charging = null;
   A.chargeStart = function (big, level) {
-    if (!ctx || !unlocked || mute.sfx || charging) return; var b = bufs[big ? 'charge_up_boss' : 'charge']; if (!b) return;
+    if (!ctx || !unlocked || mute.sfx || charging) return; var b = bufs.charge; if (!b) return; // one charge-up sound for every charge in the game
     var s = ctx.createBufferSource(), g = ctx.createGain(); s.buffer = b; s.loop = true; s.loopStart = Math.min(0.25, b.duration * 0.3); s.loopEnd = b.duration; g.gain.setValueAtTime(0.0001, ctx.currentTime); g.gain.linearRampToValueAtTime(0.9 * (level === undefined ? 1 : level), ctx.currentTime + 0.08);
     s.connect(g); g.connect(sfxBus); s.start(); charging = { s: s, g: g, t: Date.now() };
   };
@@ -297,6 +308,7 @@
   var hiddenAt = 0;
   A.update = function (dt) {
     if (!ctx || !unlocked) return; var s = CC.state; if (!s) return;
+    if (CC.MonsterSound) CC.MonsterSound.update(dt); // monster voices, ambience, the hero's grunt
     if (charging && Date.now() - charging.t > 450) A.chargeEnd(false); // a charge that was cancelled without telling us
     var area = s.area, mode = s.mode, E = CC.Enemies, id, want = (CC.UI && CC.UI.isOpen && CC.UI.isOpen()) ? 0.45 : 1; if (Math.abs(want - duck) > 0.01) { duck += (want - duck) * Math.min(1, dt * 4); applyVol(); }
     if (mode === 'title') id = 'title'; else if (mode === 'town') id = 'town';
@@ -320,10 +332,15 @@
   A.event = function (name, d) {
     d = d || {}; var o = { x: d.x, y: d.y };
     switch (name) {
-      case 'hit': A.fx(d.crit ? 'crit' : 'hit', { x: d.x, y: d.y, vol: d.crit ? 0.9 : 0.7, gap: 55 }); if (R() < 0.5) A.play(R() < 0.5 ? 'splash_hit_1' : 'splash_hit_2', { x: d.x, y: d.y, vol: 0.35, gap: 90 }); break;
+      case 'hit':
+        if (d.plasma) A.fx('plasma' + (1 + Math.floor(R() * 3)), { x: d.x, y: d.y, vol: 0.85, gap: 45 }); // wizard and necromancer shots land with plasma
+        else if (!d.skip) A.fx(d.crit ? 'crit' : 'hit', { x: d.x, y: d.y, vol: d.crit ? 0.9 : 0.7, gap: 55 });
+        if (d.slash && !d.crit) A.play('blood1', { x: d.x, y: d.y, vol: 0.8, vary: 0.05, delay: 0.07, gap: 140 }); // the blade, then the blood
+        break;
       case 'hurt': break; // no voice-over when you are hit
       case 'drawbridge': A.fx('drawbridge', { vol: 1 }); A.play('door_slam', { vol: 0.45, delay: 1.6, dur: 0.9 }); break;
-      case 'levelup': A.play('level_up', { vol: 0.9 }); break;
+      case 'levelup': A.play('levelup', { vol: 1, gap: 0, vary: 0 }); A.play('levelupvoice', { vol: 1, gap: 0, vary: 0, delay: 1.55 }); break;
+      case 'newquest': A.play('newquest', { vol: 1, gap: 0, vary: 0 }); break;
       case 'pickup': A.play('item_pickup_gen', { vol: 0.8, x: d.x, y: d.y }); break;
       case 'gold': A.fx('coin', { x: d.x, y: d.y, vol: 0.6, gap: 70 }); break;
       case 'rare': A.play('special_item', { vol: 0.9 }); break;
@@ -335,7 +352,7 @@
       case 'door': A.play('door_open', { vol: 0.8 }); break;
       case 'doorclose': A.play('door_close', { vol: 0.7, dur: 1.2 }); break;
       case 'portal': A.play('fountain_entrance', { vol: 0.7, dur: 1.6 }); break;
-      case 'summon': A.play(R() < 0.5 ? 'friend_summon' : 'friend_summon2', { vol: 0.8, x: d.x, y: d.y }); break;
+      case 'summon': A.fx('raise', { vol: 0.9, x: d.x, y: d.y, gap: 90 }); break; // a skeleton clawing up out of the ground
       case 'bat': A.play('bat_squeak', { x: d.x, y: d.y, vol: 0.7, rate: d.rate || 1, gap: 250 }); break;
       case 'batattack': A.play('bat_attack', { x: d.x, y: d.y, vol: 0.8, gap: 200 }); break;
       case 'skelatk': A.play(R() < 0.5 ? 'skeleton_attack' : 'skeleton_bone_sound', { x: d.x, y: d.y, vol: 0.6, gap: 220 }); break;
@@ -387,5 +404,9 @@
     } finally { done = ctx.startRendering(); ctx = sv.ctx; master = sv.master; sfxBus = sv.sfxBus; musBus = sv.musBus; noiseBuf = sv.noiseBuf; musBus2 = sv.musBus2; track = sv.track; song = sv.song; step = sv.step; nextT = sv.nextT; unlocked = sv.unlocked; voices = sv.voices; lastPlay = sv.lastPlay; mute.music = sv.mm; mute.sfx = sv.ms; }
     return done;
   };
+  A.has = function (n) { return !!bufs[n]; };
+  A.dur = function (n) { return bufs[n] ? bufs[n].duration : 0; };
+  A.kit = { ctx: function () { return ctx; }, osc: osc, noise: noise, R: R };
+  A.defineFx = function (n, f) { FX[n] = f; };
   setTimeout(wrapAll, 0);
 })(window);

@@ -34,7 +34,7 @@ Q.status=function(){return {stage:stage,hatchLevel:HATCH_LEVEL,
 Q.stage=function(){return stage;};
 Q.accept=function(){
  if(stage!=='unstarted')return false;
- stage='climbing';notice('QUEST ACCEPTED: THE UNHATCHED');save();return true;
+ stage='climbing';notice('QUEST ACCEPTED: THE UNHATCHED');if(CC.Audio)CC.Audio.event('newquest');save();return true;
 };
 Q.hasGathered=function(){return stage==='gathered'||stage==='nest'||stage==='complete';};
 Q.gather=function(){
@@ -58,7 +58,7 @@ Q.keepEgg=function(){
 // the partner who is on that same bough completes it too.
 Q.coopSync=function(d){
  if(!d)return;
- if(d.s==='climbing'&&stage==='unstarted'){stage='climbing';notice('PARTY QUEST: THE UNHATCHED','#cfe8a8');}
+ if(d.s==='climbing'&&stage==='unstarted'){stage='climbing';notice('PARTY QUEST: THE UNHATCHED','#cfe8a8');if(CC.Audio)CC.Audio.event('newquest');}
  if(d.e==='gather'){
   var s=CC.state;
   if(s&&s.area==='tree-ascent'&&(s.treeFloor||1)===d.tf){

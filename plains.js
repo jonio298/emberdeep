@@ -410,15 +410,7 @@
     if (sp) {
       var age = (now - sp.t0) / 1000, p = CC.state && CC.state.player;
       if (age > 6 || (p && P.map && P.map.npcs.every(function (n) { return Math.hypot(p.x - n.x, p.y - n.y) > 110; }))) { P.speech = null; return; }
-      ctx.save();
-      ctx.font = '12px Georgia, serif';
-      var lines = wrapLines(ctx, sp.text, Wd - 70), bh = 30 + lines.length * 16, by = Hd - 190 - bh;
-      ctx.fillStyle = 'rgba(14,10,8,0.88)'; ctx.fillRect(20, by, Wd - 40, bh);
-      ctx.strokeStyle = '#a06a30'; ctx.lineWidth = 1.5; ctx.strokeRect(20.5, by + 0.5, Wd - 41, bh - 1);
-      ctx.fillStyle = '#ffd890'; ctx.font = 'bold 12px Georgia, serif'; ctx.textAlign = 'left'; ctx.fillText(sp.name, 32, by + 16);
-      ctx.fillStyle = '#f0e6d0'; ctx.font = '12px Georgia, serif';
-      for (var i = 0; i < lines.length; i++) ctx.fillText(lines[i], 32, by + 34 + i * 16);
-      ctx.restore();
+      if (CC.DialogBox) CC.DialogBox.draw(ctx, Wd, Hd, function () {}, { name: sp.name, text: sp.text, low: true });
     }
   };
 

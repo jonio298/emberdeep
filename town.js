@@ -546,28 +546,7 @@
        Wd/2,Hd*.17+17); ctx.globalAlpha = 1;
     }
     if (Town.note) { ctx.fillStyle = 'rgba(14,10,8,0.8)'; ctx.fillRect(Wd / 2 - 150, Hd * 0.25, 300, 24); ctx.fillStyle = '#f0e6d0'; ctx.font = '11px Georgia, serif'; ctx.textAlign = 'center'; ctx.fillText(Town.note.text, Wd / 2, Hd * 0.25 + 16); }
-    if (d) {
-      ctx.font = '12px Georgia, serif';
-      var words = d.text.split(' '), lines = [], line = '';
-      for (i = 0; i < words.length; i++) { var t = line ? line + ' ' + words[i] : words[i]; if (ctx.measureText(t).width > Wd - 70 && line) { lines.push(line); line = words[i]; } else line = t; }
-      if (line) lines.push(line);
-      var bh = 44 + lines.length * 16 + d.actions.length * 34, bx = 16, bw = Wd - 32, by = Math.max(120, Hd * 0.2);
-      ctx.fillStyle = 'rgba(14,10,8,0.92)'; ctx.fillRect(bx, by, bw, bh);
-      ctx.strokeStyle = '#a06a30'; ctx.lineWidth = 1.5; ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
-      ctx.textAlign = 'left'; ctx.fillStyle = '#ffd890'; ctx.font = 'bold 13px Georgia, serif'; ctx.fillText(d.name, bx + 12, by + 20);
-      ctx.fillStyle = '#f0e6d0'; ctx.font = '12px Georgia, serif';
-      for (i = 0; i < lines.length; i++) ctx.fillText(lines[i], bx + 12, by + 40 + i * 16);
-      var yy = by + 44 + lines.length * 16;
-      addHit(bx, by, bw, bh, function () {}); // registered first (last registered wins a tap): the box swallows taps, buttons sit on top
-      d.actions.forEach(function (a) {
-        var on = !a.enabled || a.enabled();
-        ctx.fillStyle = on ? '#3a5a2a' : 'rgba(255,255,255,0.06)'; ctx.fillRect(bx + 12, yy, bw - 24, 28);
-        ctx.strokeStyle = on ? '#e0c070' : 'rgba(255,255,255,0.15)'; ctx.strokeRect(bx + 12.5, yy + 0.5, bw - 25, 27);
-        ctx.fillStyle = on ? '#fff' : '#888'; ctx.textAlign = 'center'; ctx.font = 'bold 12px Georgia, serif'; ctx.fillText(a.label, bx + bw / 2, yy + 18);
-        if (on) addHit(bx + 12, yy, bw - 24, 28, function () { a.run(); });
-        yy += 34;
-      });
-    }
+    if (d && CC.DialogBox) CC.DialogBox.draw(ctx, Wd, Hd, addHit, d);
     ctx.restore();
   };
 })(window);

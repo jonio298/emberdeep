@@ -6,7 +6,7 @@
 'use strict';
 var CC=root.CC=root.CC||{}, TAU=Math.PI*2, now=0, active=null, queue=[], held=false;
 var reduced=!!(root.matchMedia&&root.matchMedia('(prefers-reduced-motion: reduce)').matches);
-var LENGTHS={swordsman:1.0,thief:.59,wizard:.67,necromancer:.73};
+var LENGTHS={swordsman:1.18,thief:.90,wizard:.67,necromancer:.88};
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 function smooth(t){t=clamp(t,0,1);return t*t*(3-2*t);}
 function L(){return active?active.duration:.65;}
@@ -65,12 +65,50 @@ function canFinish(){return !!(CC.Finisher&&CC.state&&CC.state.mode==='dungeon')
 // A swipe's cinematic may already be running when a second target is perfectly killed.
 function finish(enemy){
  if(!active||!enemy||!CC.Finisher||active.fin)return false;
- active.fin={id:enemy.id,sx:0,sy:0};active.duration=CC.Finisher.LEN[active.heroClass]||2.8;now=0;
+ active.fin={id:enemy.id,sx:0,sy:0};active.duration=CC.Finisher.LEN[active.heroClass]||2.8;now=0;active.snd=0;
  return true;
+}
+// The sword crit plays to the sound swordcrit.mp3: its slice-in is at 0.08 s and its slice-out at 0.58 s, and the sound starts at scene time .32. So the
+// stab (animation time .40) lands on .40 and the pull (animation .72) is stretched to land on .90; the scene runs 1.18 s. wt() maps scene time to animation time.
+// Thief crit (thiefcrit.mp3: slices at .18 and .59): the first cut pair lands at .18, the finishing lines at .59. The perfect slices slow the clock a little
+// between the cuts: the thief's cross slash runs .36 -> .60 of its animation across .36 -> .77, the swordsman's cut slows to half speed from .40 to .60.
+function knots(){
+ var o=active;if(!o)return null;
+ if(o.fin){
+   if(o.heroClass==='thief')return [[0,0],[.36,.36],[.77,.60]];
+   if(o.heroClass==='swordsman')return [[0,0],[.40,.40],[.80,.60]];
+   return null;
+ }
+ if(o.heroClass==='thief')return [[0,0],[.18,.13],[.59,.28]];
+ return null;
+}
+function wt(){
+ if(!active)return now;
+ if(active.heroClass==='swordsman'&&!active.fin){
+   if(now<=.40)return now;
+   if(now<=.90)return .40+(now-.40)*(.32/.50);
+   return .72+(now-.90);
+ }
+ var k=knots();if(!k)return now;
+ for(var i=1;i<k.length;i++)if(now<=k[i][0])return k[i-1][1]+(now-k[i-1][0])*(k[i][1]-k[i-1][1])/(k[i][0]-k[i-1][0]);
+ var l=k[k.length-1];return l[1]+(now-l[0]);
+}
+function cueSound(){
+ if(!CC.Audio||active.snd)return;
+ var h=active.heroClass,f=!!active.fin,name=null,rate=1;
+ if(h==='swordsman'&&!f&&now>=.32){name='swordcrit';rate=1.2;}
+ else if(h==='swordsman'&&f&&now>=.38)name='swordcrit';
+ else if(h==='thief'&&!f&&now>=0)name='thiefcrit';
+ else if(h==='thief'&&f&&now>=.18)name='thiefcrit';
+ if(name){active.snd=1;CC.Audio.play(name,{vol:name==='swordcrit'?.6:1,gap:0,vary:0,rate:rate});}
 }
 function update(dt){
  if(!active||held)return;
- now+=clamp(dt||0,0,.12);
+ var spd=(active.heroClass==='swordsman'&&!active.fin)?1.2:1; // the sword crit plays 20% faster
+ if(active.heroClass==='necromancer'&&!active.fin){for(var hs=0;hs<3;hs++)if(now>=NH[hs]&&now<NH[hs]+.08){spd=.22;break;}} // each necromancer hit freezes for a beat
+ now+=clamp(dt||0,0,.12)*spd;
+ cueSound();
+ if(active.heroClass==='necromancer'&&!active.fin&&CC.Audio){active.nh=active.nh||0;while(active.nh<3&&now>=NH[active.nh]){var hi=active.nh;CC.Audio.fx('crunch',{vol:.6,gap:0});CC.Audio.fx('wet',{vol:.4,gap:0});CC.Audio.fx('plasma'+(hi+1),{vol:1,gap:0});if(hi===0)CC.Audio.play('necrocrithit',{vol:1,gap:0,vary:0});active.nh++;}}
  if(now>=active.duration){active=queue.shift()||null;now=0;}
 }
 function reset(){active=null;queue.length=0;now=0;}
@@ -90,11 +128,12 @@ function view(w,h){
    zoom=1+(Math.min(desired,Math.max(1,maxScale))-1)*k;
  }
  // Tiny camera compression at the two steel impacts, without harsh shakes.
+ var nimp=0;if(o.heroClass==='necromancer'&&!o.fin)for(var ni=0;ni<3;ni++)nimp+=Math.exp(-Math.pow((now-NH[ni]-.03)/.05,2))*.16;
  var impulse=o.heroClass==='swordsman'&&!o.fin?
     Math.exp(-Math.pow((now-.40)/.05,2))*.06+
-    Math.exp(-Math.pow((now-.72)/.05,2))*.05:0;
+    Math.exp(-Math.pow((now-.90)/.05,2))*.05:0;
  return {x:(minX+maxX)/2,y:(minY+maxY)/2,
-   scale:zoom+impulse*k,blend:k};
+   scale:zoom+(impulse+nimp)*k,blend:k};
 }
 function rate(){return active&&!reduced?1-.76*envelope():1;}
 function stroke(c,x1,y1,x2,y2,color,width){
@@ -393,11 +432,62 @@ function skull(c,x,y,s){
  stroke(c,3,7,3,9,'#1f2330',1);
  c.restore();
 }
+
+// The necromancer's critical lands as THREE crunching hits (one critical's damage split in three, so the total is unchanged). Each hit tears a piece off the
+// monster (a jagged notch is cut out of it, a chunk tumbles away) and pops its own damage number. Visual only: the real damage was dealt once, in full.
+var NH=[.22,.38,.54],NPHI=[2.45,-.55,-2.1];
+function necroHits(c,o,t,ret){
+ var total=Math.max(0,Math.round(o.damage||0)),base=Math.floor(total/3),dm=[base,base,total-2*base];
+ var v=(o.targets&&o.targets[0])||{},col=v.color||'#917578',TY=CC.Enemies&&CC.Enemies.TYPES&&CC.Enemies.TYPES[v.type];
+ var blood=(TY&&TY.blood)||'#7a0f14',R=clamp(o.r||10,6,28),i,j,k;
+ c.save();
+ for(i=0;i<3;i++){
+   var a=t-NH[i];if(a<0)continue;
+   var phi=NPHI[i],nx=Math.cos(phi)*R*.5,ny=Math.sin(phi)*R*.5,ns=R*(.85+.1*i);
+   // the missing piece: a jagged bite in the background colour with a raw dark rim
+   c.save();c.translate(nx,ny);c.rotate(phi);c.globalAlpha=ret;
+   c.beginPath();c.moveTo(-ns*.25,-ns*.75);c.lineTo(ns*.15,-ns*.45);c.lineTo(ns*.6,-ns*.7);c.lineTo(ns*.95,-ns*.15);c.lineTo(ns*.55,ns*.2);c.lineTo(ns*.85,ns*.6);c.lineTo(ns*.1,ns*.45);c.lineTo(-ns*.2,ns*.85);c.lineTo(-ns*.4,ns*.2);c.closePath();
+   c.fillStyle='#000005';c.fill();c.lineWidth=1.8;c.strokeStyle=blood;c.stroke();c.lineWidth=.7;c.strokeStyle='#d8464f';c.stroke();
+   c.restore();
+   c.save();c.globalAlpha=ret*.9;for(k=0;k<6;k++){ // cracks spreading from the impact, left in the flesh
+     var ca=phi+(k-2.5)*.55,cl=R*(.7+.5*((k*7+i*3)%4)/3)*smooth(a/.1),mx=nx+Math.cos(ca)*cl*.5+Math.sin(ca)*2,my=ny+Math.sin(ca)*cl*.5-Math.cos(ca)*2;
+     c.strokeStyle=blood;c.lineWidth=1.6;c.beginPath();c.moveTo(nx,ny);c.lineTo(mx,my);c.lineTo(nx+Math.cos(ca)*cl,ny+Math.sin(ca)*cl);c.stroke();c.strokeStyle='rgba(255,230,230,.8)';c.lineWidth=.6;c.stroke();}c.restore();
+   if(a<.2){var rk=a/.2;arc(c,nx,ny,rk*R*1.8,0,TAU,'rgba(255,250,255,'+(.85*(1-rk))+')',3.5*(1-rk)+.5);arc(c,nx,ny,rk*R*1.2,0,TAU,'rgba(150,255,190,'+(.7*(1-rk))+')',2);}
+   if(a<.16){ // the crunch: a hard flash, jagged spikes and a snapping ring
+     var kk=a/.16;glow(c,nx,ny,12+kk*26,'rgba(214,150,255,'+(.7*(1-kk))+')');
+     for(k=0;k<9;k++){var aa=k*.7+i*1.3,l0=3+kk*5,l1=9+kk*(15+k%3*7);stroke(c,nx+Math.cos(aa)*l0,ny+Math.sin(aa)*l0,nx+Math.cos(aa)*l1,ny+Math.sin(aa)*l1,k%3===0?'#f4e8ff':k%3===1?'#86f2a8':'#ff6a8a',k%2?1.4:2.2);}
+     arc(c,nx,ny,kk*22,0,TAU,'rgba(240,220,255,'+(.8*(1-kk))+')',2);
+   }
+   // chunks of the monster fly off, tumbling
+   for(j=0;j<6;j++){
+     var ang=phi+(j-2.5)*.5,sp=65+j*24+i*10,cx=nx+Math.cos(ang)*sp*a,cy=ny+Math.sin(ang)*sp*a*.8-70*a+150*a*a;
+     var fa=ret*clamp(1-(a-.32)/.32,0,1);if(fa<=0)continue;
+     c.save();c.translate(cx,cy);c.rotate(a*(7+j*3)*(j%2?1:-1)+j);c.globalAlpha=fa;
+     var cs=R*(.3+.1*((j+i)%3)),bone=j%3===2;
+     c.beginPath();c.moveTo(-cs,-cs*.6);c.lineTo(cs*.3,-cs);c.lineTo(cs,-cs*.1);c.lineTo(cs*.5,cs*.8);c.lineTo(-cs*.7,cs*.6);c.closePath();
+     c.fillStyle=bone?'#d8d4c0':col;c.fill();c.lineWidth=1;c.strokeStyle=bone?'#8a8470':blood;c.stroke();
+     c.fillStyle=blood;c.fillRect(-cs*.3,-cs*.2,cs*.7,cs*.5);
+     c.restore();
+   }
+   if(a<.4){c.globalAlpha=ret*(1-a/.4);for(k=0;k<7;k++){ // blood flecks
+     var ba=phi+(k-3)*.45,bd=a*(60+k*11);circle(c,nx+Math.cos(ba)*bd,ny+Math.sin(ba)*bd*.8+110*a*a,1.3,k%2?blood:'#b0182a');}c.globalAlpha=1;}
+ }
+ // the three damage counters, side by side above the monster
+ c.textAlign='center';c.textBaseline='middle';
+ for(i=0;i<3;i++){
+   var a2=t-NH[i];if(a2<0)continue;
+   var pop=1+(a2<.1?(1-a2/.1)*.8:0),rise=Math.min(a2,.5)*22,x=(i-1)*(R+26),y=-R-16-rise-(i===1?11:0);
+   c.globalAlpha=ret;c.font='bold '+Math.round(24*pop)+'px Georgia,serif';c.lineWidth=4.5;c.strokeStyle='#14040c';c.strokeText(String(dm[i]),x,y);
+   c.fillStyle=i===2?'#ff8a9a':'#ff4c64';c.fillText(String(dm[i]),x,y);
+ }
+ c.restore();
+}
 function necromancer(c,o,t){
  var shock=smooth((t-.15)/.33),ret=smooth((o.duration-t)/.23);
  c.save();
- glow(c,0,0,29+shock*66,'rgba(129,53,202,.67)');
- glow(c,0,0,11+shock*33,'rgba(164,237,165,.45)');
+ c.save();c.scale(.55,.55); // the rune ring and seal stay small so the monster and its falling pieces stay in view
+ glow(c,0,0,29+shock*66,'rgba(129,53,202,.22)');
+ glow(c,0,0,11+shock*33,'rgba(164,237,165,.14)');
  c.globalAlpha=ret;
  if(t>.10){
    // A rune ring turns backward; pale souls spin outward then pull toward center.
@@ -426,10 +516,12 @@ function necromancer(c,o,t){
      Math.cos(a)*length,Math.sin(a)*length,k%2?'#d68bfa':'#81f1a5',1.4);
  }
  c.restore();
+ if(!o.fin)necroHits(c,o,t,ret);
+ c.restore();
 }
 function drawWorld(c,cam){
  if(!active)return;
- var o=active,t=now,fade=smooth(t/.095)*smooth((o.duration-t)/.18);
+ var o=active,t=wt(),fade=smooth(now/.095)*smooth((o.duration-now)/.18);
  var fin=!!(o.fin&&CC.Finisher&&CC.Finisher.build(o).ok);
  if(fade<.001)return;
  c.save();
@@ -496,12 +588,16 @@ function drawScreen(c,W,H){
  c.fillRect(0,0,W,H);
  var fin=!!(active.fin&&active.fx&&active.fx.ok&&CC.Finisher);
  if(fin){ // brief white flash on the instant of the perfect blow
-   var fl=CC.Finisher.flash(active.heroClass,t);
+   var fl=CC.Finisher.flash(active.heroClass,wt());
    if(fl>.01&&!reduced){c.globalAlpha=Math.min(.75,fl*.7);c.fillStyle='#ffffff';c.fillRect(0,0,W,H);}
  }else if(active.heroClass==='swordsman'&&!reduced){ // steel flashes white on the stab and the pull, blood flashes red on the two slashes
-   var sf=swordFlash(t);
+   var sf=swordFlash(wt());
    if(sf.w>.01){c.globalAlpha=sf.w;c.fillStyle='#e8f6ff';c.fillRect(0,0,W,H);}
    if(sf.r>.01){c.globalAlpha=sf.r;c.fillStyle='#d0132e';c.fillRect(0,0,W,H);}
+ }
+ if(active.heroClass==='necromancer'&&!fin&&!reduced){ // a pale flash on each crunching hit
+   var nf=0;for(var nj=0;nj<3;nj++)nf+=Math.exp(-Math.pow((now-NH[nj])/.035,2));
+   if(nf>.02){c.globalAlpha=Math.min(.5,nf*.45);c.fillStyle='#e8d8ff';c.fillRect(0,0,W,H);}
  }
  if(!reduced){
    var h=11*e;

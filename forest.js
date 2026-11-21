@@ -821,6 +821,7 @@
       var grp = 5000, i, k, e, n;
       for (i = 0; i < points.length; i++) {
         var pt = points[i];
+        if (R() < 0.3) continue; // 30% fewer monsters in the forest
         if (pt.type === 'raven') { n = 2 + Math.floor(R() * 2); grp++; for (k = 0; k < n; k++) { e = this.spawn('raven', pt.x + (R() - 0.5) * 36, pt.y + (R() - 0.5) * 36, 1); e.group = grp; } }
         else this.spawn(pt.type, pt.x, pt.y, 1);
       }

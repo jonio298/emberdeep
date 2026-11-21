@@ -224,7 +224,7 @@
       }
     }
     if (blindFade > 0 && p && cam) { // sight shrinks to a few steps around the hero
-      var z = cam.zoom || 1, sx = (p.x - cam.x) * z, sy = (p.y - cam.y) * z, r = 40 * z * (1 + 0.1 * Math.sin(Date.now() / 90));
+      var zx = Wd / cam.w, zy = Hd / cam.h, z = zx, sx = (p.x - cam.x) * zx, sy = (p.y - cam.y) * zy, r = 40 * z * (1 + 0.1 * Math.sin(Date.now() / 90));
       var g2 = c.createRadialGradient(sx, sy, r * 0.35, sx, sy, r * 1.35);
       g2.addColorStop(0, 'rgba(8,0,4,0)'); g2.addColorStop(1, 'rgba(8,0,4,' + (0.97 * blindFade) + ')');
       c.save(); c.fillStyle = g2; c.fillRect(0, 0, Wd, Hd);

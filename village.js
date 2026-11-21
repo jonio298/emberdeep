@@ -333,7 +333,7 @@
     if (best) {
       var G = GHOSTS[best.idx], line = G.lines[(best.n = (best.n || 0) + 1) - 1 < G.lines.length ? best.n - 1 : G.lines.length - 1];
       V.speech = { name: G.name, text: line, t0: Date.now() }; V.heard[best.idx] = 1; best.face = p.x < best.x ? -1 : 1;
-      if (best.idx === 4 && best.n >= 2 && Object.keys(V.heard).length >= 3 && !V.hook) { V.hook = 1; fxText(p.x, p.y - 30, 'A NEW QUEST AWAITS...', '#bfe9ff', 12); if (CC.SaveGame && CC.SaveGame.save) CC.SaveGame.save(); }
+      if (best.idx === 4 && best.n >= 2 && Object.keys(V.heard).length >= 3 && !V.hook) { V.hook = 1; fxText(p.x, p.y - 30, 'A NEW QUEST AWAITS...', '#bfe9ff', 12); if (CC.Audio) CC.Audio.event('newquest'); if (CC.SaveGame && CC.SaveGame.save) CC.SaveGame.save(); }
       return true;
     }
     if (V.trap && Math.hypot(p.x - V.trap.x, p.y - V.trap.y) < 54) { if (CC.enterCellar) CC.enterCellar(); return true; }
@@ -443,8 +443,7 @@
     var s = CC.state; if (!s || (s.area !== 'village' && s.area !== 'village-cellar')) return;
     if (V.title > 0) { V.title -= 1 / 60; var a = V.title > 5 ? (7 - V.title) / 2 : Math.min(1, V.title / 2); c.save(); c.globalAlpha = a; c.textAlign = 'center'; c.font = 'italic ' + Math.min(44, Wd / 8.2) + 'px Georgia, serif'; c.shadowColor = 'rgba(200,215,230,0.9)'; c.shadowBlur = 16; c.fillStyle = 'rgba(236,240,246,0.96)'; var nm = s.area === 'village' ? 'A b a n d o n e d   V i l l a g e' : 'T h e   C e l l a r'; c.fillText(nm, Wd / 2, Hd * 0.3); c.restore(); }
     if (V.speech && Date.now() - V.speech.t0 > 6500) V.speech = null;
-    var sp = V.speech; if (sp) { c.save(); c.font = '12px Georgia, serif'; var lines = wrapLines(c, sp.text, Wd - 70), bh = 30 + lines.length * 16, by = Hd - 190 - bh;
-      c.fillStyle = 'rgba(10,14,22,0.9)'; c.fillRect(20, by, Wd - 40, bh); c.strokeStyle = '#6a8aa8'; c.lineWidth = 1.5; c.strokeRect(20.5, by + 0.5, Wd - 41, bh - 1); c.fillStyle = '#bfe0ff'; c.font = 'bold 12px Georgia, serif'; c.textAlign = 'left'; c.fillText(sp.name, 32, by + 16); c.fillStyle = '#e6eef8'; c.font = '12px Georgia, serif'; for (var i = 0; i < lines.length; i++) c.fillText(lines[i], 32, by + 34 + i * 16); c.restore(); }
+    var sp = V.speech; if (sp && CC.DialogBox) CC.DialogBox.draw(c, Wd, Hd, function () {}, { name: sp.name, text: sp.text, low: true });
     var p = hero(), m = V.map; if (p && s.area === 'village' && m && Math.hypot(p.x - m.backPos.x, p.y - m.backPos.y) < 60) { c.save(); c.font = 'bold 12px Georgia, serif'; c.textAlign = 'center'; var tt = '[F] Back to the Rocky Pass', w2 = c.measureText(tt).width + 24; c.fillStyle = 'rgba(14,10,8,0.8)'; c.fillRect(Wd / 2 - w2 / 2, Hd * 0.62, w2, 24); c.fillStyle = '#ffe08a'; c.fillText(tt, Wd / 2, Hd * 0.62 + 16); c.restore(); }
   };
   V.backMarker = null;

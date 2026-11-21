@@ -12,7 +12,7 @@
 (function(root){
 'use strict';
 var CC=root.CC=root.CC||{},TAU=Math.PI*2,S=3,N=128,HALF=N/2;
-var LEN={swordsman:3.1,thief:3.0,wizard:2.9,necromancer:2.9};
+var LEN={swordsman:3.3,thief:3.17,wizard:2.9,necromancer:2.9};
 var TITLE={swordsman:'PERFECT SLICE',thief:'CROSS SLASH',wizard:'ARCANE RUPTURE',necromancer:'SOUL RUPTURE'};
 var BASE=1,FS=1,T_CUT=.46,T_A=.36,T_B=.6,T_HOLE=.45,T_BURST=1.3;
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}

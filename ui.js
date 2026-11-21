@@ -573,8 +573,19 @@
     var AU = CC.Audio; // sound and music (audio.js)
     if (AU) {
       var au = AU.status();
-      row('Music', '8-bit chiptune that follows where you are.', au.music ? 'ON  -  tap to turn off' : 'OFF  -  tap to turn on', au.music, function () { AU.toggleMusic(); });
-      row('Sound effects', 'Sword slashes, spells, monsters, weather.', au.sfx ? 'ON  -  tap to turn off' : 'OFF  -  tap to turn on', au.sfx, function () { AU.toggleSfx(); });
+      var vslider = function (title, desc, val, setter, on, toggle) { // a drag-bar row with a small on/off button
+        var tk = x + 28, tw = w - 56, ty = yy + 58;
+        rr(c, x + 6, yy, w - 12, 84, 8); c.fillStyle = 'rgba(255,255,255,0.05)'; c.fill(); c.lineWidth = 1.5; c.strokeStyle = COL.line; c.stroke();
+        tx(c, title, x + 18, yy + 20, 14, '#fff', 'left'); tx(c, on ? Math.round(val * 100) + '%' : 'OFF', x + w - 76, yy + 20, 14, on ? COL.accent : '#c88', 'right');
+        tx(c, desc, x + 18, yy + 40, 11, COL.dim, 'left');
+        button(c, hit, x + w - 64, yy + 8, 50, 22, on ? 'ON' : 'OFF', true, toggle, on ? '#2a6a4a' : '#5a3a3a');
+        rr(c, tk, ty - 3, tw, 6, 3); c.fillStyle = 'rgba(0,0,0,0.5)'; c.fill(); rr(c, tk, ty - 3, Math.max(4, tw * val), 6, 3); c.fillStyle = on ? COL.accent : '#6a5a5a'; c.fill();
+        c.beginPath(); c.arc(tk + tw * val, ty, 11, 0, 6.2832); c.fillStyle = '#f2e3b8'; c.fill(); c.lineWidth = 2; c.strokeStyle = '#7a5a28'; c.stroke();
+        hit(tk - 14, ty - 18, tw + 28, 36, function (px) { setter(Math.max(0, Math.min(1, (px - tk) / tw))); }, true);
+        yy += 94;
+      };
+      vslider('Volume', 'Master volume for sound effects and music.', au.vol.master, function (v) { AU.setMaster(v); }, au.sfx, function () { AU.toggleSfx(); });
+      vslider('Music volume', '8-bit chiptune that follows where you are.', au.vol.music, function (v) { AU.setMusic(v); }, au.music, function () { AU.toggleMusic(); });
     }
     // zoom slider (drag, or tap the bar): 28% .. 220%, on a log scale so the middle feels even
     (function () {
