@@ -1,6 +1,6 @@
 /* CC.LevelBurst - the level-up shockwave.
  *   start(hero)   a tiny misty ring opens right on the hero and grows: slowly at first, then faster and faster (about half way through it is racing), and
- *                 keeps going until it has run off the edge of the screen and across the whole map. Everything it sweeps over is lit up, knocked back
+ *                 keeps going until it reaches the edge of the screen, where it vanishes. Everything it sweeps over is lit up, knocked back
  *                 and hurt a little - hard and far at close range, barely at all when the ring reaches it from far away.
  *                 Swordsman: blue mist. Necromancer: green mist with drifting skulls. Thief: sharp red blades. Wizard: violet-white arcane mist.
  *   levelupvoice.mp3 is queued 1.55 s after the start (the level-up sound itself starts at once).
@@ -9,7 +9,7 @@
 (function (root) {
   'use strict';
   var CC = root.CC = root.CC || {}, LB = CC.LevelBurst = {}, TAU = Math.PI * 2;
-  var R0 = 6, V0 = 90, ACC = 560, R_END = 1500, VOICE_AT = 1.55, st = null;
+  var R0 = 6, V0 = 90, ACC = 560, VOICE_AT = 1.55, st = null;
   var STYLE = { // c: mist colours (rgb), core: bright edge, kind of art
     swordsman: { mist: '70,150,255', deep: '20,60,200', core: '#e4f4ff', kind: 'mist' },
     necromancer: { mist: '90,230,120', deep: '10,110,50', core: '#e6ffe8', kind: 'skull' },
@@ -33,7 +33,9 @@
   function begin(p) {
     if (CC.Audio) { CC.Audio.play('levelupvoice', { vol: 1, gap: 0, vary: 0, delay: VOICE_AT }); CC.Audio.play('charge_blast', { vol: 0.7, gap: 0, delay: 0.05 }); }
     var sty = STYLE[p.classId] || STYLE.swordsman;
-    st = { p: p, x: p.x, y: p.y, t: 0, r: R0, sty: sty, hit: {}, seed: Math.floor(Math.random() * 999) };
+    var cam = CC.getCamera ? CC.getCamera() : null, rEnd = 480; // the ring ends where the screen does: the far corner of the view, plus a little
+    if (cam) rEnd = Math.hypot(Math.max(Math.abs(p.x - cam.x), Math.abs(cam.x + cam.w - p.x)), Math.max(Math.abs(p.y - cam.y), Math.abs(cam.y + cam.h - p.y))) + 24;
+    st = { p: p, x: p.x, y: p.y, t: 0, r: R0, rEnd: rEnd, sty: sty, hit: {}, seed: Math.floor(Math.random() * 999) };
     if (CC.fx && CC.fx.shake) CC.fx.shake(6);
   }
   LB.update = function (dt) {
@@ -48,7 +50,6 @@
       if (st.hit[key] || d > st.r) continue; st.hit[key] = 1;
       var fall = Math.exp(-d / 230), dmg = Math.max(1, Math.round(base * (0.22 + 1.5 * fall)));
       e.kb = { vx: dx / d, vy: dy / d, sp: (e.boss ? 0.3 : 1) * (60 + 640 * fall), t: 0.36 };
-      if (!e.boss) { e.state = 'stunned'; e.t = 0.25 + 0.7 * fall; }
       if (CC.Enemies && CC.Enemies.damage) CC.Enemies.damage(e, dmg, 'magic');
       if (CC.fx && CC.fx.burst && d < 600) CC.fx.burst(e.x, e.y, '#' + (st.sty.core.slice(1)), 4 + Math.round(6 * fall), 70);
     }
@@ -58,7 +59,7 @@
       if (!solidAt(nx, ny)) { f[i].x = nx; f[i].y = ny; } else f[i].kb = null;
     }
     if (st.t < 0.9 && CC.fx && CC.fx.shake && Math.random() < 0.4) CC.fx.shake(3 * (1 - st.t / 0.9) + 1);
-    if (st.r > R_END) st = null;
+    if (st.r > st.rEnd) st = null; // gone the moment it reaches the edge of the screen
   };
 
   function skull(c, x, y, s, rot, a) {
@@ -70,7 +71,7 @@
   }
   LB.draw = function (c, cam) {
     if (!st) return; var sty = st.sty, t = st.t, r = st.r, x = st.x - cam.x, y = st.y - cam.y, i;
-    var band = 12 + r * 0.14, fade = clamp((R_END - r) / 500, 0, 1), grow = clamp(r / 40, 0.25, 1), a0 = fade * grow;
+    var band = 12 + r * 0.14, fade = clamp((st.rEnd - r) / 120, 0, 1), grow = clamp(r / 40, 0.25, 1), a0 = fade * grow;
     var far = Math.hypot(Math.max(Math.abs(x), Math.abs(cam.w - x)), Math.max(Math.abs(y), Math.abs(cam.h - y))); if (r - band * 6 > far + 60) return; // the whole screen is behind the wave
     c.save(); c.globalCompositeOperation = 'lighter'; c.lineCap = 'round';
     // the light the wave leaves behind: the ground it has crossed glows, fading with distance behind the front

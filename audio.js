@@ -19,7 +19,7 @@
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
   function hero() { var s = CC.state; return s && s.player && !s.player.stub ? s.player : null; }
 
-  var FILES = ['thiefknife', 'necrocrithit', 'necrobasic', 'pondspawn', 'critprojectile', 'basicprojectile', 'beargrowl', 'bearroar', 'beardeath', 'newquest', 'levelup', 'levelupvoice', 'thiefcrit', 'blood1', 'swordcrit', 'charge', 'legendarycharge', 'charge_up_boss', 'charge_blast', 'bat_squeak', 'bat_attack', 'explosion', 'splash_explosion', 'thunder_clap', 'enemyhit', 'enemydie', 'player_hit', 'skeleton_attack', 'skeleton_bone_sound', 'skeleton_death', 'ghost_moan', 'ghost_call_2', 'ghost_death', 'level_up', 'item_pickup_gen', 'special_item', 'awesome_legendary', 'door_open', 'door_close', 'door_slam', 'waterdrop1', 'waterdrop2', 'evil_laugh', 'boss_death_scream', 'boss_shot', 'jet_stream_fire', 'friend_summon', 'friend_summon2', 'blob_death', 'blob_hop1', 'radioactive_death', 'splash_hit_1', 'splash_hit_2', 'fountain_entrance'];
+  var FILES = ['bloodsplatter3', 'thiefknife', 'necrocrithit', 'necrobasic', 'pondspawn', 'critprojectile', 'basicprojectile', 'beargrowl', 'bearroar', 'beardeath', 'newquest', 'levelup', 'levelupvoice', 'thiefcrit', 'blood1', 'swordcrit', 'charge', 'legendarycharge', 'charge_up_boss', 'charge_blast', 'bat_squeak', 'bat_attack', 'explosion', 'splash_explosion', 'thunder_clap', 'enemyhit', 'enemydie', 'player_hit', 'skeleton_attack', 'skeleton_bone_sound', 'skeleton_death', 'ghost_moan', 'ghost_call_2', 'ghost_death', 'level_up', 'item_pickup_gen', 'special_item', 'awesome_legendary', 'door_open', 'door_close', 'door_slam', 'waterdrop1', 'waterdrop2', 'evil_laugh', 'boss_death_scream', 'boss_shot', 'jet_stream_fire', 'friend_summon', 'friend_summon2', 'blob_death', 'blob_hop1', 'radioactive_death', 'splash_hit_1', 'splash_hit_2', 'fountain_entrance'];
   A.names = FILES;
 
   /* ---------- the context ---------- */
@@ -177,10 +177,12 @@
   };
 
   // blood: one sound, blood1.mp3, played just after the slash. Criticals keep their own intense slashing sounds, so no blood layer goes over them.
+  var bloodFlip = 0;
+  function nextBlood() { bloodFlip ^= 1; return bloodFlip ? 'blood1' : 'bloodsplatter3'; } // the two splatter sounds take turns
   A.splatter = function (n, x, y) {
     if (!ctx || !unlocked || mute.sfx || n < 2) return;
     if (CC.CriticalScene && CC.CriticalScene.isActive && CC.CriticalScene.isActive()) return;
-    A.play('blood1', { x: x, y: y, vol: 0.55 + Math.min(0.35, n * 0.03), vary: 0.06, delay: 0.07, gap: 140 });
+    A.play(nextBlood(), { x: x, y: y, vol: 0.55 + Math.min(0.35, n * 0.03), vary: 0.06, delay: 0.07, gap: 140 });
   };
   /* ---------- the charge-up loop (rises with power) and its blast ---------- */
   var charging = null;
@@ -208,63 +210,90 @@
   var waves = {};
   function pulse(d) { if (waves.__c !== ctx) waves = { __c: ctx }; var k = 'p' + d; if (waves[k]) return waves[k]; var n = 32, re = new Float32Array(n), im = new Float32Array(n); for (var i = 1; i < n; i++) { re[i] = 2 / (i * Math.PI) * Math.sin(2 * Math.PI * i * d); im[i] = 2 / (i * Math.PI) * (1 - Math.cos(2 * Math.PI * i * d)); } return (waves[k] = ctx.createPeriodicWave(re, im)); }
   function hz(m) { return 440 * Math.pow(2, (m - 69) / 12); }
-  // a track: tempo, key, scale, chord progression (scale degrees, one bar each), lead contour per bar, feel flags
+  // a track: tempo, key, scale, chord progression (scale degrees, one bar each, repeating), two rhythm shapes for the melody, and feel flags:
+  //   pad (soft held chords), echo (dotted-eighth delay on the melody and arpeggio), harm (a second voice a third below in the second half), contour (sigh = falling
+  //   phrases, rise, calm), rest (chance to leave a breath out of the melody)
   var TRACKS = {
-    title: { bpm: 92, root: 57, scale: 'minor', prog: [0, 5, 2, 6], lead: 'epic', bass: 'drive', drums: 'march', arp: true, duty: 0.25, vib: 1 },
-    town: { bpm: 104, root: 60, scale: 'major', prog: [0, 5, 3, 4], lead: 'bounce', bass: 'oompah', drums: 'light', arp: true, duty: 0.125 },
-    forest: { bpm: 80, root: 57, scale: 'minor', prog: [0, 5, 6, 4], lead: 'mist', bass: 'long', drums: 'none', arp: true, duty: 0.25, arpSpeed: 2 },
-    tunnel: { bpm: 70, root: 52, scale: 'phrygian', prog: [0, 1, 0, 6], lead: 'mist', bass: 'long', drums: 'heart', arp: false, duty: 0.5 },
-    ascent: { bpm: 96, root: 62, scale: 'lydian', prog: [0, 1, 4, 5], lead: 'soar', bass: 'oompah', drums: 'light', arp: true, duty: 0.125 },
-    plains: { bpm: 116, root: 59, scale: 'mixo', prog: [0, 6, 3, 0], lead: 'bounce', bass: 'walk', drums: 'march', arp: true, duty: 0.25 },
-    pass: { bpm: 78, root: 50, scale: 'dorian', prog: [0, 4, 6, 3], lead: 'epic', bass: 'drive', drums: 'timp', arp: false, duty: 0.5, vib: 1 },
-    village: { bpm: 56, root: 52, scale: 'phrygian', prog: [0, 0, 1, 0], lead: 'sparse', bass: 'drone', drums: 'rain', arp: false, duty: 0.125, layers: 'storm' },
-    pond: { bpm: 68, root: 64, scale: 'lydian', prog: [0, 3, 0, 4], lead: 'musicbox', bass: 'long', drums: 'none', arp: true, duty: 0.125, layers: 'horror' },
-    cellar: { bpm: 92, root: 45, scale: 'harm', prog: [0, 0, 5, 4], lead: 'sparse', bass: 'pulse', drums: 'heart', arp: true, duty: 0.25, arpSpeed: 2 },
-    cave: { bpm: 84, root: 48, scale: 'minor', prog: [0, 6, 5, 6], lead: 'sparse', bass: 'pulse', drums: 'heart', arp: true, duty: 0.25 },
-    battle: { bpm: 146, root: 50, scale: 'harm', prog: [0, 5, 3, 4], lead: 'fury', bass: 'gallop', drums: 'rock', arp: true, duty: 0.25, arpSpeed: 2 },
-    boss: { bpm: 156, root: 47, scale: 'harm', prog: [0, 0, 5, 6], lead: 'fury', bass: 'gallop', drums: 'rock', arp: true, duty: 0.125, arpSpeed: 2, vib: 1 }
+    title: { bpm: 76, root: 57, scale: 'minor', prog: [0, 5, 2, 6, 0, 3, 4, 0], rhy: ['walk', 'long'], bass: 'long', drums: 'soft', arp: true, duty: 0.25, vib: 1, pad: true, echo: 0.38, harm: true, contour: 'sigh', rest: 0.1 },
+    town: { bpm: 84, root: 60, scale: 'major', prog: [0, 5, 3, 0, 0, 5, 3, 4], rhy: ['town', 'sparse'], bass: 'long', drums: 'none', arp: true, duty: 0.125, pad: true, echo: 0.3, contour: 'calm', rest: 0.08 },
+    forest: { bpm: 70, root: 52, scale: 'minor', prog: [0, 5, 2, 6, 0, 3, 6, 4], rhy: ['long', 'walk'], bass: 'long', drums: 'none', arp: true, duty: 0.25, pad: true, echo: 0.42, harm: true, contour: 'sigh', rest: 0.15 },
+    tunnel: { bpm: 60, root: 50, scale: 'phrygian', prog: [0, 1, 0, 6, 0, 1, 5, 0], rhy: ['sparse', 'long'], bass: 'long', drums: 'heart', arp: false, duty: 0.5, pad: true, echo: 0.45, contour: 'sigh', rest: 0.25 },
+    ascent: { bpm: 80, root: 62, scale: 'lydian', prog: [0, 1, 4, 5, 0, 1, 3, 4], rhy: ['syncop', 'walk'], bass: 'oompah', drums: 'soft', arp: true, duty: 0.125, pad: true, echo: 0.35, harm: true, contour: 'rise', rest: 0.1 },
+    plains: { bpm: 90, root: 55, scale: 'mixo', prog: [0, 6, 3, 0, 0, 6, 4, 0], rhy: ['walk', 'pickup'], bass: 'walk', drums: 'soft', arp: true, duty: 0.25, pad: true, echo: 0.35, harm: true, contour: 'calm', rest: 0.1 },
+    pass: { bpm: 68, root: 50, scale: 'dorian', prog: [0, 4, 6, 3, 0, 4, 6, 0], rhy: ['long', 'walk'], bass: 'long', drums: 'timp', arp: false, duty: 0.5, vib: 1, pad: true, echo: 0.4, harm: true, contour: 'sigh', rest: 0.12 },
+    village: { bpm: 54, root: 52, scale: 'phrygian', prog: [0, 0, 1, 0, 0, 6, 1, 0], rhy: ['sparse', 'sparse'], bass: 'drone', drums: 'rain', arp: false, duty: 0.125, layers: 'storm', pad: true, echo: 0.5, contour: 'sigh', rest: 0.3 },
+    pond: { bpm: 60, root: 64, scale: 'lydian', prog: [0, 3, 0, 4, 0, 5, 3, 4], rhy: ['pickup', 'sparse'], bass: 'long', drums: 'none', arp: true, duty: 0.125, layers: 'horror', pad: true, echo: 0.5, contour: 'calm', rest: 0.15 },
+    cellar: { bpm: 66, root: 45, scale: 'harm', prog: [0, 0, 5, 4, 0, 3, 4, 0], rhy: ['sparse', 'syncop'], bass: 'pulse', drums: 'heart', arp: true, arpSpeed: 2, duty: 0.25, pad: true, echo: 0.4, contour: 'sigh', rest: 0.2 },
+    cave: { bpm: 66, root: 48, scale: 'minor', prog: [0, 6, 5, 6, 0, 3, 6, 4], rhy: ['long', 'syncop'], bass: 'pulse', drums: 'heart', arp: true, duty: 0.25, pad: true, echo: 0.4, harm: true, contour: 'sigh', rest: 0.15 },
+    battle: { bpm: 138, root: 50, scale: 'harm', prog: [0, 5, 3, 4, 0, 5, 3, 4], rhy: ['syncop', 'walk'], bass: 'gallop', drums: 'rock', arp: true, arpSpeed: 2, duty: 0.25, echo: 0.15, harm: true, contour: 'rise', rest: 0 },
+    boss: { bpm: 150, root: 47, scale: 'harm', prog: [0, 0, 5, 6, 0, 3, 5, 4], rhy: ['fury', 'syncop'], bass: 'gallop', drums: 'rock', arp: true, arpSpeed: 2, duty: 0.125, vib: 1, echo: 0.2, harm: true, contour: 'rise', rest: 0 }
   };
   A.TRACKS = TRACKS;
   function rng32(seed) { var a = seed >>> 0; return function () { a = (a + 0x6D2B79F5) >>> 0; var t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
-  var RHY = { // which of the 16 steps in a bar carry a lead note, and how long each lasts (in steps)
-    bounce: [[0, 2], [3, 1], [4, 2], [6, 2], [8, 2], [11, 1], [12, 2], [14, 2]], mist: [[0, 6], [6, 4], [10, 6]], epic: [[0, 4], [4, 2], [6, 2], [8, 4], [12, 4]], soar: [[0, 3], [3, 3], [6, 2], [8, 3], [11, 3], [14, 2]],
-    sparse: [[0, 8], [10, 6]], musicbox: [[0, 2], [2, 2], [4, 2], [8, 2], [10, 2], [12, 4]], fury: [[0, 2], [2, 1], [3, 1], [4, 2], [6, 2], [8, 2], [10, 1], [11, 1], [12, 2], [14, 2]]
+  var RH = { // which of the 16 steps in a bar carry a melody note, and how long each lasts (in steps)
+    walk: [[0, 4], [4, 2], [6, 2], [8, 4], [12, 2], [14, 2]], long: [[0, 6], [6, 2], [8, 4], [12, 4]], syncop: [[0, 3], [3, 3], [6, 2], [8, 3], [11, 3], [14, 2]], sparse: [[0, 8], [8, 6]],
+    pickup: [[2, 2], [4, 4], [8, 2], [10, 2], [12, 4]], town: [[0, 4], [4, 4], [8, 4], [12, 2], [14, 2]], fury: [[0, 2], [2, 1], [3, 1], [4, 2], [6, 2], [8, 2], [10, 1], [11, 1], [12, 2], [14, 2]], cad: [[0, 4], [4, 4], [8, 8]]
   };
-  var song = null, track = null, nextT = 0, step = 0, timer = null, fade = null, trackGain = null, curId = null;
-  function build(tr, id) { // a deterministic melody for the track: contour walks over the chord tones, strong beats land on chord notes
-    var rnd = rng32(id.split('').reduce(function (a, c) { return a * 31 + c.charCodeAt(0); }, 7)), sc = SC[tr.scale], bars = 8, lead = [], rhy = RHY[tr.lead] || RHY.bounce, deg = 4, bar, k;
+  var song = null, track = null, nextT = 0, step = 0, timer = null, fade = null, trackGain = null, curId = null, leadBus = null, echoNodes = null;
+  // snap a scale degree to the nearest chord tone (root, third or fifth, any octave); pref 0 = root only, 1 = third only
+  function nearTone(d, ch, pref) {
+    var best = d, bd = 99, o, ti, tones = [0, 2, 4];
+    for (o = -2; o <= 2; o++) for (ti = 0; ti < 3; ti++) { if (pref !== undefined && ti !== pref) continue; var c = ch + tones[ti] + o * 7, dd = Math.abs(c - d); if (dd < bd) { bd = dd; best = c; } }
+    return best;
+  }
+  // 16 bars in four phrases: A (the theme), A' (the same with small changes and a different ending), B (a lifted, contrasting phrase) and the theme returning.
+  // Strong beats land on chord tones, motion is mostly stepwise, every phrase ends on a long note that settles, and some notes are left out so the line breathes.
+  function build(tr, id) {
+    var rnd = rng32(id.split('').reduce(function (a, c) { return a * 31 + c.charCodeAt(0); }, 7)), sc = SC[tr.scale], lead = [], harm = [], A0 = {}, dir = tr.contour === 'rise' ? 1 : tr.contour === 'calm' ? 0 : -1;
+    var rh = [RH[tr.rhy[0]] || RH.walk, RH[tr.rhy[1]] || RH.long], deg = tr.contour === 'rise' ? 7 : 9, bar;
     function note(d) { var o = Math.floor(d / 7), i = ((d % 7) + 7) % 7; return tr.root + 12 + o * 12 + sc[i]; }
-    for (bar = 0; bar < bars; bar++) {
-      var ch = tr.prog[bar % tr.prog.length], tones = [ch, ch + 2, ch + 4], A2 = bar >= 4 && bar % 4 < 2 ? 1 : 0, line = [];
-      rhy.forEach(function (r, ri) {
-        var strong = r[0] % 8 === 0 || ri === 0, target = tones[Math.floor(rnd() * 3)] + 7 * (rnd() < 0.5 ? 0 : 1), mv = Math.round((rnd() - 0.5) * 4);
-        deg = strong ? target : deg + mv; deg = clamp(deg, ch - 1, ch + 11); if (A2 && ri % 3 === 2) deg += 2;
-        line.push({ s: r[0], l: r[1], m: note(deg) });
-      });
-      lead.push(line);
+    for (bar = 0; bar < 16; bar++) {
+      (function (bar) {
+        var ph = Math.floor(bar / 4), b = bar % 4, ch = tr.prog[bar % tr.prog.length], tmpl = b === 3 ? RH.cad : rh[b % 2], line = [], hl = [];
+        if (ph === 2 && b === 0) deg += 2; // the contrasting phrase lifts
+        tmpl.forEach(function (r, ri) {
+          var d, strong = r[0] % 8 === 0 || ri === tmpl.length - 1, key = b * 10 + ri;
+          if ((ph === 1 || ph === 3) && A0[key] !== undefined) d = A0[key] + (ph === 1 && rnd() < 0.3 ? 1 : 0);
+          else { var mv = [-1, -1, -2, 1, 1, 2, 0][Math.floor(rnd() * 7)] + (dir > 0 && rnd() < 0.35 ? 1 : 0) + (dir < 0 && rnd() < 0.35 ? -1 : 0); d = deg + mv; }
+          if (strong || ri === 0) d = nearTone(d, ch);
+          if (b === 3 && ri === tmpl.length - 1) d = nearTone(d, ch, ph % 2 ? 0 : 1); // a phrase ends settled: on the third (still asking) or the root (answered)
+          d = clamp(d, ch - 2, ch + 9); d = clamp(d, 2, 14);
+          if (ph === 0) A0[key] = d;
+          deg = d;
+          if (!(!strong && rnd() < (tr.rest || 0))) { line.push({ s: r[0], l: r[1], m: note(d) }); hl.push({ s: r[0], l: r[1], m: note(d - 2) }); }
+        });
+        lead.push(line); harm.push(hl);
+      })(bar);
     }
-    return { lead: lead, bars: bars };
+    return { lead: lead, harm: harm, bars: 16 };
   }
   function chordNotes(tr, bar) { var sc = SC[tr.scale], ch = tr.prog[bar % tr.prog.length]; function n(d) { var o = Math.floor(d / 7), i = ((d % 7) + 7) % 7; return tr.root + o * 12 + sc[i]; } return { r: n(ch), t: n(ch + 2), f: n(ch + 4), o: n(ch + 7) }; }
-  function chip(wave, m, t, len, peak, dest, vib, detune) {
-    var o = ctx.createOscillator(), g = ctx.createGain(); if (wave === 'tri') o.type = 'triangle'; else o.setPeriodicWave(pulse(wave));
-    o.frequency.setValueAtTime(hz(m), t); if (detune) o.detune.value = detune;
-    if (vib) { var l = ctx.createOscillator(), lg = ctx.createGain(); l.frequency.value = 5.2; lg.gain.value = 6; l.connect(lg); lg.connect(o.detune); l.start(t); l.stop(t + len + 0.05); }
-    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(peak, t + 0.006); g.gain.setTargetAtTime(peak * 0.55, t + 0.04, 0.12); g.gain.setTargetAtTime(0.0001, t + len * 0.92, 0.025);
-    o.connect(g); g.connect(dest); o.start(t); o.stop(t + len + 0.1);
+  // o: { att, sus } shape the note; the vibrato fades in after the note has started, like a held voice
+  function chip(wave, m, t, len, peak, dest, vib, detune, o) {
+    var os = ctx.createOscillator(), g = ctx.createGain(), att = (o && o.att) || 0.006, sus = (o && o.sus) || 0.55; if (wave === 'tri') os.type = 'triangle'; else os.setPeriodicWave(pulse(wave));
+    os.frequency.setValueAtTime(hz(m), t); if (detune) os.detune.value = detune;
+    if (vib) { var l = ctx.createOscillator(), lg = ctx.createGain(); l.frequency.value = 5.2; lg.gain.setValueAtTime(0, t); lg.gain.linearRampToValueAtTime(7, t + Math.min(0.4, len * 0.7)); l.connect(lg); lg.connect(os.detune); l.start(t); l.stop(t + len + 0.05); }
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(peak, t + att); g.gain.setTargetAtTime(peak * sus, t + att + 0.03, 0.12); g.gain.setTargetAtTime(0.0001, t + len * 0.92, 0.04);
+    os.connect(g); g.connect(dest); os.start(t); os.stop(t + len + 0.15);
+  }
+  function padNote(m, t, len, peak, dest) { // a soft held chord tone: slow swell, slow fade
+    var os = ctx.createOscillator(), g = ctx.createGain(); os.type = 'triangle'; os.frequency.setValueAtTime(hz(m), t); os.detune.value = (R() - 0.5) * 8;
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(peak, t + len * 0.35); g.gain.setTargetAtTime(0.0001, t + len * 0.8, len * 0.1);
+    os.connect(g); g.connect(dest); os.start(t); os.stop(t + len * 1.2);
   }
   function drum(kind, t, dest) {
-    if (kind === 'k') { osc('sine', 150, 42, t, 0.14, 0.7, 0.002, dest, 0.03); noise(t, 0.03, 0.2, 'lowpass', 900, 300, 0.7, dest, 0.001); }
-    else if (kind === 's') { noise(t, 0.12, 0.38, 'bandpass', 2200, 1600, 0.9, dest, 0.002); osc('triangle', 230, 140, t, 0.07, 0.2, 0.002, dest, 0.02); }
-    else if (kind === 'h') noise(t, 0.035, 0.16, 'highpass', 7000, 9000, 0.8, dest, 0.001);
-    else if (kind === 't') { osc('sine', 98, 60, t, 0.35, 0.6, 0.004, dest, 0.15); noise(t, 0.12, 0.25, 'lowpass', 500, 200, 0.7, dest, 0.004); }
-    else if (kind === 'r') noise(t, 0.09, 0.07, 'highpass', 5000, 7000, 0.6, dest, 0.01);
+    var v = kind === kind.toUpperCase() ? 0.5 : 1; kind = kind.toLowerCase(); // capitals are the soft versions
+    if (kind === 'k') { osc('sine', 150, 42, t, 0.14, 0.7 * v, 0.002, dest, 0.03); noise(t, 0.03, 0.2 * v, 'lowpass', 900, 300, 0.7, dest, 0.001); }
+    else if (kind === 's') { noise(t, 0.12, 0.38 * v, 'bandpass', 2200, 1600, 0.9, dest, 0.002); osc('triangle', 230, 140, t, 0.07, 0.2 * v, 0.002, dest, 0.02); }
+    else if (kind === 'h') noise(t, 0.035, 0.16 * v, 'highpass', 7000, 9000, 0.8, dest, 0.001);
+    else if (kind === 't') { osc('sine', 98, 60, t, 0.35, 0.6 * v, 0.004, dest, 0.15); noise(t, 0.12, 0.25 * v, 'lowpass', 500, 200, 0.7, dest, 0.004); }
+    else if (kind === 'r') noise(t, 0.09, 0.07 * v, 'highpass', 5000, 7000, 0.6, dest, 0.01);
   }
   var DR = { // 16-step patterns
-    light: 'k...h...s...h...', march: 'k.h.s.h.k.h.s.hh', rock: 'k.hhs.hhk.hhs.kh', heart: 'k.......k..k....', timp: 't.......t..t....', rain: 'r.r.r.r.r.r.r.rr', none: '................'
+    soft: 'K...H...K...H.H.', march: 'k.h.s.h.k.h.s.hh', rock: 'k.hhs.hhk.hhs.kh', heart: 'k.......k..k....', timp: 't.......t..t....', rain: 'r.r.r.r.r.r.r.rr', none: '................'
   };
   function schedule(tr, st, t) {
-    var bar = Math.floor(st / 16) % song.bars, sp = st % 16, ch = chordNotes(tr, bar), stepLen = 60 / tr.bpm / 4, mus = musBus2, layers = layerState(tr);
+    var bar = Math.floor(st / 16) % song.bars, sp = st % 16, ch = chordNotes(tr, bar), stepLen = 60 / tr.bpm / 4, mus = musBus2, lb = leadBus || mus, layers = layerState(tr);
     var bass = tr.bass, bm = null;
     if (bass === 'oompah') { if (sp === 0 || sp === 8) bm = ch.r - 12; else if (sp === 4 || sp === 12) bm = ch.f - 12; }
     else if (bass === 'long') { if (sp === 0) bm = ch.r - 12; }
@@ -272,15 +301,19 @@
     else if (bass === 'drive') { if (sp % 2 === 0) bm = ch.r - 12 + (sp === 6 || sp === 14 ? 7 : 0); }
     else if (bass === 'gallop') { if (sp % 4 === 0 || sp % 4 === 2 || sp % 4 === 3) bm = ch.r - 12; }
     else if (bass === 'pulse') { if (sp % 2 === 0) bm = ch.r - 12 + (sp % 8 === 6 ? 1 : 0); }
-    else if (bass === 'drone') { if (sp === 0) { chip('tri', ch.r - 12, t, stepLen * 15, 0.42, mus); chip('tri', ch.r - 5 + (bar % 2 ? 1 : 0), t, stepLen * 15, 0.16, mus); } }
-    if (bm !== null && layers.bass) chip('tri', bm, t, stepLen * (bass === 'long' ? 14 : bass === 'drive' ? 1.6 : bass === 'oompah' ? 3 : 1.7), 0.46, mus);
-    // arpeggio on the second pulse channel
-    if (tr.arp && layers.arp) { var asp = tr.arpSpeed === 2 ? 1 : 2; if (sp % asp === 0) { var seq = [ch.r, ch.t, ch.f, ch.o, ch.f, ch.t]; var an = seq[(sp / asp) % seq.length] + 12; chip(0.125, an, t, stepLen * asp * 0.8, 0.075, mus, false, horrorDetune()); } }
-    // the lead
-    if (layers.lead) song.lead[bar].forEach(function (n) { if (n.s === sp) chip(tr.duty, n.m, t, stepLen * n.l * 0.95, tr.id === 'village' ? 0.13 : 0.15, mus, tr.vib, horrorDetune() + (R() - 0.5) * 3); });
+    else if (bass === 'drone') { if (sp === 0) { chip('tri', ch.r - 12, t, stepLen * 15, 0.38, mus); chip('tri', ch.r - 5 + (bar % 2 ? 1 : 0), t, stepLen * 15, 0.14, mus); } }
+    if (bm !== null && layers.bass) chip('tri', bm, t, stepLen * (bass === 'long' ? 14 : bass === 'drive' ? 1.6 : bass === 'oompah' ? 3 : 1.7), 0.4, mus);
+    if (tr.pad && sp === 0 && layers.bass) { var pl = stepLen * 16; padNote(ch.r, t, pl, 0.075, mus); padNote(ch.t, t, pl, 0.06, mus); padNote(ch.f, t, pl, 0.06, mus); } // the warmth under everything
+    // arpeggio on the second pulse channel, into the echo
+    if (tr.arp && layers.arp) { var asp = tr.arpSpeed === 2 ? 1 : 2; if (sp % asp === 0) { var seq = [ch.r, ch.t, ch.f, ch.o, ch.f, ch.t]; var an = seq[(sp / asp) % seq.length] + 12; chip(0.125, an, t, stepLen * asp * 0.8, 0.06, lb, false, horrorDetune(), { sus: 0.4 }); } }
+    // the lead, and from the second half a second voice a third below
+    if (layers.lead) {
+      song.lead[bar].forEach(function (n) { if (n.s === sp) chip(tr.duty, n.m, t, stepLen * n.l * 0.95, tr.id === 'village' ? 0.12 : 0.14, lb, tr.vib, horrorDetune() + (R() - 0.5) * 3, { att: 0.012, sus: 0.62 }); });
+      if (tr.harm && bar >= 8) song.harm[bar].forEach(function (n) { if (n.s === sp) chip(0.5, n.m, t, stepLen * n.l * 0.95, 0.06, lb, false, 4, { att: 0.02, sus: 0.6 }); });
+    }
     // percussion
     var dk = DR[tr.drums] && layers.drums ? DR[tr.drums].charAt(sp) : '.'; if (dk !== '.') drum(dk, t, mus);
-    if (tr.id === 'village' && sp === 8 && layers.bell && R() < 0.5) { var bn = ch.o + 12 + [0, 1, 3, 6][Math.floor(R() * 4)]; chip(0.5, bn, t, stepLen * 6, 0.05, mus); } // a bell that shouldn't be ringing
+    if (tr.id === 'village' && sp === 8 && layers.bell && R() < 0.5) { var bn = ch.o + 12 + [0, 1, 3, 6][Math.floor(R() * 4)]; chip(0.5, bn, t, stepLen * 6, 0.05, lb); } // a bell that shouldn't be ringing
   }
   var musBus2 = null;
   function horrorDetune() { var s = CC.state, pd = s && s.map && s.map.pond; return track && track.id === 'pond' && pd ? pd.h * 55 : 0; } // the music box drifts out of tune as the horror grows
@@ -298,7 +331,13 @@
   A.music = function (id) {
     if (!ctx || !unlocked || id === curId) return; var tr = TRACKS[id]; if (!tr) return; tr.id = id; curId = id;
     var old = trackGain; if (old) { old.gain.setTargetAtTime(0, ctx.currentTime, 0.25); setTimeout(function () { try { old.disconnect(); } catch (e) { /* gone */ } }, 1800); }
+    var oldE = echoNodes; if (oldE) setTimeout(function () { try { oldE.forEach(function (n) { n.disconnect(); }); } catch (e) { /* gone */ } }, 3500);
     trackGain = ctx.createGain(); trackGain.gain.setValueAtTime(0.0001, ctx.currentTime); trackGain.gain.setTargetAtTime(1, ctx.currentTime + 0.3, 0.35); trackGain.connect(musBus); musBus2 = trackGain;
+    leadBus = ctx.createGain(); leadBus.connect(trackGain); echoNodes = [leadBus]; // the melody and arpeggio go through a dotted-eighth echo
+    if (ctx.createDelay && tr.echo) {
+      var dl = ctx.createDelay(2), fb = ctx.createGain(), lp = ctx.createBiquadFilter(), wet = ctx.createGain(); dl.delayTime.value = 60 / tr.bpm * 0.75; fb.gain.value = Math.min(0.6, tr.echo); lp.type = 'lowpass'; lp.frequency.value = 2200; wet.gain.value = 0.55;
+      leadBus.connect(dl); dl.connect(lp); lp.connect(fb); fb.connect(dl); lp.connect(wet); wet.connect(trackGain); echoNodes = [leadBus, dl, fb, lp, wet];
+    }
     track = tr; song = build(tr, id); step = 0; nextT = ctx.currentTime + 0.35; if (!timer) timer = setInterval(tick, 40);
   };
   A.stopMusic = function () { if (trackGain) trackGain.gain.setTargetAtTime(0, ctx.currentTime, 0.2); track = null; curId = null; };
@@ -335,7 +374,8 @@
       case 'hit':
         if (d.plasma) A.fx('plasma' + (1 + Math.floor(R() * 3)), { x: d.x, y: d.y, vol: 0.85, gap: 45 }); // wizard and necromancer shots land with plasma
         else if (!d.skip) A.fx(d.crit ? 'crit' : 'hit', { x: d.x, y: d.y, vol: d.crit ? 0.9 : 0.7, gap: 55 });
-        if (d.slash && !d.crit) A.play('blood1', { x: d.x, y: d.y, vol: 0.8, vary: 0.05, delay: 0.07, gap: 140 }); // the blade, then the blood
+        if (!d.crit && !d.plasma && R() < 0.5) A.play(R() < 0.5 ? 'splash_hit_1' : 'splash_hit_2', { x: d.x, y: d.y, vol: 0.35, gap: 90 }); // the original Chalkboard Dungeon hit splash, back again
+        if (d.slash && !d.crit) A.play(nextBlood(), { x: d.x, y: d.y, vol: 0.8, vary: 0.05, delay: 0.07, gap: 140 }); // the blade, then the blood
         break;
       case 'hurt': break; // no voice-over when you are hit
       case 'drawbridge': A.fx('drawbridge', { vol: 1 }); A.play('door_slam', { vol: 0.45, delay: 1.6, dur: 0.9 }); break;
@@ -392,7 +432,7 @@
   /* offline rendering (tests and previews): run a sound or a stretch of a track into a buffer without touching the speakers */
   A.render = function (what, secs, arg) {
     var OAC = root.OfflineAudioContext || root.webkitOfflineAudioContext; if (!OAC) return Promise.reject(new Error('no offline audio'));
-    var sv = { ctx: ctx, master: master, sfxBus: sfxBus, musBus: musBus, noiseBuf: noiseBuf, musBus2: musBus2, track: track, song: song, step: step, nextT: nextT, unlocked: unlocked, voices: voices, lastPlay: lastPlay, mm: mute.music, ms: mute.sfx };
+    var sv = { ctx: ctx, master: master, sfxBus: sfxBus, musBus: musBus, noiseBuf: noiseBuf, musBus2: musBus2, leadBus: leadBus, track: track, song: song, step: step, nextT: nextT, unlocked: unlocked, voices: voices, lastPlay: lastPlay, mm: mute.music, ms: mute.sfx };
     var sr = 44100; ctx = new OAC(1, Math.ceil(sr * secs), sr); master = ctx.createGain(); sfxBus = ctx.createGain(); musBus = ctx.createGain(); sfxBus.connect(master); musBus.connect(master); master.connect(ctx.destination);
     musBus.gain.value = 0.25; sfxBus.gain.value = 0.8; unlocked = true; mute.music = mute.sfx = false; lastPlay = {}; voices = 0;
     noiseBuf = ctx.createBuffer(1, sr * 2, sr); var d = noiseBuf.getChannelData(0), b0 = 0, b1 = 0, b2 = 0; for (var i = 0; i < d.length; i++) { var w = Math.random() * 2 - 1; b0 = 0.99765 * b0 + w * 0.099046; b1 = 0.963 * b1 + w * 0.2965164; b2 = 0.57 * b2 + w * 1.0526913; d[i] = (b0 + b1 + b2 + w * 0.1848) * 0.2; }
@@ -400,8 +440,8 @@
     try {
       if (what === 'slash') A.slash(arg && arg.kind || 'sword', arg && arg.step || 1, !!(arg && arg.big));
       else if (what === 'fx') A.fx(arg, {});
-      else if (what === 'music') { var tr = TRACKS[arg]; tr.id = arg; track = tr; song = build(tr, arg); musBus2 = musBus; var stepLen = 60 / tr.bpm / 4, t = 0.05, st = 0; while (t < secs) { schedule(tr, st, t); t += stepLen; st++; if (st >= song.bars * 16) st = 0; } }
-    } finally { done = ctx.startRendering(); ctx = sv.ctx; master = sv.master; sfxBus = sv.sfxBus; musBus = sv.musBus; noiseBuf = sv.noiseBuf; musBus2 = sv.musBus2; track = sv.track; song = sv.song; step = sv.step; nextT = sv.nextT; unlocked = sv.unlocked; voices = sv.voices; lastPlay = sv.lastPlay; mute.music = sv.mm; mute.sfx = sv.ms; }
+      else if (what === 'music') { var tr = TRACKS[arg]; tr.id = arg; track = tr; song = build(tr, arg); musBus2 = musBus; leadBus = null; var stepLen = 60 / tr.bpm / 4, t = 0.05, st = 0; while (t < secs) { schedule(tr, st, t); t += stepLen; st++; if (st >= song.bars * 16) st = 0; } }
+    } finally { done = ctx.startRendering(); ctx = sv.ctx; master = sv.master; sfxBus = sv.sfxBus; musBus = sv.musBus; noiseBuf = sv.noiseBuf; musBus2 = sv.musBus2; leadBus = sv.leadBus; track = sv.track; song = sv.song; step = sv.step; nextT = sv.nextT; unlocked = sv.unlocked; voices = sv.voices; lastPlay = sv.lastPlay; mute.music = sv.mm; mute.sfx = sv.ms; }
     return done;
   };
   A.has = function (n) { return !!bufs[n]; };

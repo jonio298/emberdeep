@@ -230,7 +230,7 @@
     var before = p.hp;
     p.hp = Math.min(p.maxHp, p.hp + n);
     var got = p.hp - before;
-    if (got >= 1) fxText(p.x, p.y - 14, '+' + Math.round(got), '#7dff9a', 10);
+    if (got >= 1) { if (p._bigHeal) fxText(p.x, p.y - 18, '+' + Math.round(got) + ' HP', '#8dffa8', 15); else fxText(p.x, p.y - 14, '+' + Math.round(got), '#7dff9a', 10); }
     return got;
   }
 
@@ -736,6 +736,11 @@
     p.face = dir ? (dir.x >= 0 ? 1 : -1) : p.face;
   }
 
+  // one pulse of the Life Drain chain: damage the enemy and heal the hero (six pulses of 0.45x: 2.7x the old single hit in total, and a bigger share of it comes back as health)
+  function drainTick(p, t, mul) {
+    var dealt = hitEnemy(t, p.stats.dmg * mul * 1.0 * sm(p, 2), 'drain'); p._bigHeal = true;
+    var got = heal(p, dealt * (0.55 + 0.27 * (p.flags.vampirism || 0))); p._bigHeal = false; return { dealt: dealt, got: got };
+  }
   function doSpell2(p) {
     var cls = p.testSpell2 || p.classId;
     if (cls === 'swordsman') { // whirlwind
@@ -760,9 +765,8 @@
       var t = nearest(p.x, p.y, 110);
       if (!t) { if (noManaT <= 0) { fxText(p.x, p.y - 18, 'No target', '#aaa', 10); noManaT = 0.6; } return; }
       if (!spend(p, 'spell2')) return;
-      var dealt = hitEnemy(t, p.stats.dmg * 1.7 * sm(p, 2), 'drain');
-      heal(p, dealt * (0.38 + 0.27 * (p.flags.vampirism || 0)));
-      addFx({ kind: 'beam', x: p.x, y: p.y, x2: t.x, y2: t.y, t: 0.3, max: 0.3, col: '#7dff9a', ref: t });
+      if (CC.DrainChain) CC.DrainChain.start(p, t); // a channelled chain: pulses of damage and healing for about 2.4 s
+      else { var dealt = hitEnemy(t, p.stats.dmg * 1.7 * sm(p, 2), 'drain'); heal(p, dealt * (0.38 + 0.27 * (p.flags.vampirism || 0))); addFx({ kind: 'beam', x: p.x, y: p.y, x2: t.x, y2: t.y, t: 0.3, max: 0.3, col: '#7dff9a', ref: t }); }
       p.castFlash = 0.3; p.face = t.x >= p.x ? 1 : -1;
     }
     p.cd.spell2 = p.cdMax.spell2;
@@ -1415,7 +1419,7 @@
     DEFS: DEFS, PERKS: PERKS, minions: minions, projectiles: projs,
     create: create, update: update, draw: draw, drawPlayer: drawPlayer, drawHero: drawHero,
     drawCriticalHero: drawCriticalHero, critRadius: critRadius,
-    gainXp: gainXp, xpToNext: xpToNext, damage: damage, heal: heal, damageMinion: damageMinion,
+    gainXp: gainXp, drainTick: drainTick, xpToNext: xpToNext, damage: damage, heal: heal, damageMinion: damageMinion,
     applyItemStats: applyItemStats, choosePerk: choosePerk, hitEnemy: hitEnemy, status: status,
     _h: { shoot: shoot, nearest: nearest, aimDir: aimDir, ignite: ignite, addFx: addFx, foes: foes },
     tapAction:tapAction,summonCharged:summonCharged,

@@ -92,7 +92,7 @@
       w.seep -= dt; if (w.seep <= 0) { w.seep = 0.16; spurt(t, 1, 0.3); }
       w.beat -= dt;
       if (w.beat <= 0) {
-        w.beat = 1; w.pulse = 1; spurt(t, 15, 1); splat(t.x, t.y + 3, 3, 9); if (CC.Audio) CC.Audio.fx('wet', { x: t.x, y: t.y, vol: 0.5 });
+        w.beat = 1; w.pulse = 1; spurt(t, 15, 1); splat(t.x, t.y + 3, 3, 9); if (CC.Audio) CC.Audio.play('bloodsplatter3', { x: t.x, y: t.y, vol: 0.55, gap: 400 });
         if (t === hero()) { if (CC.Audio) CC.Audio.fx('thump', { vol: 0.7 }); pulseScreen = 1; if (CC.fx && CC.fx.shake) CC.fx.shake(1.2); }
       }
       w.tick -= dt;

@@ -357,7 +357,7 @@
   function loadFloor() {
     var s=CC.state,p=s.player,map,E=CC.Enemies,L=CC.Loot,
         cached=worldCache[key(s.area,s.floor,s.treeFloor)];
-    particles.length=0;texts.length=0;decals.length=0;call('Vfx','clear');call('Wounds','clear');call('LevelBurst','clear');call('HeroBlood','clear');
+    particles.length=0;texts.length=0;decals.length=0;call('Vfx','clear');call('Wounds','clear');call('LevelBurst','clear');call('HeroBlood','clear');call('DrainChain','clear');
     if(cached&&cached.map){
       map=cached.map;CC.Dungeon=map;s.map=map;
       if(s.area==='forest'&&CC.Forest)CC.Forest.map=map;
@@ -1088,7 +1088,7 @@
         var isGuestNow = !!(CC.Multiplayer && CC.Multiplayer.isGuest && CC.Multiplayer.isGuest());
         if (s.area === 'tree-tunnel' && !isGuestNow) call('TreeTunnel', 'update', dt);
         if (s.area === 'tree-ascent') call('TreeAscent','update',dt);
-        call('Wounds','update',dt);call('LevelBurst','update',dt);call('HeroBlood','update',dt);
+        call('Wounds','update',dt);call('LevelBurst','update',dt);call('HeroBlood','update',dt);call('DrainChain','update',dt);
         // Walk through the living tunnel and defeat its miniboss before entering the plains.
         var ex = s.map && s.map.stairs;
         if (ex && p && !p.stub && !isGuestNow && (
@@ -1281,7 +1281,7 @@
       call('Enemies', 'draw', ctx, cam);
       call('Classes', 'draw', ctx, cam);
       call('Skills','draw',ctx,cam);
-      call('Wounds','draw',ctx,cam);call('LevelBurst','draw',ctx,cam);call('HeroBlood','draw',ctx,cam);
+      call('Wounds','draw',ctx,cam);call('LevelBurst','draw',ctx,cam);call('HeroBlood','draw',ctx,cam);call('DrainChain','draw',ctx,cam);
       call('Multiplayer','drawWorld',ctx,cam);
       call('Defense','drawWorld',ctx,cam);
       if(!s.coop)call('EggQuest','drawCompanion',ctx,cam);
