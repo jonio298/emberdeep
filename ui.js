@@ -565,42 +565,58 @@
     var yy = y + 14;
     tx(c, 'SETTINGS', x + w / 2, yy, 16, COL.accent, 'center'); yy += 30;
     function row(title, desc, label, on, cb, color) {
-      rr(c, x + 6, yy, w - 12, 84, 8); c.fillStyle = 'rgba(255,255,255,0.05)'; c.fill(); c.lineWidth = 1.5; c.strokeStyle = COL.line; c.stroke();
-      tx(c, title, x + 18, yy + 20, 14, '#fff', 'left');
-      tx(c, desc, x + 18, yy + 40, 11, COL.dim, 'left');
-      button(c, hit, x + 18, yy + 50, w - 36, 28, label, true, cb, on ? (color || '#2a6a4a') : '#5a3a3a');
-      yy += 94;
+      rr(c, x + 6, yy, w - 12, 66, 8); c.fillStyle = 'rgba(255,255,255,0.05)'; c.fill(); c.lineWidth = 1.5; c.strokeStyle = COL.line; c.stroke();
+      tx(c, title, x + 18, yy + 16, 14, '#fff', 'left');
+      tx(c, desc, x + 18, yy + 32, 11, COL.dim, 'left');
+      button(c, hit, x + 18, yy + 40, w - 36, 24, label, true, cb, on ? (color || '#2a6a4a') : '#5a3a3a');
+      yy += 74;
     }
     row('Auto equip', 'Wear loot automatically when it is better than your gear.', S.get('autoEquip') ? 'ON  -  tap to turn off' : 'OFF  -  tap to turn on', S.get('autoEquip'), function () { S.toggle('autoEquip'); });
     row('Auto level', 'Spend skill points and pick level-up perks for you.', S.get('autoLevel') ? 'ON  -  tap to turn off' : 'OFF  -  tap to turn on', S.get('autoLevel'), function () { S.toggle('autoLevel'); });
+    // Whole row is tappable, with a visible checkbox instead of another ON/OFF button.
+    (function () {
+      var on = S.get('critAnimations') !== false, bx = x + w - 49, by = yy + 14;
+      rr(c, x + 6, yy, w - 12, 52, 8); c.fillStyle = 'rgba(255,255,255,0.05)'; c.fill();
+      c.lineWidth = 1.5; c.strokeStyle = COL.line; c.stroke();
+      tx(c, 'Crit animations', x + 18, yy + 16, 14, '#fff', 'left');
+      tx(c, 'Cinematic close-ups on critical hits.', x + 18, yy + 35, 11, COL.dim, 'left');
+      rr(c, bx, by, 23, 23, 5); c.fillStyle = on ? '#2b6243' : '#180f1b'; c.fill();
+      c.lineWidth = 2; c.strokeStyle = on ? COL.good : COL.line; c.stroke();
+      if (on) {
+        c.beginPath(); c.moveTo(bx + 5, by + 11); c.lineTo(bx + 10, by + 16); c.lineTo(bx + 19, by + 6);
+        c.strokeStyle = '#e8ffd5'; c.lineWidth = 3; c.lineJoin = 'round'; c.lineCap = 'round'; c.stroke();
+      }
+      hit(x + 6, yy, w - 12, 52, function () { S.toggle('critAnimations'); });
+      yy += 56;
+    })();
     var AU = CC.Audio; // sound and music (audio.js)
     if (AU) {
       var au = AU.status();
       var vslider = function (title, desc, val, setter, on, toggle) { // a drag-bar row with a small on/off button
-        var tk = x + 28, tw = w - 56, ty = yy + 58;
-        rr(c, x + 6, yy, w - 12, 84, 8); c.fillStyle = 'rgba(255,255,255,0.05)'; c.fill(); c.lineWidth = 1.5; c.strokeStyle = COL.line; c.stroke();
-        tx(c, title, x + 18, yy + 20, 14, '#fff', 'left'); tx(c, on ? Math.round(val * 100) + '%' : 'OFF', x + w - 76, yy + 20, 14, on ? COL.accent : '#c88', 'right');
-        tx(c, desc, x + 18, yy + 40, 11, COL.dim, 'left');
+        var tk = x + 28, tw = w - 56, ty = yy + 52;
+        rr(c, x + 6, yy, w - 12, 66, 8); c.fillStyle = 'rgba(255,255,255,0.05)'; c.fill(); c.lineWidth = 1.5; c.strokeStyle = COL.line; c.stroke();
+        tx(c, title, x + 18, yy + 16, 14, '#fff', 'left'); tx(c, on ? Math.round(val * 100) + '%' : 'OFF', x + w - 76, yy + 16, 14, on ? COL.accent : '#c88', 'right');
+        tx(c, desc, x + 18, yy + 32, 11, COL.dim, 'left');
         button(c, hit, x + w - 64, yy + 8, 50, 22, on ? 'ON' : 'OFF', true, toggle, on ? '#2a6a4a' : '#5a3a3a');
         rr(c, tk, ty - 3, tw, 6, 3); c.fillStyle = 'rgba(0,0,0,0.5)'; c.fill(); rr(c, tk, ty - 3, Math.max(4, tw * val), 6, 3); c.fillStyle = on ? COL.accent : '#6a5a5a'; c.fill();
         c.beginPath(); c.arc(tk + tw * val, ty, 11, 0, 6.2832); c.fillStyle = '#f2e3b8'; c.fill(); c.lineWidth = 2; c.strokeStyle = '#7a5a28'; c.stroke();
         hit(tk - 14, ty - 18, tw + 28, 36, function (px) { setter(Math.max(0, Math.min(1, (px - tk) / tw))); }, true);
-        yy += 94;
+        yy += 74;
       };
       vslider('Volume', 'Master volume for sound effects and music.', au.vol.master, function (v) { AU.setMaster(v); }, au.sfx, function () { AU.toggleSfx(); });
       vslider('Music volume', '8-bit chiptune that follows where you are.', au.vol.music, function (v) { AU.setMusic(v); }, au.music, function () { AU.toggleMusic(); });
     }
     // zoom slider (drag, or tap the bar): 28% .. 220%, on a log scale so the middle feels even
     (function () {
-      var rg = CC.zoomRange || [0.28, 2.2], z = CC.getZoomTarget ? CC.getZoomTarget() : 1, tk = x + 28, tw = w - 56, ty = yy + 54, k = Math.log(z / rg[0]) / Math.log(rg[1] / rg[0]);
-      rr(c, x + 6, yy, w - 12, 84, 8); c.fillStyle = 'rgba(255,255,255,0.05)'; c.fill(); c.lineWidth = 1.5; c.strokeStyle = COL.line; c.stroke();
-      tx(c, 'Zoom', x + 18, yy + 20, 14, '#fff', 'left'); tx(c, Math.round(z * 100) + '%', x + w - 18, yy + 20, 14, COL.accent, 'right');
-      tx(c, 'Drag the bar, or pinch the screen. 100% is the normal view.', x + 18, yy + 40, 11, COL.dim, 'left');
+      var rg = CC.zoomRange || [0.28, 2.2], z = CC.getZoomTarget ? CC.getZoomTarget() : 1, tk = x + 28, tw = w - 56, ty = yy + 52, k = Math.log(z / rg[0]) / Math.log(rg[1] / rg[0]);
+      rr(c, x + 6, yy, w - 12, 66, 8); c.fillStyle = 'rgba(255,255,255,0.05)'; c.fill(); c.lineWidth = 1.5; c.strokeStyle = COL.line; c.stroke();
+      tx(c, 'Zoom', x + 18, yy + 16, 14, '#fff', 'left'); tx(c, Math.round(z * 100) + '%', x + w - 18, yy + 16, 14, COL.accent, 'right');
+      tx(c, 'Drag the bar, or pinch the screen. 100% is the normal view.', x + 18, yy + 32, 11, COL.dim, 'left');
       rr(c, tk, ty - 3, tw, 6, 3); c.fillStyle = 'rgba(0,0,0,0.5)'; c.fill();
       rr(c, tk, ty - 3, Math.max(4, tw * k), 6, 3); c.fillStyle = COL.accent; c.fill();
       var kx = tk + tw * k; c.beginPath(); c.arc(kx, ty, 11, 0, 6.2832); c.fillStyle = '#f2e3b8'; c.fill(); c.lineWidth = 2; c.strokeStyle = '#7a5a28'; c.stroke();
       hit(tk - 14, ty - 18, tw + 28, 36, function (px) { if (CC.setZoom) CC.setZoom(rg[0] * Math.pow(rg[1] / rg[0], Math.max(0, Math.min(1, (px - tk) / tw)))); }, true);
-      yy += 94;
+      yy += 74;
     })();
     row('Movement stick', 'Floating appears under your thumb. Fixed stays in the corner.', S.get('stick') === 'fixed' ? 'FIXED  -  tap for floating' : 'FLOATING  -  tap for fixed', true, function () { S.set('stick', S.get('stick') === 'fixed' ? 'floating' : 'fixed'); }, '#3a5a8a');
   }

@@ -364,7 +364,7 @@
     var viaEnemies = CC.Enemies && typeof CC.Enemies.damage === 'function';
     if (viaEnemies) { try { CC.Enemies.damage(e, dmg, type); } catch (err) { e.hp -= dmg; } }
     else e.hp -= dmg;
-    var necroCinema = crit && p && p.classId === 'necromancer' && opts.basicAttack && !opts.minion && !opts.splash && !killShot && CC.state.mode === 'dungeon' && CC.CriticalScene && !(opts.attackGroup && opts.attackGroup.cinematicStarted) && !(p.pw && p.pw.rapid > 0);
+    var necroCinema = crit && p && p.classId === 'necromancer' && opts.basicAttack && !opts.minion && !opts.splash && !killShot && CC.state.mode === 'dungeon' && CC.CriticalScene && CC.CriticalScene.enabled && CC.CriticalScene.enabled() && !(opts.attackGroup && opts.attackGroup.cinematicStarted) && !(p.pw && p.pw.rapid > 0);
     if (!necroCinema) fxText(e.x, e.y - (e.r || 8) - 4, crit ? dmg + '!' : String(dmg), crit ? '#f04c57' : back ? '#7de0b8' : '#fff', crit ? 16 : 10); // a necromancer crit shows its damage as three counters in the cinematic instead
     if (CC.Audio && !(opts.noCrit && !opts.basicAttack) && !opts.minion && type !== 'poison') CC.Audio.event('hit', { x: e.x, y: e.y, crit: crit, skip: !!necroCinema, plasma: !!(opts.basicAttack && p && (p.classId === 'wizard' || p.classId === 'necromancer') && !crit && !opts.minion), slash: !!(opts.basicAttack && p && (p.classId === 'swordsman' || p.classId === 'thief') && !e.ghost) });
     fxBurst(e.x, e.y, crit ? '#ffd24a' : '#ffffff', crit ? 14 : 4, crit ? 110 : 60);
@@ -395,13 +395,13 @@
           CC.CriticalScene.addTargets(participants);
           if (killShot && CC.CriticalScene.finish && CC.CriticalScene.finish(e)) e._finisher = true;
         } else {
-          CC.CriticalScene.trigger({ kind: opts.attackKind === 'projectile' ? 'projectile' : 'slash',
+          var cinematicStarted = CC.CriticalScene.trigger({ kind: opts.attackKind === 'projectile' ? 'projectile' : 'slash',
             heroClass: p.classId, x: e.x, y: e.y, r: e.r || 9, angle: opts.angle || 0,
             color: opts.color || '#e5c5b3', damage: dmg, sourceX: p.x, sourceY: p.y,
             targets:participants, radius:critRadius(p.classId),
             finisher: killShot ? e.id : null });
-          if (killShot) e._finisher = true;
-          if (attackGroup) attackGroup.cinematicStarted = true;
+          if (cinematicStarted && killShot) e._finisher = true;
+          if (cinematicStarted && attackGroup) attackGroup.cinematicStarted = true;
         }
       }
     }

@@ -1,16 +1,22 @@
 /* CC.Settings - player options, remembered in this browser.
  *   autoEquip  equip a looted piece automatically when it is better than what you wear (Loot.autoEquip reads CC.state.autoEquip)
  *   autoLevel  spend skill points and pick level-up perks for you
+ *   critAnimations  play critical-hit cinematics without changing combat damage
  *   stick      'floating' (appears under your thumb) or 'fixed' (always in the corner)
  * Opened from the gear button in the HUD (the Settings tab of the character screen).
  */
 (function (root) {
   'use strict';
   var CC = root.CC = root.CC || {};
-  var KEY = 'emberdeep-settings', v = { autoEquip: true, autoLevel: false, stick: 'floating' }, clock = 0;
+  var KEY = 'emberdeep-settings', v = { autoEquip: true, autoLevel: false, critAnimations: true, stick: 'floating' }, clock = 0;
   try { var raw = localStorage.getItem(KEY); if (raw) { var o = JSON.parse(raw); for (var k in v) if (o && o[k] !== undefined) v[k] = o[k]; } } catch (_) { /* storage may be blocked */ }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch (_) { /* optional */ } }
   function apply() { if (CC.state) CC.state.autoEquip = !!v.autoEquip; }
+  function changed(key) {
+    save(); apply();
+    if (key === 'critAnimations' && !v.critAnimations && CC.CriticalScene && CC.CriticalScene.reset)
+      CC.CriticalScene.reset(); // Restore regular camera, HUD and gameplay immediately.
+  }
 
   // Spend every available skill point (first affordable skill in tree order), and take the first offered perk.
   function autoLevel(p) {
@@ -25,8 +31,8 @@
   }
   CC.Settings = {
     get: function (key) { return v[key]; },
-    set: function (key, val) { v[key] = val; save(); apply(); },
-    toggle: function (key) { v[key] = !v[key]; save(); apply(); return v[key]; },
+    set: function (key, val) { v[key] = val; changed(key); },
+    toggle: function (key) { v[key] = !v[key]; changed(key); return v[key]; },
     all: function () { return v; },
     tick: function (dt) {
       apply();

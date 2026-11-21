@@ -39,7 +39,9 @@ function appendTargets(scene,list){
  }
 }
 function addTargets(list){if(active)appendTargets(active,list);}
+function enabled(){return !(CC.Settings&&CC.Settings.get&&CC.Settings.get('critAnimations')===false);}
 function trigger(hit){
+ if(!enabled())return false;
  if(!hit||!isFinite(hit.x)||!isFinite(hit.y)||['slash','projectile'].indexOf(hit.kind)<0)return false;
  if(!(CC.state&&CC.state.mode==='dungeon'))return false;
  var id=heroKind(hit),o={
@@ -64,6 +66,7 @@ function trigger(hit){
 function canFinish(){return !!(CC.Finisher&&CC.state&&CC.state.mode==='dungeon');}
 // A swipe's cinematic may already be running when a second target is perfectly killed.
 function finish(enemy){
+ if(!enabled())return false;
  if(!active||!enemy||!CC.Finisher||active.fin)return false;
  active.fin={id:enemy.id,sx:0,sy:0};active.duration=CC.Finisher.LEN[active.heroClass]||2.8;now=0;active.snd=0;
  return true;
@@ -656,7 +659,7 @@ function drawProjectile(c,s,cam){
  c.restore();
 }
 CC.CriticalScene={
- trigger:trigger,canFinish:canFinish,finish:finish,addTargets:addTargets,update:update,reset:reset,view:view,rate:rate,
+ trigger:trigger,enabled:enabled,canFinish:canFinish,finish:finish,addTargets:addTargets,update:update,reset:reset,view:view,rate:rate,
  isActive:function(){return !!active;},
  debugSeek:function(t,hold){now=t;held=!!hold;},
  drawWorld:drawWorld,drawScreen:drawScreen,drawProjectile:drawProjectile,
