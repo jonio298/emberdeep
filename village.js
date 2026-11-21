@@ -417,7 +417,7 @@
     if (v.u > 0.28) { v.nextFlash -= dt; if (v.nextFlash <= 0) { v.flash = 0.5; v.flashPat = 0.35; v.bolt = { x: 0.1 + R() * 0.8, seed: (R() * 99) | 0 }; v.nextFlash = (3 + R() * 8) * (1.4 - 0.7 * v.u); v.thunder = 0.5 + R() * 0.9; } }
     if (v.thunder > 0) { v.thunder -= dt; if (v.thunder <= 0) { if (CC.fx && CC.fx.shake) CC.fx.shake(3 + v.u * 5); if (CC.Audio) CC.Audio.event('thunder', { vol: 0.5 + 0.5 * v.u }); } }
     // apparitions
-    for (i = v.wisps.length - 1; i >= 0; i--) { var w = v.wisps[i]; if (w.fx) { stepWisp(w, dt); continue; } w.age += dt; w.x += w.vx * dt; w.y += w.vy * dt; if (w.age >= w.life) v.wisps.splice(i, 1); }
+    for (i = v.wisps.length - 1; i >= 0; i--) { var w = v.wisps[i]; stepHoles(w, dt); if (w.fx) { stepWisp(w, dt); continue; } w.age += dt; w.x += w.vx * dt; w.y += w.vy * dt; if (w.age >= w.life) v.wisps.splice(i, 1); }
     if (p && v.u > 0.25 && v.wisps.length < 1 + Math.floor(v.u * 4) && R() < dt * (0.2 + v.u * 0.9)) { var a = R() * TAU, d = 100 + R() * 220; v.wisps.push({ x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d * 0.7, age: 0, life: 3 + R() * 3, vx: (R() - 0.5) * 8, vy: (R() - 0.5) * 6, seed: R() * 50, sc: 0.95 + R() * 0.5, blue: R() < 0.6 }); }
     // the graveyard ghosts fade in and out on their own slow tides (but never while you are speaking to one)
     var t = Date.now() / 1000;
@@ -474,7 +474,7 @@
     }
   }
   // the ghost figure in parts: arms (L/R present), shroud length (12 = full, -6 = half, <= -26 = none: head only)
-  function ghostParts(c, x, y, a, face, sc, t, seed, eyeCol, armL, armR, bodyLen) {
+  function ghostParts(c, x, y, a, face, sc, t, seed, eyeCol, armL, armR, bodyLen, noHead) {
     c.save(); c.translate(x, y); c.scale(face * sc, sc); c.globalAlpha = a; var i;
     if (bodyLen > -20) {
       var g = c.createLinearGradient(0, -34, 0, 12); g.addColorStop(0, 'rgba(176,206,236,.85)'); g.addColorStop(1, 'rgba(120,150,190,0)'); c.fillStyle = g;
@@ -486,9 +486,11 @@
       c.strokeStyle = 'rgba(176,206,236,.4)'; c.lineWidth = 1.6; c.lineCap = 'round';
       for (i = -1; i <= 1; i++) { c.beginPath(); c.moveTo(i * 2.5, -25); c.quadraticCurveTo(i * 5 + Math.sin(t * 3 + i + seed) * 3, -17, i * 3 + Math.sin(t * 2.4 + i * 2 + seed) * 4, -9 + Math.abs(i) * 3); c.stroke(); }
     }
+    if (!noHead) {
     c.fillStyle = 'rgba(196,216,238,.75)'; c.beginPath(); c.ellipse(0, -30, 5, 6.4, 0, 0, TAU); c.fill();
     c.fillStyle = 'rgba(4,10,24,.85)'; c.beginPath(); c.ellipse(-2.2, -30.5, 1.8, 2.4, 0, 0, TAU); c.ellipse(2.2, -30.5, 1.8, 2.4, 0, 0, TAU); c.ellipse(0, -26.2, 1.1, 2, 0, 0, TAU); c.fill();
     c.globalAlpha = Math.min(1, a * 1.8); c.shadowColor = eyeCol; c.shadowBlur = 12; c.fillStyle = eyeCol === '#5ac8ff' ? '#b8f0ff' : '#e8ffd8'; c.fillRect(-3.6, -31.6, 2.8, 2.3); c.fillRect(0.8, -31.6, 2.8, 2.3);
+    }
     c.restore();
   }
   function drawPiece(c, q, cam) { // a ghostly piece: a wisp of arm, a ragged chunk of shroud; it tumbles, trails specks and fades
@@ -497,19 +499,75 @@
     for (k = 1; k <= 5; k++) { c.globalAlpha = al * (1 - k / 6) * 0.6; c.fillStyle = '#bfe9ff'; c.beginPath(); c.arc(x - q.vx * k * 0.05 + Math.sin(q.seed + k) * 1.5, y - q.vy * k * 0.05, 1.5 * (1 - k / 7), 0, TAU); c.fill(); }
     c.restore();
     c.save(); c.translate(x, y); c.rotate(q.rot); c.scale(q.sc, q.sc); c.globalAlpha = al; c.lineCap = 'round';
-    if (q.kind === 'arm') { c.strokeStyle = 'rgba(176,206,236,.8)'; c.lineWidth = 2.4; c.beginPath(); c.moveTo(-1, -8); c.quadraticCurveTo(q.side * 7, -2, q.side * 3, 9); c.stroke(); c.strokeStyle = 'rgba(230,246,255,.6)'; c.lineWidth = 0.9; c.stroke(); }
+    if (q.kind === 'head') { c.fillStyle = 'rgba(196,216,238,.8)'; c.beginPath(); c.ellipse(0, 0, 5, 6.4, 0, 0, TAU); c.fill(); c.fillStyle = 'rgba(4,10,24,.85)'; c.beginPath(); c.ellipse(-2.2, -0.5, 1.8, 2.4, 0, 0, TAU); c.ellipse(2.2, -0.5, 1.8, 2.4, 0, 0, TAU); c.fill(); c.fillStyle = '#e8ffd8'; c.fillRect(-3.4, -1.6, 2.6, 2); c.fillRect(0.8, -1.6, 2.6, 2); }
+    else if (q.kind === 'arm') { c.strokeStyle = 'rgba(176,206,236,.8)'; c.lineWidth = 2.4; c.beginPath(); c.moveTo(-1, -8); c.quadraticCurveTo(q.side * 7, -2, q.side * 3, 9); c.stroke(); c.strokeStyle = 'rgba(230,246,255,.6)'; c.lineWidth = 0.9; c.stroke(); }
     else { var g = c.createLinearGradient(0, -10, 0, 12); g.addColorStop(0, 'rgba(190,216,240,.8)'); g.addColorStop(1, 'rgba(120,150,190,0)'); c.fillStyle = g; c.beginPath(); c.moveTo(-8, -8); c.lineTo(8, -9); c.lineTo(6, 2); for (k = 0; k < 4; k++) c.lineTo(6 - k * 4, 8 + (k % 2 ? 5 : -1)); c.lineTo(-8, 1); c.closePath(); c.fill(); }
     c.restore();
   }
+
+  /* ---- spells and shots go THROUGH an apparition and leave a hole where they hit: a jagged, glowing cut circle (green for the necromancer, blue for the wizard);
+          a hit on an arm, the head or the lower shroud knocks that piece off (it falls and fades, and grows back after a few seconds) ---- */
+  var holeCv = null;
+  function drawGhostHoled(c, w, x, y, a, face, t, col, aL, aR, bl) {
+    var noHead = !!(w.ko && w.ko.head), hs = w.holes;
+    if (!hs || !hs.length || typeof document === 'undefined') { ghostParts(c, x, y, a, face, w.sc, t, w.seed, col, aL, aR, bl, noHead); return; }
+    if (!holeCv) { holeCv = document.createElement('canvas'); holeCv.width = 160; holeCv.height = 170; }
+    var o = holeCv.getContext('2d'), ox = 80, oy = 120, i, k;
+    o.setTransform(1, 0, 0, 1, 0, 0); o.clearRect(0, 0, 160, 170); o.globalCompositeOperation = 'source-over';
+    ghostParts(o, ox, oy, a, face, w.sc, t, w.seed, col, aL, aR, bl, noHead);
+    o.globalCompositeOperation = 'destination-out'; o.fillStyle = '#000';
+    for (i = 0; i < hs.length; i++) { // punch the holes out of the figure
+      var h = hs[i], fade = clamp((h.life) / 1.0, 0, 1), rr = h.r * w.sc * fade; if (rr < 0.4) continue; var hx = ox + h.lx * face * w.sc, hy = oy + h.ly * w.sc;
+      o.beginPath(); for (k = 0; k < 11; k++) { var ang = k / 11 * TAU, rj = rr * (k % 2 ? 0.72 : 1.08) * (0.9 + 0.2 * Math.sin(h.seed + k * 3.1)); k ? o.lineTo(hx + Math.cos(ang) * rj, hy + Math.sin(ang) * rj) : o.moveTo(hx + rj, hy); } o.closePath(); o.fill();
+    }
+    o.globalCompositeOperation = 'source-over';
+    c.drawImage(holeCv, x - ox, y - oy);
+  }
+  function drawHoleRings(c, w, x, y, face) { // the glowing jagged edge of each cut
+    var hs = w.holes; if (!hs || !hs.length) return;
+    c.save(); c.globalCompositeOperation = 'lighter'; c.lineJoin = 'miter';
+    for (var i = 0; i < hs.length; i++) {
+      var h = hs[i], fade = clamp(h.life / 1.0, 0, 1), rr = h.r * w.sc * fade; if (rr < 0.4) continue;
+      var hx = x + h.lx * face * w.sc, hy = y + h.ly * w.sc, k, pulse = 0.75 + 0.25 * Math.sin(Date.now() / 90 + h.seed);
+      c.shadowColor = h.col; c.shadowBlur = 9; c.strokeStyle = h.col; c.globalAlpha = 0.9 * fade * pulse; c.lineWidth = 1.5;
+      c.beginPath(); for (k = 0; k < 11; k++) { var ang = k / 11 * TAU, rj = rr * (k % 2 ? 0.72 : 1.08) * (0.9 + 0.2 * Math.sin(h.seed + k * 3.1)); k ? c.lineTo(hx + Math.cos(ang) * rj, hy + Math.sin(ang) * rj) : c.moveTo(hx + rj, hy); } c.closePath(); c.stroke();
+      c.shadowBlur = 0; c.strokeStyle = '#eafff2'; c.globalAlpha = 0.5 * fade; c.lineWidth = 0.6; c.stroke();
+    }
+    c.restore();
+  }
+  function stepHoles(w, dt) {
+    var i; if (w.holes) for (i = w.holes.length - 1; i >= 0; i--) { var h = w.holes[i]; h.t += dt; if (h.t > 5.2) h.life -= dt * 1.2; if (h.life <= 0) w.holes.splice(i, 1); } // the cut stays about five seconds, then the ghost heals
+    if (w.ko) { var k; for (k in w.ko) if (w.ko[k] && (w.koT[k] -= dt) <= 0) { w.ko[k] = false; if (CC.fx && CC.fx.burst) CC.fx.burst(w.x, w.y - 16, '#bfe9ff', 4, 50); } }
+    if (w.kp) for (i = w.kp.length - 1; i >= 0; i--) { var q = w.kp[i]; q.life -= dt; q.x += q.vx * dt; q.y += q.vy * dt; q.vy += 62 * dt; q.vx *= 0.99; q.rot += q.vr * dt; if (q.life <= 0) w.kp.splice(i, 1); }
+  }
+  V.onProjectile = function (p, pr) { // called every frame for the hero's basic bolts and shards
+    var m = village(); if (!m || !p || (p.classId !== 'wizard' && p.classId !== 'necromancer')) return; var v = m.vil, i, face;
+    for (i = 0; i < v.wisps.length; i++) {
+      var w = v.wisps[i]; if (!w.fx && wispAlpha(w) < 0.06) continue; if (w.fx && w.fx.mode === 'blink') continue;
+      pr._wh = pr._wh || []; if (pr._wh.indexOf(w) >= 0) continue; // one hole per shot per ghost
+      face = p.x < w.x ? -1 : 1; var lx = (pr.x - w.x) * face / w.sc, ly = (pr.y - w.y) / w.sc;
+      if (Math.abs(lx) > 14 || ly < -38 || ly > 13) continue;
+      pr._wh.push(w); var col = p.classId === 'necromancer' ? '#58ff86' : '#4db8ff';
+      w.holes = w.holes || []; if (w.holes.length >= 7) w.holes.shift(); w.holes.push({ lx: lx, ly: ly, r: 4.2 + R() * 2.6, col: col, seed: R() * 50, t: 0, life: 1 });
+      w.ko = w.ko || {}; w.koT = w.koT || {}; w.kp = w.kp || [];
+      var piece = null, side = lx < 0 ? -1 : 1; // a hit that lands on a part knocks that part off
+      if (ly < -24 && !w.ko.head && !(w.fx && w.fx.cut >= 3)) { w.ko.head = true; w.koT.head = 5; piece = { kind: 'head', side: side, oy: -30 }; }
+      else if (ly >= -24 && ly < 2 && Math.abs(lx) > 5.5) { var armKey = lx * 1 < 0 ? 'armL' : 'armR'; if (!w.ko[armKey]) { w.ko[armKey] = true; w.koT[armKey] = 5; piece = { kind: 'arm', side: side, oy: -16 }; } }
+      else if (ly >= 0 && !w.ko.lower) { w.ko.lower = true; w.koT.lower = 5; piece = { kind: 'tail', side: side, oy: 4 }; }
+      if (piece) { var q = newPiece(w, piece.kind, piece.side); q.y = w.y + piece.oy * w.sc; q.vx = piece.side * (18 + R() * 16); q.life = q.max = 1.6; w.kp.push(q); }
+      if (CC.Audio) { CC.Audio.fx('plasma' + (1 + Math.floor(R() * 3)), { x: w.x, y: w.y, vol: 0.5, gap: 60 }); CC.Audio.fx('m_ghost_cast', { x: w.x, y: w.y, vol: 0.3, k: 1.5, gap: 80 }); }
+      if (CC.fx && CC.fx.burst) CC.fx.burst(pr.x, pr.y, col, 5, 60);
+    }
+  };
   function drawWisps(c, cam, v, t, p) {
     for (var i = 0; i < v.wisps.length; i++) {
       var w = v.wisps[i], a = wispAlpha(w), x = w.x - cam.x, y = w.y - cam.y + Math.sin(t * 1.4 + w.seed) * 3, face = p && p.x < w.x ? -1 : 1, col = w.blue ? '#5ac8ff' : '#aaff9a', f = w.fx;
-      if (!f) { ghostParts(c, x, y, a, face, w.sc, t, w.seed, col, true, true, 12); continue; }
+      if (!f) { drawGhostHoled(c, w, x, y, a, face, t, col, !(w.ko && w.ko.armL), !(w.ko && w.ko.armR), w.ko && w.ko.lower ? -6 : 12); drawHoleRings(c, w, x, y, face); for (var kq = 0; w.kp && kq < w.kp.length; kq++) drawPiece(c, w.kp[kq], cam); continue; }
       var vis = Math.max(a, 0.55) * (f.mode === 'blink' ? (f.bt < 0.25 ? 1 - f.bt / 0.25 : clamp((f.bt - 0.25) / 0.3, 0, 1)) : 1);
       var armL = f.cut < 1 || f.armSide === 1 ? true : false, armR = true; // which arms are left after the cuts so far
       var lostSide = f.armSide || 1; armL = !(f.cut >= 1 && lostSide === -1) && f.cut < 2; armR = !(f.cut >= 1 && lostSide === 1) && f.cut < 2;
       var bodyLen = f.cut >= 3 ? -40 : f.cut === 2 ? -6 : 12, headY = f.cut >= 3 ? 8 * Math.sin(t * 1.7 + w.seed) : 0;
-      var draw = function (al, bl, aL, aR) { ghostParts(c, x, y + (bl <= -20 ? headY + 14 : 0), al, face, w.sc, t, w.seed, col, aL, aR, bl); };
+      var draw = function (al, bl, aL, aR) { drawGhostHoled(c, w, x, y + (bl <= -20 ? headY + 14 : 0), al, face, t, col, aL && !(w.ko && w.ko.armL), aR && !(w.ko && w.ko.armR), w.ko && w.ko.lower ? Math.min(bl, -6) : bl); };
       var th = f.ang + 1.2, cy2 = y - 14 * w.sc, sep = f.sl !== null && f.sl < 0.5 ? 9 * Math.sin(Math.PI * clamp(f.sl / 0.5, 0, 1)) : 0, s2;
       if (f.mode === 'reform') { var rt = clamp(f.rt / 1.0, 0, 1); draw(vis * (1 - rt * 0.6), bodyLen, armL, armR); draw(vis * rt, 12, true, true); if (rt < 1) { c.save(); c.globalCompositeOperation = 'lighter'; for (var k = 0; k < 6; k++) { c.globalAlpha = (1 - rt) * 0.6; c.fillStyle = '#d8f4ff'; c.fillRect(x + Math.sin(t * 6 + k * 2) * 12 * w.sc, y - 30 + ((t * 20 + k * 9) % 34) * -0.5 + 20, 1.6, 1.6); } c.restore(); } }
       else if (sep > 0.3) for (s2 = -1; s2 <= 1; s2 += 2) { // the two halves, each clipped to its side of the cut and pushed apart
@@ -517,6 +575,7 @@
         draw(vis, bodyLen, armL, armR); c.restore();
       } else draw(vis, bodyLen, armL, armR);
       for (var q = 0; q < f.pieces.length; q++) drawPiece(c, f.pieces[q], cam);
+      drawHoleRings(c, w, x, y, face); for (var kq2 = 0; w.kp && kq2 < w.kp.length; kq2++) drawPiece(c, w.kp[kq2], cam);
       if (f.sl !== null && f.sl < 0.3) { var la = 1 - f.sl / 0.3; c.save(); c.globalCompositeOperation = 'lighter'; c.translate(x, cy2); c.rotate(th); c.globalAlpha = la; c.strokeStyle = '#eaf8ff'; c.lineWidth = 2.2 * la + 0.6; c.lineCap = 'round'; c.beginPath(); c.moveTo(-26, 0); c.lineTo(26, 0); c.stroke(); c.restore(); }
       if (f.say && f.say.t < 2.4) { // what it says, above its head
         var sa = f.say.t, al = sa < 0.15 ? sa / 0.15 : clamp((2.4 - sa) / 0.5, 0, 1), pop = 1 + (sa < 0.15 ? (1 - sa / 0.15) * 0.4 : 0), txt = f.say.txt, topY = y - (f.cut >= 3 ? 30 : 50) * w.sc - sa * 4;

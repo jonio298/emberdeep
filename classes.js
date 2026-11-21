@@ -879,6 +879,7 @@
           break;
         }
       }
+      if (!s.visual && (s.kind === 'bolt' || s.kind === 'shard') && CC.AbandonedVillage && CC.AbandonedVillage.onProjectile) CC.AbandonedVillage.onProjectile(p, s); // passes through village apparitions, leaving holes
       var l = foes();
       for (var j = 0; j < l.length && !end; j++) {
         var e = l[j]; if (!alive(e)) continue;
