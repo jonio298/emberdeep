@@ -266,8 +266,7 @@
   };
   TM.teleportFromMap = function (px, py, w, h) { // px, py relative to the full-map panel (same layout as dungeon.js / realm.js drawFullMap)
     var D = CC.Dungeon; if (!D || !(D.w || D.W)) return false;
-    var W = D.w || D.W, H = D.h || D.H, pad = 24, top = 52, bottom = 40, cell = Math.max(1, Math.min((w - pad * 2) / W, (h - top - bottom) / H));
-    var ox = Math.round((w - cell * W) / 2), oy = Math.round(top + (h - top - bottom - cell * H) / 2), tx = (px - ox) / cell, ty = (py - oy) / cell;
+    var W = D.w || D.W, H = D.h || D.H, Ly = CC.mapLayout(W, H, w, h, !!D.realm), cell = Ly.cell, ox = Ly.ox, oy = Ly.oy, tx = (px - ox) / cell, ty = (py - oy) / cell;
     if (tx < 0 || ty < 0 || tx >= W || ty >= H) return false;
     return TM.teleport(tx * T, ty * T);
   };

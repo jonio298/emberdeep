@@ -261,11 +261,12 @@
 
       drawMinimap: function () {},
       drawFullMap: function (c, w, h) {
-        var pad = 24, top = 52, bottom = 40, cell = Math.max(1, Math.min((w - pad * 2) / W, (h - top - bottom) / H));
-        var ox = Math.round((w - cell * W) / 2), oy = Math.round(top + (h - top - bottom - cell * H) / 2), x, y, i;
+        var top = 52, x, y, i, Ly = CC.mapLayout ? CC.mapLayout(W, H, w, h, true) : { cell: Math.max(1, Math.min((w - 48) / W, (h - 92) / H)), ox: Math.round((w - Math.max(1, Math.min((w - 48) / W, (h - 92) / H)) * W) / 2), oy: 52 };
+        var cell = Ly.cell, ox = Ly.ox, oy = Ly.oy; // a big map is centred on the hero at a wide zoom (see CC.mapLayout)
         c.save();
         c.fillStyle = 'rgba(4,5,10,0.94)'; c.fillRect(0, 0, w, h);
-        for (y = 0; y < H; y++) for (x = 0; x < W; x++) {
+        var vx0 = Math.max(0, Math.floor(-ox / cell)), vx1 = Math.min(W, Math.ceil((w - ox) / cell) + 1), vy0 = Math.max(0, Math.floor(-oy / cell)), vy1 = Math.min(H, Math.ceil((h - oy) / cell) + 1);
+        for (y = vy0; y < vy1; y++) for (x = vx0; x < vx1; x++) {
           i = y * W + x;
           if (!D.explored[i]) continue;
           var k = D.kind[i];
@@ -276,7 +277,6 @@
         if (D.stairs && D.stairs.x > -900 && D.isExplored(D.stairs.x, D.stairs.y)) {
           c.fillStyle = '#ffd36b'; c.fillRect(ox + D.stairs.tx * cell - 1, oy + D.stairs.ty * cell - 1, Math.max(4, cell * 1.4), Math.max(4, cell * 1.4));
         }
-        if (p) { c.fillStyle = '#ffffff'; c.beginPath(); c.arc(ox + p.x / T * cell, oy + p.y / T * cell, Math.max(2.5, cell * 0.8), 0, PI2); c.fill(); }
         c.fillStyle = '#e8dcc4'; c.font = 'bold 13px Georgia, serif'; c.textAlign = 'center'; c.fillText(D.name, w / 2, top - 14);
         c.restore();
       }

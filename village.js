@@ -442,33 +442,86 @@
   // The trees with eyes can be slashed too (it sounds like it hurts them). Do it 10 swings in a row and the tree strikes back: see impale below.
   function angd(a, b) { var d = a - b; while (d > Math.PI) d -= TAU; while (d < -Math.PI) d += TAU; return d; }
   function wispAlpha(w) { return Math.pow(Math.sin(Math.PI * clamp(w.age / w.life, 0, 1)), 1.3) * 0.5; }
+  // A ghost can be cut up to 3 times in a row. Each cut slices a ghostly piece off (it falls, trailing wisps, and fades away): an arm, then the other arm and the
+  // lower shroud, then the rest of the body: only the head is left, floating. It speaks after each cut ("Hey!", "Not Cool!", "..."). If you stop, or after the head,
+  // it pulls itself back together and blinks away a little.
+  var SAYS = ['Hey!', 'Not Cool!', '...'];
+  function newPiece(w, kind, side) { var f = w.fx, sc = w.sc, dir = side || 1; return { kind: kind, side: dir, x: w.x + dir * 6 * sc, y: w.y - (kind === 'arm' ? 18 : kind === 'tail' ? 2 : 12) * sc, vx: dir * (10 + R() * 14), vy: -14 - R() * 12, rot: 0, vr: dir * (0.8 + R() * 1.4), life: 1.5, max: 1.5, sc: sc, seed: R() * 50 }; }
+  function sliceWisp(w, ang) {
+    var f = w.fx || (w.fx = { mode: 'combo', cut: 0, cutT: 0, sl: 0, ang: ang, pieces: [], say: null, rt: 0, moved: false });
+    f.cut++; f.cutT = 0; f.sl = 0; f.ang = ang; f.say = { txt: SAYS[f.cut - 1], t: 0 }; w.age = w.life * 0.5;
+    var armSide = f.armSide || (f.armSide = R() < 0.5 ? -1 : 1);
+    if (f.cut === 1) f.pieces.push(newPiece(w, 'arm', armSide));
+    else if (f.cut === 2) { f.pieces.push(newPiece(w, 'arm', -armSide)); f.pieces.push(newPiece(w, 'tail', 1)); }
+    else { f.pieces.push(newPiece(w, 'torso', -1)); f.pieces.push(newPiece(w, 'torso', 1)); f.mode = 'head'; }
+    if (CC.Audio) { CC.Audio.fx('m_ghost_cast', { x: w.x, y: w.y, vol: 0.6, k: 1.2 - f.cut * 0.1, gap: 0 }); CC.Audio.fx('dash', { x: w.x, y: w.y, vol: 0.4, gap: 0 }); CC.Audio.fx(f.cut === 3 ? 'm_ghost_amb' : 'm_ghost_atk', { x: w.x, y: w.y, vol: 0.55, k: f.cut === 1 ? 1.5 : 1.2, gap: 0, delay: 0.25 }); }
+    if (CC.fx && CC.fx.burst) CC.fx.burst(w.x, w.y - 14, '#bfe9ff', 6, 70);
+  }
   function stepWisp(w, dt) {
-    var f = w.fx; f.t += dt;
-    if (f.t >= 0.9 && !f.moved) { // blink: sparks where it was, and it reappears a little way off
-      f.moved = true; var m = village(), ox = w.x, oy = w.y, tries = 0, nx = ox, ny = oy;
-      for (; tries < 10; tries++) { var a = R() * TAU, d = 75 + R() * 55; nx = ox + Math.cos(a) * d; ny = oy + Math.sin(a) * d * 0.8; if (!(CC.Dungeon && CC.Dungeon.isSolid && CC.Dungeon.isSolid(nx, ny))) break; }
-      if (CC.fx && CC.fx.burst) { CC.fx.burst(ox, oy - 12, '#9fd8ff', 7, 60); CC.fx.burst(nx, ny - 12, '#9fd8ff', 7, 60); }
-      w.x = nx; w.y = ny; w.vx = (R() - 0.5) * 6; w.vy = (R() - 0.5) * 4;
+    var f = w.fx, i; f.cutT += dt; if (f.sl !== null) f.sl += dt; if (f.say) f.say.t += dt;
+    for (i = f.pieces.length - 1; i >= 0; i--) { var q = f.pieces[i]; q.life -= dt; q.x += q.vx * dt; q.y += q.vy * dt; q.vy += 62 * dt; q.vx *= 0.99; q.rot += q.vr * dt; if (q.life <= 0) f.pieces.splice(i, 1); }
+    if ((f.mode === 'combo' && f.cutT > 2.6) || (f.mode === 'head' && f.cutT > 3.6)) { f.mode = 'reform'; f.rt = 0; if (CC.Audio) CC.Audio.fx('m_ghost_amb', { x: w.x, y: w.y, vol: 0.4, k: 1.4, gap: 0 }); }
+    if (f.mode === 'reform') { f.rt += dt; if (f.rt >= 1.0) { f.mode = 'blink'; f.bt = 0; } }
+    if (f.mode === 'blink') {
+      f.bt += dt;
+      if (f.bt >= 0.25 && !f.moved) { // blink: sparks where it was, and it reappears a little way off
+        f.moved = true; var ox = w.x, oy = w.y, tries = 0, nx = ox, ny = oy;
+        for (; tries < 10; tries++) { var a = R() * TAU, d = 75 + R() * 55; nx = ox + Math.cos(a) * d; ny = oy + Math.sin(a) * d * 0.8; if (!(CC.Dungeon && CC.Dungeon.isSolid && CC.Dungeon.isSolid(nx, ny))) break; }
+        if (CC.fx && CC.fx.burst) { CC.fx.burst(ox, oy - 12, '#9fd8ff', 7, 60); CC.fx.burst(nx, ny - 12, '#9fd8ff', 7, 60); }
+        w.x = nx; w.y = ny; w.vx = (R() - 0.5) * 6; w.vy = (R() - 0.5) * 4;
+      }
+      if (f.bt >= 0.55) w.fx = null;
     }
-    if (f.t >= 0.98 && !f.said) { f.said = true; if (CC.Audio) CC.Audio.fx('m_ghost_atk', { x: w.x, y: w.y, vol: 0.7, k: 1.5, gap: 0 }); }
-    if (f.t >= 2.8) w.fx = null;
+  }
+  // the ghost figure in parts: arms (L/R present), shroud length (12 = full, -6 = half, <= -26 = none: head only)
+  function ghostParts(c, x, y, a, face, sc, t, seed, eyeCol, armL, armR, bodyLen) {
+    c.save(); c.translate(x, y); c.scale(face * sc, sc); c.globalAlpha = a; var i;
+    if (bodyLen > -20) {
+      var g = c.createLinearGradient(0, -34, 0, 12); g.addColorStop(0, 'rgba(176,206,236,.85)'); g.addColorStop(1, 'rgba(120,150,190,0)'); c.fillStyle = g;
+      var bl = bodyLen, ragged = bl < 12;
+      c.beginPath(); c.moveTo(-5, -26); c.quadraticCurveTo(-11, -8, -12 + Math.sin(t * 2 + seed) * 2, bl); for (i = 0; i < 5; i++) c.lineTo(-12 + i * 6, bl + (i % 2 ? 6 : -1) + Math.sin(t * 2.2 + i + seed) * 3 + (ragged ? (i % 3) * 2 : 0)); c.quadraticCurveTo(11, -8, 5, -26); c.closePath(); c.fill();
+      c.strokeStyle = 'rgba(176,206,236,.55)'; c.lineWidth = 2.2; c.lineCap = 'round'; c.beginPath();
+      if (armL) { c.moveTo(-5, -22); c.quadraticCurveTo(-13, -10, -10 + Math.sin(t * 1.7 + seed) * 3, 2); } if (armR) { c.moveTo(5, -22); c.quadraticCurveTo(13, -10, 10 + Math.sin(t * 1.9 + seed) * 3, 2); } c.stroke();
+    } else { // only a head: a few trailing wisps where the neck was
+      c.strokeStyle = 'rgba(176,206,236,.4)'; c.lineWidth = 1.6; c.lineCap = 'round';
+      for (i = -1; i <= 1; i++) { c.beginPath(); c.moveTo(i * 2.5, -25); c.quadraticCurveTo(i * 5 + Math.sin(t * 3 + i + seed) * 3, -17, i * 3 + Math.sin(t * 2.4 + i * 2 + seed) * 4, -9 + Math.abs(i) * 3); c.stroke(); }
+    }
+    c.fillStyle = 'rgba(196,216,238,.75)'; c.beginPath(); c.ellipse(0, -30, 5, 6.4, 0, 0, TAU); c.fill();
+    c.fillStyle = 'rgba(4,10,24,.85)'; c.beginPath(); c.ellipse(-2.2, -30.5, 1.8, 2.4, 0, 0, TAU); c.ellipse(2.2, -30.5, 1.8, 2.4, 0, 0, TAU); c.ellipse(0, -26.2, 1.1, 2, 0, 0, TAU); c.fill();
+    c.globalAlpha = Math.min(1, a * 1.8); c.shadowColor = eyeCol; c.shadowBlur = 12; c.fillStyle = eyeCol === '#5ac8ff' ? '#b8f0ff' : '#e8ffd8'; c.fillRect(-3.6, -31.6, 2.8, 2.3); c.fillRect(0.8, -31.6, 2.8, 2.3);
+    c.restore();
+  }
+  function drawPiece(c, q, cam) { // a ghostly piece: a wisp of arm, a ragged chunk of shroud; it tumbles, trails specks and fades
+    var al = clamp(q.life / q.max, 0, 1) * 0.8, x = q.x - cam.x, y = q.y - cam.y, k;
+    c.save(); c.globalCompositeOperation = 'lighter';
+    for (k = 1; k <= 5; k++) { c.globalAlpha = al * (1 - k / 6) * 0.6; c.fillStyle = '#bfe9ff'; c.beginPath(); c.arc(x - q.vx * k * 0.05 + Math.sin(q.seed + k) * 1.5, y - q.vy * k * 0.05, 1.5 * (1 - k / 7), 0, TAU); c.fill(); }
+    c.restore();
+    c.save(); c.translate(x, y); c.rotate(q.rot); c.scale(q.sc, q.sc); c.globalAlpha = al; c.lineCap = 'round';
+    if (q.kind === 'arm') { c.strokeStyle = 'rgba(176,206,236,.8)'; c.lineWidth = 2.4; c.beginPath(); c.moveTo(-1, -8); c.quadraticCurveTo(q.side * 7, -2, q.side * 3, 9); c.stroke(); c.strokeStyle = 'rgba(230,246,255,.6)'; c.lineWidth = 0.9; c.stroke(); }
+    else { var g = c.createLinearGradient(0, -10, 0, 12); g.addColorStop(0, 'rgba(190,216,240,.8)'); g.addColorStop(1, 'rgba(120,150,190,0)'); c.fillStyle = g; c.beginPath(); c.moveTo(-8, -8); c.lineTo(8, -9); c.lineTo(6, 2); for (k = 0; k < 4; k++) c.lineTo(6 - k * 4, 8 + (k % 2 ? 5 : -1)); c.lineTo(-8, 1); c.closePath(); c.fill(); }
+    c.restore();
   }
   function drawWisps(c, cam, v, t, p) {
     for (var i = 0; i < v.wisps.length; i++) {
       var w = v.wisps[i], a = wispAlpha(w), x = w.x - cam.x, y = w.y - cam.y + Math.sin(t * 1.4 + w.seed) * 3, face = p && p.x < w.x ? -1 : 1, col = w.blue ? '#5ac8ff' : '#aaff9a', f = w.fx;
-      if (!f) { ghostShape(c, x, y, a, face, w.sc, t, w.seed, col, false); continue; }
-      var vis = Math.max(a, 0.55) * (f.t < 0.7 ? 1 : f.t < 0.9 ? 1 - (f.t - 0.7) / 0.2 : f.t < 1.15 ? (f.t - 0.9) / 0.25 : 1); // it stays visible while it is being cut
-      var th = f.ang + 1.2, cy2 = y - 14 * w.sc, sep = f.t < 0.18 ? 11 * clamp(f.t / 0.18, 0, 1) : 11 * (1 - clamp((f.t - 0.18) / 0.37, 0, 1)), s2 = 0;
-      if (sep > 0.2) for (s2 = -1; s2 <= 1; s2 += 2) { // the two halves, each clipped to its side of the cut and pushed apart
+      if (!f) { ghostParts(c, x, y, a, face, w.sc, t, w.seed, col, true, true, 12); continue; }
+      var vis = Math.max(a, 0.55) * (f.mode === 'blink' ? (f.bt < 0.25 ? 1 - f.bt / 0.25 : clamp((f.bt - 0.25) / 0.3, 0, 1)) : 1);
+      var armL = f.cut < 1 || f.armSide === 1 ? true : false, armR = true; // which arms are left after the cuts so far
+      var lostSide = f.armSide || 1; armL = !(f.cut >= 1 && lostSide === -1) && f.cut < 2; armR = !(f.cut >= 1 && lostSide === 1) && f.cut < 2;
+      var bodyLen = f.cut >= 3 ? -40 : f.cut === 2 ? -6 : 12, headY = f.cut >= 3 ? 8 * Math.sin(t * 1.7 + w.seed) : 0;
+      var draw = function (al, bl, aL, aR) { ghostParts(c, x, y + (bl <= -20 ? headY + 14 : 0), al, face, w.sc, t, w.seed, col, aL, aR, bl); };
+      var th = f.ang + 1.2, cy2 = y - 14 * w.sc, sep = f.sl !== null && f.sl < 0.5 ? 9 * Math.sin(Math.PI * clamp(f.sl / 0.5, 0, 1)) : 0, s2;
+      if (f.mode === 'reform') { var rt = clamp(f.rt / 1.0, 0, 1); draw(vis * (1 - rt * 0.6), bodyLen, armL, armR); draw(vis * rt, 12, true, true); if (rt < 1) { c.save(); c.globalCompositeOperation = 'lighter'; for (var k = 0; k < 6; k++) { c.globalAlpha = (1 - rt) * 0.6; c.fillStyle = '#d8f4ff'; c.fillRect(x + Math.sin(t * 6 + k * 2) * 12 * w.sc, y - 30 + ((t * 20 + k * 9) % 34) * -0.5 + 20, 1.6, 1.6); } c.restore(); } }
+      else if (sep > 0.3) for (s2 = -1; s2 <= 1; s2 += 2) { // the two halves, each clipped to its side of the cut and pushed apart
         c.save(); c.translate(x, cy2); c.rotate(th); c.beginPath(); c.rect(-120, s2 < 0 ? -120 : 0, 240, 120); c.clip(); c.translate(0, s2 * sep); c.rotate(-th); c.translate(-x, -cy2);
-        ghostShape(c, x, y, vis, face, w.sc, t, w.seed, col, false); c.restore();
-      } else ghostShape(c, x, y, vis, face, w.sc, t, w.seed, col, false);
-      if (f.t < 0.3) { // the bright line where the blade went through
-        var la = 1 - f.t / 0.3; c.save(); c.globalCompositeOperation = 'lighter'; c.translate(x, cy2); c.rotate(th); c.globalAlpha = la; c.strokeStyle = '#eaf8ff'; c.lineWidth = 2.2 * la + 0.6; c.lineCap = 'round'; c.beginPath(); c.moveTo(-26, 0); c.lineTo(26, 0); c.stroke(); c.restore();
-      }
-      if (f.t > 0.98 && f.t < 2.6) { // "Hey!"
-        var sa = f.t - 0.98, al = sa < 0.15 ? sa / 0.15 : clamp((2.6 - f.t) / 0.5, 0, 1), pop = 1 + (sa < 0.15 ? (1 - sa / 0.15) * 0.4 : 0);
-        c.save(); c.globalAlpha = al; c.textAlign = 'center'; c.font = 'bold ' + Math.round(13 * pop) + 'px Georgia, serif'; c.lineWidth = 3.2; c.strokeStyle = 'rgba(8,16,30,.9)'; c.fillStyle = '#e8f6ff'; c.strokeText('Hey!', x, y - 50 * w.sc - sa * 4); c.fillText('Hey!', x, y - 50 * w.sc - sa * 4); c.restore();
+        draw(vis, bodyLen, armL, armR); c.restore();
+      } else draw(vis, bodyLen, armL, armR);
+      for (var q = 0; q < f.pieces.length; q++) drawPiece(c, f.pieces[q], cam);
+      if (f.sl !== null && f.sl < 0.3) { var la = 1 - f.sl / 0.3; c.save(); c.globalCompositeOperation = 'lighter'; c.translate(x, cy2); c.rotate(th); c.globalAlpha = la; c.strokeStyle = '#eaf8ff'; c.lineWidth = 2.2 * la + 0.6; c.lineCap = 'round'; c.beginPath(); c.moveTo(-26, 0); c.lineTo(26, 0); c.stroke(); c.restore(); }
+      if (f.say && f.say.t < 2.4) { // what it says, above its head
+        var sa = f.say.t, al = sa < 0.15 ? sa / 0.15 : clamp((2.4 - sa) / 0.5, 0, 1), pop = 1 + (sa < 0.15 ? (1 - sa / 0.15) * 0.4 : 0), txt = f.say.txt, topY = y - (f.cut >= 3 ? 30 : 50) * w.sc - sa * 4;
+        if (txt === '...') txt = '...'.slice(0, 1 + Math.floor(sa * 2.6) % 3 + (sa > 0.9 ? 3 : 0));
+        c.save(); c.globalAlpha = al; c.textAlign = 'center'; c.font = 'bold ' + Math.round(13 * pop) + 'px Georgia, serif'; c.lineWidth = 3.2; c.strokeStyle = 'rgba(8,16,30,.9)'; c.fillStyle = '#e8f6ff'; c.strokeText(txt, x, topY); c.fillText(txt, x, topY); c.restore();
       }
     }
   }
@@ -476,12 +529,10 @@
   V.treeHits = 0; var lastTreeHit = 0;
   V.onSwing = function (p, ang, reach) {
     var s = CC.state, m = village(); if (!m || !p || s.coop || V.impale) return; var v = m.vil, i, hit = false;
-    for (i = 0; i < v.wisps.length; i++) { // the blade passes through an apparition
-      var w = v.wisps[i]; if (w.fx || wispAlpha(w) < 0.06) continue; var dx = w.x - p.x, dy = w.y - 12 - p.y;
+    for (i = 0; i < v.wisps.length; i++) { // the blade passes through an apparition (up to three times in a row)
+      var w = v.wisps[i]; if (w.fx ? w.fx.mode !== 'combo' : wispAlpha(w) < 0.06) continue; var dx = w.x - p.x, dy = w.y - 12 - p.y;
       if (Math.hypot(dx, dy) > reach + 24 || Math.abs(angd(Math.atan2(dy, dx), ang)) > 1.25) continue;
-      w.age = w.life * 0.5; w.fx = { t: 0, ang: ang }; hit = true;
-      if (CC.Audio) { CC.Audio.fx('m_ghost_cast', { x: w.x, y: w.y, vol: 0.6, k: 1.2, gap: 0 }); CC.Audio.fx('dash', { x: w.x, y: w.y, vol: 0.4, gap: 0 }); }
-      if (CC.fx && CC.fx.burst) CC.fx.burst(w.x, w.y - 12, '#bfe9ff', 6, 70);
+      sliceWisp(w, ang); hit = true;
     }
     var best = null, bd = 1e9, tx0 = Math.floor((p.x - reach - 30) / T), tx1 = Math.floor((p.x + reach + 30) / T), ty0 = Math.floor((p.y - reach - 40) / T), ty1 = Math.floor((p.y + reach + 30) / T);
     for (var ty = ty0; ty <= ty1; ty++) for (var tx = tx0; tx <= tx1; tx++) { // an eyed tree in front of the swing
@@ -499,7 +550,7 @@
   };
 
   /* ---- the tree strikes back: the screen cuts to black on a freeze-frame of the hero and the tree; a branch drives through his chest and lifts him off the ground ---- */
-  var IMP_DUR = 4.8;
+  var IMP_DUR = 5.8;
   function startImpale(p, tr) {
     V.impale = { t0: Date.now(), dur: IMP_DUR, done: false, cls: p.classId, hit: false, s0: false, s1: false, s2: false };
     if (CC.Audio) CC.Audio.fx('m_plant_amb', { vol: 0.9, k: 0.7, gap: 0 });
@@ -519,31 +570,57 @@
   V.drawCinema = function (c, W, H) {
     var im = V.impale; if (!im) return false; var s = CC.state, p = hero();
     if (im.done && s.mode !== 'dead') { V.impale = null; return false; }
-    var T = (Date.now() - im.t0) / 1000, A = CC.Audio;
+    var T = (Date.now() - im.t0) / 1000, A = CC.Audio, k, i;
     if (!im.done && T >= im.dur) { im.done = true; if (p) { p.hp = 0; p.invuln = 0; } } // the hero dies; the game's own death screen takes over
-    // sounds on the beats
+    // sounds on the beats (treestab.mp3 has its impact 0.1 s in, so it starts just before the thrust lands)
     if (A) {
       if (!im.s0 && T > 0.5) { im.s0 = true; A.fx('m_plant_amb', { vol: 1, k: 0.55, gap: 0 }); }
-      if (!im.s1 && T >= 1.05) { im.s1 = true; A.fx('crunch', { vol: 1, gap: 0 }); A.fx('wet', { vol: 0.9, gap: 0 }); A.fx('thump', { vol: 0.9, gap: 0 }); A.fx('hit', { vol: 1, gap: 0 }); if (CC.MonsterSound && p) CC.MonsterSound.ugh(p); if (CC.fx && CC.fx.shake) CC.fx.shake(10); }
+      if (!im.s1 && T >= 0.95) { im.s1 = true; A.play('treestab', { vol: 1, gap: 0, vary: 0 }); A.fx('thump', { vol: 0.8, gap: 0, delay: 0.1 }); if (CC.MonsterSound && p) setTimeout(function () { CC.MonsterSound.ugh(p); }, 130); if (CC.fx && CC.fx.shake) CC.fx.shake(10); }
       if (!im.s2 && T >= 1.5) { im.s2 = true; A.play('bloodsplatter3', { vol: 0.8, gap: 0 }); }
+      if (!im.s3 && T >= 1.75) { im.s3 = true; A.fx('thump', { vol: 0.6, gap: 0 }); }
+      if (T > 1.6) { // every drop that lands in the pool drips audibly
+        im.drips = im.drips || [0, 0, 0, 0];
+        for (k = 0; k < 4; k++) { var n = Math.floor(T * 1.4 + k * 0.27); if (n > im.drips[k] && im.drips[k] > 0 && Date.now() - (im.lastDrip || 0) > 160) { im.lastDrip = Date.now(); A.play(Math.random() < 0.5 ? 'waterdrop1' : 'waterdrop2', { vol: 0.5, rate: 0.5 + Math.random() * 0.3, gap: 0, vary: 0.05 }); A.fx('wet', { vol: 0.18, gap: 0 }); } im.drips[k] = Math.max(im.drips[k], n); if (!im.drips[k]) im.drips[k] = n; }
+      }
     }
     var fade = sm01(T / 0.18), S = Math.min(W / 175, H / 120), cx = W / 2, cy = H * 0.5, shake = T > 1.05 && T < 1.6 ? (1.6 - T) / 0.55 * 3 : 0;
     c.save(); c.globalAlpha = fade; c.fillStyle = '#020104'; c.fillRect(0, 0, W, H); c.globalAlpha = 1;
     if (fade < 0.02) { c.restore(); return true; }
     c.translate(cx + (R() - 0.5) * shake * 2, cy + (R() - 0.5) * shake * 2); c.scale(S, S);
-    var pulse = 0.5 + 0.5 * Math.sin(T * 5), rg = c.createRadialGradient(0, 8, 8, 0, 8, 150); rg.addColorStop(0, 'rgba(120,10,16,' + (0.28 + 0.06 * pulse) + ')'); rg.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = rg; c.fillRect(-170, -120, 340, 260);
+    var pulse = 0.5 + 0.5 * Math.sin(T * 5), rg = c.createRadialGradient(0, 8, 8, 0, 8, 150); rg.addColorStop(0, 'rgba(120,10,16,' + (0.3 + 0.07 * pulse) + ')'); rg.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = rg; c.fillRect(-170, -120, 340, 260);
     c.globalAlpha = fade;
-    // the geometry: hero stands at (hx,hy) facing the tree on the right; the branch starts high on the trunk at B0
-    var lift = sm01((T - 1.35) / 1.0) * 12, hx = -10, hy = 30 - lift, B0x = 44, B0y = 2, chx = hx + 3, chy = hy - 4, ex = chx - 30, ey = chy - 12 * 0 + 6;
+    // comic halftone: red dots that swell toward the edges
+    c.fillStyle = 'rgba(120,8,16,.3)'; for (var gy = -100; gy <= 100; gy += 7) for (var gx = -150; gx <= 150; gx += 7) { var gd = Math.hypot(gx, gy * 1.3) / 150, rr = 1.7 * gd * gd * gd; if (rr > 0.2) { c.beginPath(); c.arc(gx + ((gy / 7) % 2 ? 3.5 : 0), gy, rr, 0, TAU); c.fill(); } }
+    // ash and dead leaves drifting down through the frame
+    for (i = 0; i < 22; i++) { var hs = Math.sin(i * 91.7) * 43758.5453; hs -= Math.floor(hs); var ax = -140 + hs * 280 + Math.sin(T * 0.8 + i) * 6, ay = -80 + ((hs * 173 + T * (6 + hs * 9)) % 150); c.globalAlpha = fade * (0.25 + hs * 0.3); c.fillStyle = i % 3 ? '#4a1a14' : '#8a3a1a'; c.save(); c.translate(ax, ay); c.rotate(T * (0.6 + hs) + i); c.beginPath(); c.ellipse(0, 0, 1.6 + hs * 1.6, 0.8, 0, 0, TAU); c.fill(); c.restore(); }
+    c.globalAlpha = fade;
+    // geometry: the hero stands at (hx,hy) facing the tree; the branch starts high on the trunk at B0
+    var lift = sm01((T - 1.35) / 1.0) * 12, hx = -10, hy = 30 - lift, B0x = 44, B0y = 2, chx = hx + 3, chy = hy - 4, ex = chx - 30, ey = chy + 6;
     var Lt = Math.hypot(ex - B0x, ey - B0y), Lc = Math.hypot(chx - B0x, chy - B0y), rc = Lc / Lt;
     var reach = T < 1.0 ? 0.32 * sm01(T / 1.0) * (1 + 0.04 * Math.sin(T * 9)) : T < 1.14 ? 0.32 + 0.68 * sm01((T - 1.0) / 0.14) : 1;
     var tipx = B0x + (ex - B0x) * reach, tipy = B0y + (ey - B0y) * reach;
-    // ground shadow and the blood pool that grows under him
+    // ground shadow and the blood pool that grows under him, with ripples where the drops land
     c.fillStyle = 'rgba(0,0,0,.5)'; c.beginPath(); c.ellipse(hx, 46, 14, 4, 0, 0, TAU); c.fill();
-    if (T > 1.4) { var pa = clamp((T - 1.4) / 3, 0, 1); c.fillStyle = 'rgba(90,6,12,.9)'; c.beginPath(); c.ellipse(hx - 2, 47, 5 + pa * 15, 1.8 + pa * 3.2, 0, 0, TAU); c.fill(); }
-    // the tree: black and bare, with two red eyes in the trunk that open as the branch comes
+    if (T > 1.4) {
+      var pa = clamp((T - 1.4) / 3, 0, 1), prx = 5 + pa * 17, pry = 1.8 + pa * 3.6; c.fillStyle = 'rgba(90,6,12,.92)'; c.beginPath(); c.ellipse(hx - 2, 47, prx, pry, 0, 0, TAU); c.fill();
+      c.fillStyle = 'rgba(190,30,40,.35)'; c.beginPath(); c.ellipse(hx - 4, 46.6, prx * 0.55, pry * 0.4, 0, 0, TAU); c.fill(); // the wet shine
+      for (k = 0; k < 3; k++) { var rp = ((T * 1.4 + k * 0.27) % 1); c.strokeStyle = 'rgba(210,60,70,' + (0.55 * (1 - rp)) + ')'; c.lineWidth = 0.6; c.beginPath(); c.ellipse(hx - 2 + (k - 1) * 4, 47, 1 + rp * 6, 0.4 + rp * 1.6, 0, 0, TAU); c.stroke(); }
+    }
+    // roots creep out of the ground toward his feet (and grab him once the branch lands)
+    var rv = sm01((T - 0.3) / 1.2);
+    for (k = 0; k < 4; k++) {
+      var tx0 = 46 + k * 2, tgx = hx + (k - 1.5) * 7, rx1 = tx0 + (tgx - tx0) * rv, ry1 = 46 + Math.sin(T * 2 + k) * 0.8 - Math.sin(rv * Math.PI) * (4 + k);
+      c.strokeStyle = '#1a1210'; c.lineWidth = 3.2 - k * 0.4; c.lineCap = 'round'; c.beginPath(); c.moveTo(tx0, 46); c.quadraticCurveTo((tx0 + rx1) / 2, 38 - k * 2, rx1, ry1); c.stroke();
+      c.strokeStyle = T > 1.2 ? '#4a1018' : '#3a2c22'; c.lineWidth = 1; c.beginPath(); c.moveTo(tx0, 45); c.quadraticCurveTo((tx0 + rx1) / 2, 37 - k * 2, rx1, ry1 - 0.6); c.stroke();
+    }
+    // the tree: black and bare. Red eyes with slit pupils and a knothole mouth that snarls open at the strike
     tree(c, 30, 16, 0.55, T, 1, 3, 3);
-    var eo = sm01((T - 0.1) / 0.5); eye(c, 45, -6, 3.2, -1, eo, '#ff2a2a'); eye(c, 53, -1, 2.6, -1, eo, '#ff2a2a');
+    var eo = sm01((T - 0.1) / 0.5), ey1 = -6, ey2 = -1; eye(c, 45, ey1, 3.4, -1, eo, '#ff2a2a'); eye(c, 53, ey2, 2.8, -1, eo, '#ff2a2a');
+    c.fillStyle = '#000'; c.fillRect(44.4, ey1 - 2 * eo, 1, 4 * eo); c.fillRect(52.5, ey2 - 1.6 * eo, 0.9, 3.2 * eo); // slit pupils
+    var mo = sm01((T - 1.04) / 0.2); // the mouth
+    c.save(); c.translate(49, 14); c.fillStyle = '#08030a'; c.beginPath(); c.moveTo(-6, 0); c.quadraticCurveTo(0, -2 - 5 * mo, 6, 0); c.quadraticCurveTo(0, 2 + 7 * mo, -6, 0); c.fill();
+    c.fillStyle = '#cfc4a8'; for (k = 0; k < 5; k++) { var tx2 = -5 + k * 2.5; c.beginPath(); c.moveTo(tx2 - 0.9, -1.4 - 2 * mo * (1 - Math.abs(k - 2) * 0.2)); c.lineTo(tx2, 0.6 + 1.6 * mo); c.lineTo(tx2 + 0.9, -1.4 - 2 * mo * (1 - Math.abs(k - 2) * 0.2)); c.fill(); }
+    c.restore();
     // the part of the branch that has already come out the far side of the hero (behind him)
     if (reach > rc) limb(c, chx, chy, tipx, tipy, 4.6, 2.2, 0);
     // the hero: a freeze-frame at first; after the strike he is slumped, lifted off his feet and swaying
@@ -553,18 +630,40 @@
     c.restore();
     // the part still in front of him, and the wound it made
     if (reach > 0.02) limb(c, B0x, B0y, Math.min(tipx, chx + 2), reach > rc ? chy : tipy, 6.2, 4.6, reach > rc ? 0.8 : undefined);
-    if (T > 1.0) { c.fillStyle = '#6a0a12'; c.beginPath(); c.ellipse(chx + 1, chy, 4.5, 6, 0, 0, TAU); c.fill(); c.fillStyle = '#b01824'; c.beginPath(); c.ellipse(chx + 1, chy, 2.4, 3.4, 0, 0, TAU); c.fill(); }
-    // blood: a burst at the strike, then streaks down his body, down the branch and drips from his feet
-    var k, bt = T - 1.08;
-    if (bt > 0) for (k = 0; k < 22; k++) { var ba = (k * 2.399) % TAU, v = 30 + (k * 37 % 50), x = chx + Math.cos(ba) * v * bt, y = chy + Math.sin(ba) * v * bt * 0.8 + 110 * bt * bt, al = clamp(1 - bt / 0.9, 0, 1); if (al > 0) { c.globalAlpha = al * fade; c.fillStyle = k % 3 ? '#a8101a' : '#5a060c'; c.fillRect(x - 1, y - 1, 2.2, 2.2); } }
+    if (T > 1.0) { c.fillStyle = '#6a0a12'; c.beginPath(); c.ellipse(chx + 1, chy, 4.5, 6, 0, 0, TAU); c.fill(); c.fillStyle = '#b01824'; c.beginPath(); c.ellipse(chx + 1, chy, 2.4, 3.4, 0, 0, TAU); c.fill(); c.fillStyle = 'rgba(255,200,200,.5)'; c.fillRect(chx - 0.4, chy - 2.4, 1, 1.6); }
+    // blood: a burst at the strike, then streaks down his body and the branch, and fat drops with a highlight falling into the pool
+    var bt = T - 1.08;
+    if (bt > 0) for (k = 0; k < 30; k++) { var ba = (k * 2.399) % TAU, v = 30 + (k * 37 % 60), x = chx + Math.cos(ba) * v * bt, y = chy + Math.sin(ba) * v * bt * 0.8 + 110 * bt * bt, al = clamp(1 - bt / 1.0, 0, 1); if (al > 0) { c.globalAlpha = al * fade; c.fillStyle = k % 3 ? '#a8101a' : '#5a060c'; c.beginPath(); c.ellipse(x, y, 1.4 + (k % 4) * 0.3, 1 + (k % 3) * 0.3, ba, 0, TAU); c.fill(); } }
     c.globalAlpha = fade;
     if (T > 1.3) {
-      var gr = clamp((T - 1.3) / 1.5, 0, 1); c.strokeStyle = '#7a0a12'; c.lineWidth = 2; c.lineCap = 'round'; c.beginPath(); c.moveTo(chx + 1, chy + 3); c.lineTo(chx + 1.5, chy + 3 + 16 * gr); c.stroke(); c.beginPath(); c.moveTo(chx - 3, chy + 1); c.lineTo(chx - 3.5, chy + 1 + 11 * gr); c.stroke();
-      for (k = 0; k < 4; k++) { var ph = (T * 1.4 + k * 0.27) % 1, dx = k < 2 ? chx + 1 + k * 0.5 : tipx - 1 + (k - 2) * 2, dy0 = k < 2 ? hy + 14 : tipy + 3; c.globalAlpha = (1 - ph * 0.5) * fade; c.fillStyle = '#9a0f18'; c.beginPath(); c.ellipse(dx, dy0 + ph * ph * (47 - dy0 + (k < 2 ? 0 : 20)), 1, 1.7, 0, 0, TAU); c.fill(); }
+      var gr = clamp((T - 1.3) / 1.5, 0, 1); c.strokeStyle = '#7a0a12'; c.lineWidth = 2; c.lineCap = 'round';
+      for (k = 0; k < 3; k++) { c.beginPath(); c.moveTo(chx + 1 - k * 3.2, chy + 3 - k); c.lineTo(chx + 1.5 - k * 3.4, chy + 3 - k + (16 - k * 3) * gr); c.stroke(); }
+      c.strokeStyle = '#5a0a10'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(tipx - 2, tipy); c.lineTo(tipx - 2.4, tipy + 9 * gr); c.stroke(); // blood running along the branch tip
+      for (k = 0; k < 4; k++) {
+        var ph = (T * 1.4 + k * 0.27) % 1, dx = k < 2 ? chx + 1 + k * 0.5 : tipx - 1 + (k - 2) * 2, dy0 = k < 2 ? hy + 14 : tipy + 3, dyy = dy0 + ph * ph * (47 - dy0 + (k < 2 ? 0 : 20)), sw = 1 + ph * 0.3;
+        c.globalAlpha = (1 - ph * 0.4) * fade; c.fillStyle = '#9a0f18'; c.beginPath(); c.moveTo(dx, dyy - 2.4 * sw); c.quadraticCurveTo(dx + 1.5, dyy, dx, dyy + 1.5); c.quadraticCurveTo(dx - 1.5, dyy, dx, dyy - 2.4 * sw); c.fill(); c.fillStyle = 'rgba(255,210,210,.7)'; c.fillRect(dx - 0.7, dyy - 0.8, 0.7, 0.9);
+        if (ph < 0.12 && dy0 + ph * 3 < 47) { c.fillStyle = '#9a0f18'; c.beginPath(); c.ellipse(dx, dy0 + 0.5, 1.4 * (1 - ph * 6), 1.8, 0, 0, TAU); c.fill(); } // the swelling bead before it falls
+      }
       c.globalAlpha = fade;
     }
+    // speed lines bursting from the wound
+    if (T > 1.04 && T < 1.6) { var sl = 1 - (T - 1.04) / 0.56; for (k = 0; k < 30; k++) { var sa = k * TAU / 30 + Math.sin(k * 7.3) * 0.08, r0 = 14 + (k % 3) * 5, r1 = r0 + 70 + (k % 5) * 22; c.globalAlpha = sl * fade * 0.9; c.fillStyle = k % 2 ? '#fff' : '#d4101f'; c.beginPath(); c.moveTo(chx + Math.cos(sa) * r0, chy + Math.sin(sa) * r0); c.lineTo(chx + Math.cos(sa - 0.035) * r1, chy + Math.sin(sa - 0.035) * r1); c.lineTo(chx + Math.cos(sa + 0.035) * r1, chy + Math.sin(sa + 0.035) * r1); c.closePath(); c.fill(); } c.globalAlpha = fade; }
     c.restore();
-    if (T > 1.04 && T < 1.22) { c.save(); c.globalAlpha = (1 - (T - 1.04) / 0.18) * 0.85; c.fillStyle = '#fff'; c.fillRect(0, 0, W, H); c.restore(); } // the white flash of the blow
+    // the white flash of the blow, then a negative "impact frame"
+    if (T > 1.04 && T < 1.22) { c.save(); c.globalAlpha = (1 - (T - 1.04) / 0.18) * 0.85; c.fillStyle = '#fff'; c.fillRect(0, 0, W, H); c.restore(); }
+    if (T > 1.045 && T < 1.115) { c.save(); c.globalCompositeOperation = 'difference'; c.fillStyle = '#fff'; c.fillRect(0, 0, W, H); c.restore(); }
+    // letterbox bars and a thin blood-red frame
+    c.save(); c.globalAlpha = fade; c.fillStyle = '#000'; c.fillRect(0, 0, W, H * 0.08); c.fillRect(0, H * 0.92, W, H * 0.08); c.strokeStyle = 'rgba(160,12,24,.7)'; c.lineWidth = 2; c.strokeRect(6, 6, W - 12, H - 12); c.restore();
+    // the title: "Don't F### with trees", slammed in, in dripping red lettering
+    if (T > 1.7) {
+      var ta = T - 1.7, pop = 1 + (ta < 0.25 ? (1 - ta / 0.25) * 0.6 : 0), al2 = clamp(ta / 0.2, 0, 1), fs = Math.max(16, Math.min(W / 17, 40)) * pop, txt = "Don't F### with trees", ty = H * 0.17;
+      c.save(); c.globalAlpha = al2; c.translate(W / 2 + (ta < 0.3 ? (R() - 0.5) * 6 : 0), ty); c.rotate(-0.025); c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = 'italic 900 ' + Math.round(fs) + 'px Georgia, "Times New Roman", serif';
+      c.lineJoin = 'round'; c.lineWidth = fs * 0.2; c.strokeStyle = '#05020a'; c.strokeText(txt, 3, 4); c.lineWidth = fs * 0.12; c.strokeStyle = '#f4ecec'; c.strokeText(txt, 0, 0);
+      var tg = c.createLinearGradient(0, -fs / 2, 0, fs / 2); tg.addColorStop(0, '#ff3a48'); tg.addColorStop(1, '#8a0612'); c.fillStyle = tg; c.fillText(txt, 0, 0);
+      var tw = c.measureText(txt).width; c.fillStyle = '#b00e1c'; // drips run down from the letters
+      for (k = 0; k < 9; k++) { var hx2 = ((Math.sin(k * 51.3) * 43758.5453) % 1 + 1) % 1, dxl = -tw / 2 + tw * (0.06 + 0.88 * (k + hx2 * 0.5) / 9), len = fs * (0.2 + 0.9 * hx2) * clamp(ta / 1.4, 0, 1); c.fillRect(dxl - fs * 0.03, fs * 0.28, fs * 0.06, len); c.beginPath(); c.arc(dxl, fs * 0.28 + len, fs * 0.055, 0, TAU); c.fill(); }
+      c.restore();
+    }
     c.restore(); return true;
   };
 

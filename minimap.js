@@ -173,11 +173,7 @@
     }
     if (CC.Eagle && CC.Eagle.drawMinimap) CC.Eagle.drawMinimap(ctx, sx, sy, sc); // the eagle: its sight circle and a small bird
     if (CC.QuestNav && CC.QuestNav.minimap) CC.QuestNav.minimap(ctx, cx, cy, inner, sc, p, pulse); // the next quest step
-    // the radar: green rings pulse out from the hero and a faint sweep turns round, so the hero is easy to find
-    var rf, rr;
-    for (rf = 0; rf < 2; rf++) { var ph = ((now + rf * 1.3) % 2.6) / 2.6; rr = 4 + ph * (inner - 6); ctx.strokeStyle = 'rgba(90,255,140,' + (0.55 * (1 - ph)) + ')'; ctx.lineWidth = 1.6 * (1 - ph) + 0.4; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, PI2); ctx.stroke(); }
-    var sw = now * 2.2; for (i = 0; i < 16; i++) { ctx.fillStyle = 'rgba(90,255,140,' + (0.13 * (1 - i / 16)) + ')'; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, inner, sw - i * 0.06 - 0.06, sw - i * 0.06); ctx.closePath(); ctx.fill(); }
-    ctx.strokeStyle = 'rgba(150,255,185,0.35)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(sw) * inner, cy + Math.sin(sw) * inner); ctx.stroke();
+    // the hero: a green arrow in a soft green glow (no radar)
     var hg = ctx.createRadialGradient(cx, cy, 0, cx, cy, 10); hg.addColorStop(0, 'rgba(110,255,160,' + (0.5 + 0.25 * pulse) + ')'); hg.addColorStop(1, 'rgba(110,255,160,0)'); ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(cx, cy, 10, 0, PI2); ctx.fill(); // the hero: a green arrow in a green glow
     ctx.save(); ctx.translate(cx, cy); ctx.rotate(ang);
     ctx.fillStyle = '#58ff8a'; ctx.strokeStyle = '#04210f'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(5.5, 0); ctx.lineTo(-3.6, 3.6); ctx.lineTo(-1.6, 0); ctx.lineTo(-3.6, -3.6); ctx.closePath(); ctx.fill(); ctx.stroke();

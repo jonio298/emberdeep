@@ -549,11 +549,14 @@
       c.restore();
     } else tx(c, 'Map not available yet', x + w / 2, y + h / 2, 14, COL.dim, 'center');
     tx(c, 'Floor ' + s.floor, x + 8, y + 10, 12, COL.accent);
-    if (hit && s.testMode && CC.TestMode) { // test mode: click anywhere on the map to teleport, or open the whole world
-      hit(x, y + 44, w, h - 44, function (px, py) { CC.TestMode.teleportFromMap(px - x, py - y, w, h); });
-      tx(c, 'TEST: tap the map to teleport', x + w / 2, y + h - 12, 11, '#d9a8ff', 'center');
+    var QN = CC.QuestNav, wpMode = !!(QN && QN.testWaypointMode && QN.testWaypointMode());
+    if (hit && s.testMode && CC.TestMode) { // test mode: click anywhere on the map to teleport (or, with the toggle on, to set a waypoint), or open the whole world
+      if (!wpMode) hit(x, y + 44, w, h - 44, function (px, py) { CC.TestMode.teleportFromMap(px - x, py - y, w, h); });
+      if (!wpMode) tx(c, 'TEST: tap the map to teleport', x + w / 2, y + h - 12, 11, '#d9a8ff', 'center');
       button(c, hit, x + w - 112, y + 4, 104, 22, 'World map', true, function () { close(); CC.TestMode.openWorld(); }, '#6a2a7a');
+      if (QN) button(c, hit, x + w - 232, y + 4, 112, 22, wpMode ? 'Waypoint: ON' : 'Waypoint: off', true, function () { QN.toggleTestWaypoint(); }, wpMode ? '#2a7a4a' : '#4a4a5a');
     }
+    if (QN && QN.mapOverlay && D && D.w) QN.mapOverlay(c, x, y, w, h, hit); // the blip, quest markers with their names, and your waypoint (registered last so its taps win)
   }
 
   // SETTINGS tab: options remembered in this browser (see settings.js)
@@ -654,7 +657,7 @@
       if (cur === 'skills') drawSkills(c, hit, ax, ay, aw, ah, p);
       else if (cur === 'inv') drawInv(c, hit, ax, ay, aw, ah, p);
       else if (cur === 'map') drawMap(c, ax, ay, aw, ah, hit);
-      else if (cur === 'quests' && CC.EggQuest) CC.EggQuest.drawJournal(c,ax,ay,aw,ah);
+      else if (cur === 'quests' && CC.EggQuest) { if (CC.QuestNav && CC.QuestNav.QuestLog) CC.QuestNav.QuestLog.draw(c, ax, ay, aw, ah, hit); else CC.EggQuest.drawJournal(c, ax, ay, aw, ah); }
       else if (cur === 'stats') drawStats(c, ax, ay, aw, ah, p, hit);
       else if (cur === 'party') drawParty(c, hit, ax, ay, aw, ah);
       else if (cur === 'settings') drawSettings(c, hit, ax, ay, aw, ah);
