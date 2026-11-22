@@ -364,10 +364,12 @@
     var viaEnemies = CC.Enemies && typeof CC.Enemies.damage === 'function';
     if (viaEnemies) { try { CC.Enemies.damage(e, dmg, type); } catch (err) { e.hp -= dmg; } }
     else e.hp -= dmg;
-    var necroCinema = crit && p && p.classId === 'necromancer' && opts.basicAttack && !opts.minion && !opts.splash && !killShot && CC.state.mode === 'dungeon' && CC.CriticalScene && CC.CriticalScene.enabled && CC.CriticalScene.enabled() && !(opts.attackGroup && opts.attackGroup.cinematicStarted) && !(p.pw && p.pw.rapid > 0);
+    // Only an actual post-damage death (not a skeleton collapse) earns hit-stop.
+    var lethalCrit = !!(crit && !alive(e) && !e.collapsed);
+    var necroCinema = crit && p && p.classId === 'necromancer' && opts.basicAttack && !opts.minion && !opts.splash && !killShot && CC.Settings && CC.Settings.get('critMode') === 'all' && CC.state.mode === 'dungeon' && CC.CriticalScene && CC.CriticalScene.enabled && CC.CriticalScene.enabled() && !(opts.attackGroup && opts.attackGroup.cinematicStarted) && !(p.pw && p.pw.rapid > 0);
     if (!necroCinema) fxText(e.x, e.y - (e.r || 8) - 4, crit ? dmg + '!' : String(dmg), crit ? '#f04c57' : back ? '#7de0b8' : '#fff', crit ? 16 : 10); // a necromancer crit shows its damage as three counters in the cinematic instead
     if (CC.Audio && !(opts.noCrit && !opts.basicAttack) && !opts.minion && type !== 'poison') CC.Audio.event('hit', { x: e.x, y: e.y, crit: crit, skip: !!necroCinema, plasma: !!(opts.basicAttack && p && (p.classId === 'wizard' || p.classId === 'necromancer') && !crit && !opts.minion), slash: !!(opts.basicAttack && p && (p.classId === 'swordsman' || p.classId === 'thief') && !e.ghost) });
-    fxBurst(e.x, e.y, crit ? '#ffd24a' : '#ffffff', crit ? 14 : 4, crit ? 110 : 60);
+    fxBurst(e.x, e.y, crit ? '#fff3d0' : '#ffffff', crit ? 18 : 4, crit ? 125 : 60);
     if (p && !opts.minion && (type === 'slash' || type === 'melee' || type === 'physical') &&
         Math.hypot(p.x - e.x, p.y - e.y) < 72 && !(e.ghost)) {
       // Blood on armor and blades is refreshed by close-range hits, fading in five seconds.
@@ -383,24 +385,27 @@
       CC.WoundArt.impact(e,opts.angle||0,type);
     if (type !== 'poison' && type !== 'fire') {
       e._hitFlash = crit ? 0.16 : 0.09;
-      fxBlood(e.x, e.y, crit ? 10 : 4, p ? e.x - p.x : 0, p ? e.y - p.y : 0);
+      fxBlood(e.x, e.y, crit ? 15 : 4, p ? e.x - p.x : 0, p ? e.y - p.y : 0);
     }
     if (p && p.pw && p.pw.explode > 0 && (opts.basicAttack || opts.pw) && !opts.splash && !opts.minion)
       explodeAt(e, dmg); // exploding power-up: every basic hit bursts into splash damage
-    if (crit && opts.basicAttack && !opts.minion && !opts.splash && !(p && p.pw && p.pw.rapid > 0)) {
+    if (crit && !opts.minion && !opts.splash && !(p && p.pw && p.pw.rapid > 0) &&
+        (lethalCrit || (opts.basicAttack && CC.Settings && CC.Settings.get('critMode') === 'all'))) {
       var attackGroup = opts.attackGroup;
-      var participants = criticalGroup(p,e,dmg,type,opts);
+      var participants = opts.basicAttack ? criticalGroup(p,e,dmg,type,opts) : [e];
       if (CC.CriticalScene) {
         if (attackGroup && attackGroup.cinematicStarted && CC.CriticalScene.addTargets) {
           CC.CriticalScene.addTargets(participants);
-          if (killShot && CC.CriticalScene.finish && CC.CriticalScene.finish(e)) e._finisher = true;
+          if (lethalCrit && CC.CriticalScene.mode && CC.CriticalScene.mode()==='all' &&
+              CC.CriticalScene.finish && CC.CriticalScene.finish(e)) e._finisher = true;
         } else {
           var cinematicStarted = CC.CriticalScene.trigger({ kind: opts.attackKind === 'projectile' ? 'projectile' : 'slash',
             heroClass: p.classId, x: e.x, y: e.y, r: e.r || 9, angle: opts.angle || 0,
             color: opts.color || '#e5c5b3', damage: dmg, sourceX: p.x, sourceY: p.y,
             targets:participants, radius:critRadius(p.classId),
-            finisher: killShot ? e.id : null });
-          if (cinematicStarted && killShot) e._finisher = true;
+            finisher: lethalCrit ? e.id : null, elite: !!e.elite, boss: !!e.boss });
+          if (cinematicStarted && lethalCrit && CC.CriticalScene.mode &&
+              CC.CriticalScene.mode()==='all') e._finisher = true;
           if (cinematicStarted && attackGroup) attackGroup.cinematicStarted = true;
         }
       }
@@ -408,7 +413,7 @@
     if (crit) {
       fxFlash('#ffe9a0', 0.08);
       addFx({ kind: 'ring', x: e.x, y: e.y, r: 18, t: 0.22, max: 0.22, col: '#ffd24a' });
-      fxShake(2); fxStop(0.05);
+      fxShake(2); // Surviving crits keep blood, burst, damage pop; no added hit-stop.
     }
     if (back && !crit) fxText(e.x, e.y - (e.r || 8) - 14, 'Backstab', '#7de0b8', 9);
     if (p && p.flags.venom && !opts.minion && type !== 'poison' && type !== 'fire' && alive(e)) ignite(e, 3, p.stats.dmg * 0.4, '#7dff5a', 'poison');
@@ -1378,6 +1383,11 @@
     c.restore();
   }
 
+  // Repaint combat art after opaque pond fog, without duplicate actors or logic.
+  function drawPondCombat(c,cam){
+    for(var i=0;i<projs.length;i++)drawProj(c,projs[i],cam);
+    for(var j=0;j<fxs.length;j++)if(fxs[j].kind==='arc'||fxs[j].kind==='beam')drawFx(c,fxs[j],cam);
+  }
   function draw(c, cam) {
     var p = hero();
     if (!p) return;
@@ -1419,7 +1429,7 @@
 
   CC.Classes = {
     DEFS: DEFS, PERKS: PERKS, minions: minions, projectiles: projs,
-    create: create, update: update, draw: draw, drawPlayer: drawPlayer, drawHero: drawHero,
+    create: create, update: update, draw: draw, drawPondCombat: drawPondCombat, drawPlayer: drawPlayer, drawHero: drawHero,
     drawCriticalHero: drawCriticalHero, critRadius: critRadius,
     gainXp: gainXp, drainTick: drainTick, xpToNext: xpToNext, damage: damage, heal: heal, damageMinion: damageMinion,
     applyItemStats: applyItemStats, choosePerk: choosePerk, hitEnemy: hitEnemy, status: status,
