@@ -113,8 +113,8 @@
         c.fillStyle = css(pc); c.beginPath(); c.arc(px, py, 7, 0.3, TAU - 0.3); c.lineTo(px, py); c.fill();
         if (hv < 0.11) { var fc = mix([250, 150, 190], [40, 20, 28], clamp(h * 1.5, 0, 1)); c.fillStyle = css(fc); for (i = 0; i < 5; i++) { var fa = i / 5 * TAU; c.beginPath(); c.ellipse(px + Math.cos(fa) * 2.4, py - 2 + Math.sin(fa) * 1.6, 2.2, 1.4, fa, 0, TAU); c.fill(); } c.fillStyle = h < 0.7 ? '#ffe27a' : '#802020'; c.fillRect(px - 1, py - 3, 2, 2); }
       }
-      if (h > 0.18 && hash(tx * 3 + 8, ty * 5 + 1) < 0.18 + 0.5 * h) { // the water begins to bubble, harder as you near the island
-        for (i = 0; i < 1 + Math.floor(h * 3); i++) { var bph = (t * (0.5 + h) + hv * 9 + i * 0.37) % 1, bxx = sx + 5 + ((hv * (i + 3) * 811) % 1) * 22, byy = sy + 24 - bph * 20;
+      if (h > 0.18 && hash(tx * 3 + 8, ty * 5 + 1) < 0.12 + 0.30 * h) { // the water begins to bubble, harder as you near the island
+        for (i = 0; i < 1 + Math.floor(h * 2); i++) { var bph = (t * (0.5 + h) + hv * 9 + i * 0.37) % 1, bxx = sx + 5 + ((hv * (i + 3) * 811) % 1) * 22, byy = sy + 24 - bph * 20;
           if (bph < 0.85) { c.strokeStyle = 'rgba(150,200,170,' + (0.5 - 0.3 * bph) + ')'; c.lineWidth = 1; c.beginPath(); c.arc(bxx, byy, 1.4 + i * 0.7 + bph * 1.5, 0, TAU); c.stroke(); }
           else { c.strokeStyle = 'rgba(150,200,170,' + (1 - bph) * 3 + ')'; c.beginPath(); c.ellipse(bxx, byy, 3 + (bph - 0.85) * 40, 1.5 + (bph - 0.85) * 18, 0, 0, TAU); c.stroke(); } } }
       return true;
@@ -262,20 +262,47 @@
     var lady = pd.lady && !pd.lady.hidden ? pd.lady : null;
     if (h <= 0.005 && pd.stage !== 'turn') { if (lady) HP.drawWoman(c, lady.x - cam.x, lady.y - cam.y, t, lady); return; }
     c.save();
-    var dk = 0.74 * Math.pow(h, 1.1); // it gets a little darker with every step, and is properly dark by the island
+    var dk = 0.57 * Math.pow(h, 1.1); // it gets a little darker with every step, and is properly dark by the island
     c.fillStyle = 'rgba(3,3,8,' + dk + ')'; c.fillRect(0, 0, cam.w, cam.h);
-    if (p) { var hx = p.x - cam.x, hy = p.y - cam.y, g = c.createRadialGradient(hx, hy, 90, hx, hy, 90 + 300 * (1 - 0.4 * h)); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,' + (0.62 * h) + ')'); c.fillStyle = g; c.fillRect(0, 0, cam.w, cam.h); }
-    // fog: low, dark banks drifting across the whole pond (a pale grey haze at first, a black-green murk at the end)
-    var fc = mix([138, 150, 152], [14, 22, 20], clamp(Math.pow(h, 0.65), 0, 1)), fcs = (fc[0] | 0) + ',' + (fc[1] | 0) + ',' + (fc[2] | 0), fa = clamp(h * 1.2, 0, 1) * (0.1 + 0.3 * h), cell = 150;
-    for (var gy = Math.floor(cam.y / cell) - 1; gy <= Math.ceil((cam.y + cam.h) / cell); gy++) for (var gx = Math.floor(cam.x / cell) - 1; gx <= Math.ceil((cam.x + cam.w) / cell); gx++) {
-      var hs = hash(gx * 7 + 3, gy * 5 + 9); if (hs > 0.6) continue;
-      var fx = gx * cell + hs * cell + Math.sin(t * 0.12 + hs * 30) * 46, fy = gy * cell + hash(gx, gy) * cell * 0.9 + Math.cos(t * 0.1 + hs * 20) * 30, fr = 100 + hs * 110;
-      var ddx = fx / T - pd.cx, ddy = (fy / T - pd.cy) * (pd.R / pd.ry); if (Math.hypot(ddx, ddy) > pd.R + 10) continue;
-      var sx = fx - cam.x, sy = fy - cam.y, gr = c.createRadialGradient(sx, sy, 0, sx, sy, fr); gr.addColorStop(0, 'rgba(' + fcs + ',' + fa + ')'); gr.addColorStop(1, 'rgba(' + fcs + ',0)'); c.fillStyle = gr; c.fillRect(sx - fr, sy - fr, fr * 2, fr * 2);
+    if (p) { var hx = p.x - cam.x, hy = p.y - cam.y, g = c.createRadialGradient(hx, hy, 90, hx, hy, 90 + 300 * (1 - 0.4 * h)); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,' + (0.42 * h) + ')'); c.fillStyle = g; c.fillRect(0, 0, cam.w, cam.h); }
+    // Broad opaque banks rather than dozens of per-tile gradients. The slow wind and
+    // shallow animated cloud ripples keep it alive without costly alpha/shadow layers.
+    // The hero is restored above this pass in drawHeroFocus, not swallowed by it.
+    var fc = mix([154, 165, 169], [65, 85, 83], clamp(Math.pow(h, 0.75), 0, 1));
+    var fcs = (fc[0] | 0) + ',' + (fc[1] | 0) + ',' + (fc[2] | 0);
+    var fa = clamp(h * 1.4, 0, 1) * (0.24 + 0.42 * h), cell = 260;
+    for (var gy = Math.floor((cam.y - 240) / cell); gy <= Math.ceil((cam.y + cam.h + 240) / cell); gy++) {
+      for (var gx = Math.floor((cam.x - 240) / cell); gx <= Math.ceil((cam.x + cam.w + 240) / cell); gx++) {
+        var hs = hash(gx * 7 + 3, gy * 5 + 9);
+        if (hs > 0.82) continue;
+        var fx = gx * cell + hs * cell + Math.sin(t * 0.19 + hs * 30) * 65;
+        var fy = gy * cell + hash(gx, gy) * cell * 0.85 + Math.cos(t * 0.13 + hs * 20) * 38;
+        var ddx = fx / T - pd.cx, ddy = (fy / T - pd.cy) * (pd.R / pd.ry);
+        if (ddx * ddx + ddy * ddy > (pd.R + 13) * (pd.R + 13)) continue;
+        var sx = fx - cam.x, sy = fy - cam.y, fr = 155 + hs * 100;
+        if (sx + fr < 0 || sx - fr > cam.w || sy + fr < 0 || sy - fr > cam.h) continue;
+        var sway = 0.85 + 0.15 * Math.sin(t * 0.6 + hs * 16);
+        var gr = c.createRadialGradient(sx, sy, 0, sx, sy, fr);
+        gr.addColorStop(0, 'rgba(' + fcs + ',' + (fa * sway) + ')');
+        gr.addColorStop(0.56, 'rgba(' + fcs + ',' + (fa * 0.78) + ')');
+        gr.addColorStop(1, 'rgba(' + fcs + ',0)');
+        c.fillStyle = gr; c.fillRect(sx - fr, sy - fr, fr * 2, fr * 2);
+        if (h > 0.25) {
+          c.strokeStyle = 'rgba(184,215,205,' + (0.10 * h) + ')';
+          c.lineWidth = 1.25; c.beginPath();
+          for (var ri = 0; ri < 2; ri++) {
+            var rw = 44 + ri * 27 + Math.sin(t * 0.8 + hs * 23 + ri) * 8;
+            c.ellipse(sx + Math.sin(t * 0.36 + hs * 12) * 18, sy + 15 + ri * 13, rw, 9 + ri * 3, -0.07, Math.PI * 0.12, Math.PI * 0.88);
+          }
+          c.stroke();
+        }
+      }
     }
-    if (p) for (i = 0; i < 6; i++) { // wisps coiling around the hero
-      var a3 = t * (0.4 + i * 0.1) + i * 1.9, r3 = 60 + (i % 3) * 36 + Math.sin(t + i) * 14, wx = p.x - cam.x + Math.cos(a3) * r3, wy = p.y - cam.y + Math.sin(a3) * r3 * 0.6, wr = 60 + (i % 3) * 18;
-      var gw = c.createRadialGradient(wx, wy, 0, wx, wy, wr); gw.addColorStop(0, 'rgba(' + fcs + ',' + fa * 0.9 + ')'); gw.addColorStop(1, 'rgba(' + fcs + ',0)'); c.fillStyle = gw; c.fillRect(wx - wr, wy - wr, wr * 2, wr * 2);
+    if (p) for (i = 0; i < 2; i++) { // just two wisps, not six extra gradients every frame
+      var a3 = t * (0.38 + i * 0.1) + i * 2.7, r3 = 90 + i * 37, wx = p.x - cam.x + Math.cos(a3) * r3, wy = p.y - cam.y + Math.sin(a3) * r3 * 0.6, wr = 54 + i * 18;
+      var gw = c.createRadialGradient(wx, wy, 0, wx, wy, wr);
+      gw.addColorStop(0, 'rgba(' + fcs + ',' + (fa * 0.70) + ')'); gw.addColorStop(1, 'rgba(' + fcs + ',0)');
+      c.fillStyle = gw; c.fillRect(wx - wr, wy - wr, wr * 2, wr * 2);
     }
     // red eyes in the dark blades of grass (just a few), and in the trees (lots)
     var look = p ? 1 : 0, dens = clamp((h - 0.4) / 0.6, 0, 1) * 0.016;
@@ -307,7 +334,7 @@
         var it = pd.islandTrees[i], fbx = it.tx * T - cam.x + T / 2, fby = it.ty * T - cam.y + T - 2, fh2 = 70 + hash(it.tx, it.ty) * 26;
         if (fbx < -120 || fbx > cam.w + 120 || fby < -60 || fby > cam.h + 180) continue;
         var cy2 = fby - fh2 + 6, glow = 60 + fire * 120, gl = c.createRadialGradient(fbx, cy2, 0, fbx, cy2, glow); gl.addColorStop(0, 'rgba(255,130,40,' + 0.42 * fire + ')'); gl.addColorStop(1, 'rgba(255,90,20,0)'); c.fillStyle = gl; c.fillRect(fbx - glow, cy2 - glow, glow * 2, glow * 2);
-        var tongues = 2 + Math.floor(fire * 9);
+        var tongues = 2 + Math.floor(fire * 5);
         for (var f2 = 0; f2 < tongues; f2++) {
           var fh = hash(it.tx * 5 + f2, it.ty * 3 + f2), fx2 = fbx + (fh - 0.5) * 30 + Math.sin(t * 2 + f2) * 2, fy2 = cy2 + 6 + (fh * 40 % 14) - (f2 % 3) * 2, fhgt = (10 + fire * 30) * (0.6 + fh * 0.7) * (0.85 + 0.15 * Math.sin(t * 11 + f2 * 3)), fw = 3 + fire * 4;
           c.fillStyle = 'rgba(255,70,12,' + (0.5 + 0.35 * fire) + ')'; flame(c, fx2, fy2, fw, fhgt, f2, t);
@@ -330,6 +357,21 @@
     if (lady) HP.drawWoman(c, lady.x - cam.x, lady.y - cam.y, t, lady);
     if (pd.stage === 'turn') { var u = clamp(pd.turnT / 3.2, 0, 1), pulse = 0.12 + 0.25 * Math.abs(Math.sin(t * 6)) * u; c.fillStyle = 'rgba(140,0,12,' + pulse + ')'; c.fillRect(0, 0, cam.w, cam.h); }
     c.restore();
+  };
+
+  // The pond's light pass is after world characters: repaint the hero on top of
+  // the denser fog so attacks, feet and class colours stay readable on phones.
+  HP.drawHeroFocus = function (c, cam) {
+    var pd = pond(), p = hero();
+    if (!pd || !p || pd.h < 0.15 || !CC.Classes || !CC.Classes.drawPlayer) return;
+    var dx = p.x / T - pd.cx, dy = (p.y / T - pd.cy) * (pd.R / pd.ry);
+    if (dx * dx + dy * dy > (pd.R + 12) * (pd.R + 12)) return;
+    var sx = p.x - cam.x, sy = p.y - cam.y;
+    c.save();
+    c.strokeStyle = 'rgba(185,245,226,' + (0.35 + 0.28 * pd.h) + ')';
+    c.lineWidth = 1.6; c.beginPath(); c.ellipse(sx, sy + 10, 13, 4.5, 0, 0, TAU); c.stroke();
+    c.restore();
+    CC.Classes.drawPlayer(c, cam);
   };
 
   /* ---------- the woman ---------- */
@@ -371,8 +413,10 @@
   var DRAWB = {};
   if (E && E.TYPES && !E.TYPES.merehorror) {
     E.TYPES.merehorror = { name: 'The Mere Horror', hp: 330, spd: 50, dmg: 17, r: 21, xp: 320, color: '#c9ced0', w: 0, telRad: 76, blood: '#220812' };
+    E.TYPES.pondterror = { name: 'Teleporting Terror', hp: 38, spd: 64, dmg: 9, r: 10, xp: 20, color: '#9e8bbd', w: 0, ghost: true, blood: '#49345b' };
     var oThink = E._think;
     E._think = function (e, dt, p, d, ang, f) {
+      if (e.type === 'pondterror') { e.cd -= dt; e.dangerous = false; terrorBrain.call(this, e, dt, p, d, ang, f); return; }
       if (e.type !== 'merehorror') return oThink.apply(this, arguments);
       e.cd -= dt; e.dangerous = false; brain.call(this, e, dt, p, d, ang, f);
     };
@@ -395,14 +439,79 @@
     return dmg;
   }
   function shootB(e, ang, spd, dmg, col, life, r) { E._shoot(e, ang, spd, dmg, col, 'orb', life); var q = E.projectiles[E.projectiles.length - 1]; if (q && r) q.r = r; }
+  // Summon onto the playable island only. Never put enemies in the water,
+  // inside trees, or on top of a hero. Bound the total wave size for mobile.
+  var POND_MINION_CAP = 8;
+  function islandPoint(pd, p, minDist) {
+    var D = CC.Dungeon, maxR = Math.max(90, (pd.ri - 2) * T);
+    for (var attempt = 0; attempt < 24; attempt++) {
+      var a = R() * TAU, r = 66 + R() * (maxR - 66);
+      var x = pd.x + Math.cos(a) * r, y = pd.y + Math.sin(a) * r;
+      if (p && Math.hypot(x - p.x, y - p.y) < minDist) continue;
+      if (D && D.isSolid && (D.isSolid(x, y) || D.isSolid(x - 14, y) || D.isSolid(x + 14, y) || D.isSolid(x, y - 14) || D.isSolid(x, y + 14))) continue;
+      return { x: x, y: y };
+    }
+    return null;
+  }
+  function activePondMinions() {
+    var n = 0;
+    for (var i = 0; i < E.list.length; i++) if (E.list[i].pondSummon && !E.list[i].dead) n++;
+    return n;
+  }
+  function summonPond(e, p) {
+    var pd = pond(); if (!pd || pd.stage !== 'fight') return;
+    var roster = ['bat', 'pondterror', 'ghost', 'skeleton'], available = Math.max(0, POND_MINION_CAP - activePondMinions());
+    var wave = e.summonWave || 0, count = Math.min(4, available), spawned = 0;
+    for (var k = 0; k < count; k++) {
+      var where = islandPoint(pd, p, 64);
+      if (!where) break;
+      var mob = E.spawn(roster[(wave + k) % roster.length], where.x, where.y, 2, { awake: true });
+      if (!mob) continue;
+      mob.pondSummon = true; mob.asleep = false; mob.cd = 0.7;
+      mob.dmg = Math.max(1, Math.round(mob.dmg * 0.8));
+      spawned++;
+      if (CC.fx && CC.fx.burst) CC.fx.burst(mob.x, mob.y, '#9ab0a8', 4, 45);
+    }
+    e.summonWave = (wave + 1) % roster.length;
+    e.summonCd = spawned ? 13 : 5;
+  }
+  function terrorBrain(e, dt, p, d, ang, f) {
+    e.blinkCd = (e.blinkCd === undefined ? 1.4 : e.blinkCd - dt);
+    if (e.state === 'telegraph') {
+      if ((e.t -= dt) <= 0) {
+        e.tele = null;
+        var pd = pond(), pos = pd && islandPoint(pd, p, 62);
+        if (pos) {
+          if (CC.fx && CC.fx.burst) CC.fx.burst(e.x, e.y, '#72558d', 5, 45);
+          e.x = pos.x; e.y = pos.y;
+          if (CC.fx && CC.fx.burst) CC.fx.burst(e.x, e.y, '#c1a5e6', 7, 60);
+        }
+        e.state = 'recover'; e.t = 0.5;
+      }
+      return;
+    }
+    if (e.state === 'recover') {
+      if ((e.t -= dt) <= 0) e.state = 'idle';
+      return;
+    }
+    if (e.blinkCd <= 0 && d < 350) {
+      e.state = 'telegraph'; e.t = 0.60; e.blinkCd = 4.1;
+      e.tele = { kind: 'circle', rad: 32, max: 0.60 };
+      return;
+    }
+    if (d > 25) mvB(e, Math.cos(ang) * e.spd * f * dt, Math.sin(ang) * e.spd * f * dt);
+    e.dangerous = d < e.r + (p.r || 10) + 3;
+  }
   function brain(e, dt, p, d, ang, f) {
     var low = e.hp < e.maxHp * 0.5, rage = e.hp < e.maxHp * 0.3, sp = e.spd * f * dt * (rage ? 1.45 : low ? 1.2 : 1), k;
     e.anim = e.anim || 0;
+    if (e.state !== 'rise') e.summonCd = (e.summonCd === undefined ? 13 : e.summonCd - dt);
     if (e.state === 'rise') { e.invuln = Math.max(e.invuln || 0, 0.1); if ((e.t -= dt) <= 0) { e.state = 'idle'; e.cd = 1.1; } return; }
     if (e.state === 'idle') {
       if (d > 62) mvB(e, Math.cos(ang) * sp, Math.sin(ang) * sp);
       if (!e.s1 && e.hp < e.maxHp * 0.66) { e.s1 = 1; this._tele(e, 'summon', 1.0, ang); e.tele = { kind: 'circle', rad: 120, max: 1.0 }; return; }
       if (!e.s2 && e.hp < e.maxHp * 0.33) { e.s2 = 1; this._tele(e, 'summon', 1.0, ang); e.tele = { kind: 'circle', rad: 120, max: 1.0 }; return; }
+      if (e.summonCd <= 0 && activePondMinions() < 5) { this._tele(e, 'summon', 1.0, ang); e.tele = { kind: 'circle', rad: 120, max: 1.0 }; e.summonCd = 13; return; }
       if (e.cd <= 0) {
         e.n = (e.n || 0) + 1; var pick = e.n % 5;
         if (d < 100 && pick !== 3) this._tele(e, 'rake', rage ? 0.55 : 0.75, ang);
@@ -432,9 +541,9 @@
           E.projectiles.push({ x: e.x, y: e.y - 14, vx: 0, vy: 0, r: 0, life: 0.5, ring: 150, color: '#ff2a2a', fx: true });
           if (CC.fx) { if (CC.fx.shake) CC.fx.shake(5); }
           if (d < 360 && e.los !== false && CC.Wounds && CC.Wounds.blind) CC.Wounds.blind(p, 1.5);
-        } else { // summon: the drowned dead claw out of the soil
+        } else { // bats, teleporting terrors, ghosts and bone warriors rise from the mist
           e.state = 'recover'; e.t = 1.0; fxText(e.x, e.y - e.r * 2.6, 'THE WATER GIVES UP ITS DEAD', '#bfe8dc', 11); if (CC.fx && CC.fx.shake) CC.fx.shake(6);
-          for (k = 0; k < 2; k++) { var w = E.spawn('mawworm', p.x + (k ? 60 : -60), p.y + (R() - 0.5) * 50, 1); if (w) { w.asleep = false; w.cd = 0.5; } }
+          summonPond(e, p);
         }
       }
     } else if (e.state === 'act') { e.dangerous = d < e.r + 40; if ((e.t -= dt) <= 0) { e.state = 'recover'; e.t = 0.7; } }
@@ -472,7 +581,7 @@
       if (tt >= 3.2) { // she is gone; something else stands where she stood
         pd.stage = 'fight'; if (pd.lady) { pd.lady.hidden = true; }
         if (CC.Audio) { CC.Audio.event('laugh'); CC.Audio.play('pondspawn', { vol: 1, gap: 0, vary: 0 }); } // the lady is gone and the Mere Horror rises
-        var b = E.spawn('merehorror', pd.x, pd.y, 2); if (b) { b.state = 'rise'; b.t = 1.4; b.miniBoss = true; b.asleep = false; b.cd = 1.5; pd.boss = b; }
+        var b = E.spawn('merehorror', pd.x, pd.y, 2); if (b) { b.maxHp = b.hp = Math.round(b.maxHp * 4); b.dmg = Math.max(1, Math.round(b.dmg * 0.7)); b.state = 'rise'; b.t = 1.4; b.miniBoss = true; b.asleep = false; b.cd = 1.5; pd.boss = b; }
         if (CC.Vfx && CC.Vfx.skyFlash) CC.Vfx.skyFlash('#ff3a3a', 0.3, 0.4);
         if (CC.fx) { if (CC.fx.shake) CC.fx.shake(14); if (CC.fx.burst) { CC.fx.burst(pd.x, pd.y, '#3a2a58', 40, 180); CC.fx.burst(pd.x, pd.y, '#9ad0c0', 24, 140); } fxText(pd.x, pd.y - 60, 'THE MERE HORROR RISES', '#ff6a6a', 15); }
         if (p && p.hp > 0) { var a = Math.atan2(p.y - pd.y, p.x - pd.x); if (CC.Dungeon && CC.Dungeon.moveWithCollision) CC.Dungeon.moveWithCollision(p, Math.cos(a) * 30, Math.sin(a) * 30); }
@@ -489,6 +598,20 @@
   };
 
   /* ---------- boss art ---------- */
+  DRAWB.pondterror = function (c, e, r, col, dark, t) {
+    var sway = Math.sin(t * 6 + (e.anim || 0)) * 2;
+    c.save(); c.globalAlpha *= e.state === 'telegraph' ? 0.6 + 0.3 * Math.sin(t * 17) : 0.9;
+    c.fillStyle = '#21152f'; c.beginPath(); c.moveTo(-r * 0.9, -r * 0.7);
+    c.lineTo(r * 0.9, -r * 0.7); c.lineTo(r * 1.25 + sway, r);
+    c.lineTo(0, r * 0.6); c.lineTo(-r * 1.25 + sway, r); c.closePath(); c.fill();
+    c.fillStyle = col; c.fillRect(-r * 0.65, -r * 1.25, r * 1.3, r * 0.9);
+    c.fillStyle = '#e8c4ff'; c.fillRect(-r * 0.48, -r * 0.98, 3, 3);
+    c.fillRect(r * 0.22, -r * 0.98, 3, 3);
+    c.strokeStyle = '#9073b5'; c.lineWidth = 1.5; c.beginPath();
+    c.moveTo(-r, -r * 0.25); c.lineTo(-r - 5 - sway, r * 0.6);
+    c.moveTo(r, -r * 0.25); c.lineTo(r + 5 + sway, r * 0.6); c.stroke();
+    c.restore();
+  };
   DRAWB.merehorror = function (c, e, r, col, dark, t) {
     var an = e.anim || 0, frac = clamp(e.hp / e.maxHp, 0, 1), dam = 1 - frac, tele = e.state === 'telegraph', rake = tele && e.atk === 'rake' || e.state === 'act', gaze = tele && e.atk === 'gaze', mis = e.missing || {}, k;
     var rise = e.state === 'rise' ? sm(1 - e.t / 1.4) : 1, ty = (1 - rise) * r * 2.2;
