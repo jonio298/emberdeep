@@ -30,11 +30,11 @@ test('Wizard critical basic orb pulses three times with controlled splash',()=>{
   const shot=CC.Classes._h.shoot(p,0,100,1,1,7,'bolt','arcane','#5bcaff');
   assert.equal(shot.preRolledCrit,true);
   shot.x=e.x;shot.y=e.y;
-  CC.Classes.update(.001,{noCombat:true});
+  CC.Classes.update(.001); // noCombat mode intentionally suppresses projectile logic
   assert.equal(hits.filter(h=>h.e===e).length,1,'first direct impact is immediate');
   assert.equal(hits.filter(h=>h.e===side).length,1,'splash begins with impact');
-  CC.Classes.update(.12,{noCombat:true});
-  CC.Classes.update(.12,{noCombat:true});
+  CC.Classes.update(.12);
+  CC.Classes.update(.12);
   assert.equal(hits.filter(h=>h.e===e).length,3,'orb has three damaging pulses');
   assert.equal(hits.filter(h=>h.e===side).length,3,'each pulse splashes nearby foes');
   assert.equal(hits.every(h=>Number.isFinite(h.d)&&h.d>0),true);
