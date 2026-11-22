@@ -573,21 +573,24 @@
     }
     row('Auto equip', 'Wear loot automatically when it is better than your gear.', S.get('autoEquip') ? 'ON  -  tap to turn off' : 'OFF  -  tap to turn on', S.get('autoEquip'), function () { S.toggle('autoEquip'); });
     row('Auto level', 'Spend skill points and pick level-up perks for you.', S.get('autoLevel') ? 'ON  -  tap to turn off' : 'OFF  -  tap to turn on', S.get('autoLevel'), function () { S.toggle('autoLevel'); });
-    // Whole row is tappable, with a visible checkbox instead of another ON/OFF button.
-    (function () {
-      var on = S.get('critAnimations') !== false, bx = x + w - 49, by = yy + 14;
-      rr(c, x + 6, yy, w - 12, 52, 8); c.fillStyle = 'rgba(255,255,255,0.05)'; c.fill();
-      c.lineWidth = 1.5; c.strokeStyle = COL.line; c.stroke();
-      tx(c, 'Crit animations', x + 18, yy + 16, 14, '#fff', 'left');
-      tx(c, 'Cinematic close-ups on critical hits.', x + 18, yy + 35, 11, COL.dim, 'left');
-      rr(c, bx, by, 23, 23, 5); c.fillStyle = on ? '#2b6243' : '#180f1b'; c.fill();
-      c.lineWidth = 2; c.strokeStyle = on ? COL.good : COL.line; c.stroke();
-      if (on) {
-        c.beginPath(); c.moveTo(bx + 5, by + 11); c.lineTo(bx + 10, by + 16); c.lineTo(bx + 19, by + 6);
-        c.strokeStyle = '#e8ffd5'; c.lineWidth = 3; c.lineJoin = 'round'; c.lineCap = 'round'; c.stroke();
+    // Killing blows get the freeze by default; long-form crits are optional.
+    (function(){
+      var selected=S.get('critMode')||'kills',labels=['KILLS ONLY','ALL HITS','OFF'],values=['kills','all','off'];
+      rr(c,x+6,yy,w-12,76,8);c.fillStyle='rgba(255,255,255,0.05)';c.fill();
+      c.lineWidth=1.5;c.strokeStyle=COL.line;c.stroke();
+      tx(c,'Crit cinematics',x+18,yy+15,14,'#fff','left');
+      tx(c,'Freeze-frame only on killing critical hits by default.',x+18,yy+31,10,COL.dim,'left');
+      var pad=15,gap=5,bw=(w-pad*2-gap*2)/3,by=yy+40;
+      for(var ci=0;ci<3;ci++){
+        (function(i){
+          var bx=x+pad+i*(bw+gap),on=selected===values[i];
+          rr(c,bx,by,bw,27,5);c.fillStyle=on?'#2a604f':'#1e1a2b';c.fill();
+          c.lineWidth=1.3;c.strokeStyle=on?COL.good:COL.line;c.stroke();
+          tx(c,labels[i],bx+bw/2,by+14,10,on?'#e7ffe9':COL.dim,'center');
+          hit(bx,by,bw,27,function(){S.set('critMode',values[i]);});
+        })(ci);
       }
-      hit(x + 6, yy, w - 12, 52, function () { S.toggle('critAnimations'); });
-      yy += 56;
+      yy+=80;
     })();
     var AU = CC.Audio; // sound and music (audio.js)
     if (AU) {
