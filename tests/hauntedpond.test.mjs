@@ -12,7 +12,10 @@ function scene() {
       e.atk = atk; e.state = 'telegraph'; e.t = duration; e.ang = angle;
       e.tele = { kind: 'circle', rad: 60, max: duration };
     },
-    _shoot() {}, _zone() {},
+    _shoot(e, angle, speed, damage, color, kind, life) {
+      this.projectiles.push({ x: e.x, y: e.y, vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed, dmg: damage, color, kind, life, hostile: true, r: 5 });
+    }, _zone() {},
     spawn(type, x, y) {
       const mob = { type, x, y, asleep: true, dead: false, cd: 0,
         state: 'idle', maxHp: 100, hp: 100, dmg: 20, spd: 55, anim: 0, r: 10 };
@@ -239,4 +242,36 @@ test('Boss post-fog rendering stays available and source drawing avoids duplicat
   const enemySource = readFileSync(new URL('../enemies.js', import.meta.url), 'utf8');
   assert.ok(shell.indexOf("call('HauntedPond', 'drawBossFocus'") > shell.indexOf("CC.Dungeon.drawLighting(ctx, dcam)"));
   assert.ok(enemySource.includes("e.type === 'merehorror' && CC.HauntedPond"), 'no doubled draw under fog');
+});
+
+test('Pond Lady announces bright blood orbs and then fires a locked spread', () => {
+  const { pd, player, enemies } = scene();
+  pd.stage = 'fight';
+  const boss = { type: 'merehorror', x: pd.x + 80, y: pd.y, spd: 0,
+    cd: 0, n: 5, state: 'idle', hp: 100, maxHp: 100,
+    dmg: 12, r: 20, anim: 0, summonCd: 10, mistCd: 10 };
+  enemies._think(boss, .1, player, 80, Math.PI, 1);
+  assert.equal(boss.atk, 'bloodOrbs');
+  assert.equal(boss.state, 'telegraph');
+  assert.ok(boss.projectileAim, 'target is locked during telegraph');
+  assert.equal(enemies.projectiles.length, 0);
+  enemies._think(boss, 1, player, 80, Math.PI, 1);
+  assert.equal(enemies.projectiles.length, 3);
+  assert.ok(enemies.projectiles.every(q => q.pondShot && q.hostile && q.color === '#ff78c7'));
+});
+
+test('Pond combat effects are redrawn above fog only during the encounter', () => {
+  const { CC, pd, player } = scene();
+  let redraws = 0;
+  CC.Classes.drawPondCombat = () => { redraws++; };
+  const c = { save() {}, restore() {}, fillRect() {}, beginPath() {}, arc() {},
+    fill() {}, stroke() {}, moveTo() {}, lineTo() {} };
+  CC.HauntedPond.drawCombatFocus(c, { x: 1900, y: 1900, w: 400, h: 400 });
+  assert.equal(redraws, 0);
+  pd.h = 1; pd.stage = 'fight';
+  CC.HauntedPond.drawCombatFocus(c, { x: 1900, y: 1900, w: 400, h: 400 });
+  assert.equal(redraws, 1);
+  player.x += 2000;
+  CC.HauntedPond.drawCombatFocus(c, { x: 1900, y: 1900, w: 400, h: 400 });
+  assert.equal(redraws, 1);
 });
