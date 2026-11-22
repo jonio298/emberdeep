@@ -1314,6 +1314,7 @@
       if (CC.Dungeon && CC.Dungeon.realm) CC.Dungeon.drawLighting(ctx, dcam); // open-air maps light the whole scene after the entities
       if (s.area === 'plains') {
         call('HauntedPond', 'drawBossFocus', ctx, dcam); // visible demon and its mist attack warnings above fog
+        call('HauntedPond', 'drawCombatFocus', ctx, dcam); // projectiles and slash arcs above opaque mist
         call('HauntedPond', 'drawHeroFocus', ctx, dcam); // player is always on top of pond fog
       }
       call('Vfx','draw',ctx,cam); // spell particles, nova rings, explosions and lightning
