@@ -21,14 +21,23 @@ function bootForest() {
     }
   };
   const window = { CC }; window.window = window;
-  runInNewContext(readFileSync(new URL('../forest.js', import.meta.url), 'utf8'), window, { filename: 'forest.js' });
+  let source = readFileSync(new URL('../forest.js', import.meta.url), 'utf8');
+  source = source
+    .replace("if (trails.length < 3) return null;", "if (trails.length < 3) { F._rejects.push('trails'); return null; }")
+    .replace("if (!trapShack) return null;", "if (!trapShack) { F._rejects.push('shack'); return null; }")
+    .replace("if(!side)return null;", "if(!side){ F._rejects.push('ascent'); return null; }")
+    .replace("if (!ok) return null;", "if (!ok) { F._rejects.push('reachability'); return null; }");
+  runInNewContext(source, window, { filename: 'forest.js' });
   return { CC, spawns };
 }
 
 test('Giant Forest always creates a roadside shack with a reachable trapped chest', () => {
   for (const seed of [101, 202, 303]) {
     const { CC, spawns } = bootForest();
-    const map = CC.Forest.generate(seed);
+    CC.Forest._rejects = [];
+    let map;
+    try { map = CC.Forest.generate(seed); }
+    catch (e) { throw new Error('Forest seed ' + seed + ' failed: ' + CC.Forest._rejects.join(', '), { cause: e }); }
     const traps = map.chests.filter(c => c.forestScarecrowTrap);
     assert.equal(traps.length, 1, 'exactly one shack trap per map');
     assert.equal(map.trapShack.w, 5);
