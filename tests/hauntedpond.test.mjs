@@ -23,7 +23,7 @@ function scene() {
   const player = { x: 2100, y: 2100, hp: 100, r: 10 };
   const pd = { x: 2100, y: 2100, cx: 65, cy: 65, R: 44, ry: 27, ri: 7,
     stage: 'calm', h: 0, fire: 0, turnT: 0, ghosts: [],
-    islandTrees: [], trees: [], lady: { hidden: false }, W: 150, dirx: 1 };
+    islandTrees: [], trees: [], lady: { x: 2100, y: 2106, hidden: false }, W: 150, dirx: 1 };
   const map = { pond: pd, kind: new Uint8Array(150 * 150), w: 150, chests: [], isSolid() { return false; } };
   let heroDraws = 0;
   const CC = {
@@ -130,7 +130,7 @@ test('Pond transformation includes timed cues and spawns only one boss', () => {
   CC.HauntedPond.interact();
   for (let i = 0; i < 5; i++) CC.HauntedPond.advanceDialogue();
   enemies.update(1.1);
-  assert.equal(pd.boss, null);
+  assert.ok(!pd.boss, 'no boss before the cinematic completes');
   enemies.update(1.8);
   assert.equal(pd.turnCue, 2);
   enemies.update(2.6);
