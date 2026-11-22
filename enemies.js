@@ -670,7 +670,7 @@
       if (fx) {
         if (fx.burst) { fx.burst(e.x, e.y, '#ffd24a', 36, 240); fx.burst(e.x, e.y, '#ffffff', 20, 120); }
         if (fx.text) fx.text(e.x, e.y - 40, e.name + ' DEFEATED', '#ffd24a', 15);
-        if (fx.hitStop) fx.hitStop(0.15);
+        // Non-critical boss deaths must not freeze the game; lethal crits own this effect.
       }
       var L = CC.Loot;
       if (!L || !L.roll) return;
