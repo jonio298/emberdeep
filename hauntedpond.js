@@ -525,13 +525,19 @@
   /* ---------- the fight ---------- */
   var DRAWB = {};
   if (E && E.TYPES && !E.TYPES.merehorror) {
-    E.TYPES.merehorror = { name: 'The Mere Horror', hp: 330, spd: 50, dmg: 17, r: 21, xp: 320, color: '#c9ced0', w: 0, telRad: 76, blood: '#220812' };
+    E.TYPES.merehorror = { name: 'The Mere Horror', hp: 330, spd: 50, dmg: 17, r: 24, xp: 320, color: '#281126', w: 0, telRad: 76, blood: '#330518' };
     E.TYPES.pondterror = { name: 'Teleporting Terror', hp: 38, spd: 64, dmg: 9, r: 10, xp: 20, color: '#9e8bbd', w: 0, ghost: true, blood: '#49345b' };
     var oThink = E._think;
     E._think = function (e, dt, p, d, ang, f) {
       if (e.type === 'pondterror') { e.cd -= dt; e.dangerous = false; terrorBrain.call(this, e, dt, p, d, ang, f); return; }
       if (e.type !== 'merehorror') return oThink.apply(this, arguments);
       e.cd -= dt; e.dangerous = false; brain.call(this, e, dt, p, d, ang, f);
+    };
+    // The demon cannot be hit at its old location once it dissolves into mist.
+    var originalDamage = E.damage;
+    E.damage = function (target, amount, type) {
+      if (target && target.type === 'merehorror' && target.state === 'mistHidden') return 0;
+      return originalDamage.apply(this, arguments);
     };
     var oKill = E._kill;
     E._kill = function (e) {
@@ -615,29 +621,165 @@
     if (d > 25) mvB(e, Math.cos(ang) * e.spd * f * dt, Math.sin(ang) * e.spd * f * dt);
     e.dangerous = d < e.r + (p.r || 10) + 3;
   }
+
+  // Mist attacks use world-locked warning geometry. They cannot retarget at
+  // the last moment: a player who dodges out of the warning is safe.
+  function lineDistance(px, py, x0, y0, x1, y1) {
+    var vx = x1 - x0, vy = y1 - y0, n = vx * vx + vy * vy;
+    var u = n ? clamp(((px - x0) * vx + (py - y0) * vy) / n, 0, 1) : 0;
+    return Math.hypot(px - x0 - u * vx, py - y0 - u * vy);
+  }
+  function clearIsland(pd, x, y) {
+    var D = CC.Dungeon, xx = (x - pd.x) / T, yy = (y - pd.y) / T;
+    if (xx * xx + yy * yy > (pd.ri - 1.1) * (pd.ri - 1.1)) return false;
+    return !D || !D.isSolid || (!D.isSolid(x, y) && !D.isSolid(x + 15, y) &&
+      !D.isSolid(x - 15, y) && !D.isSolid(x, y + 15) && !D.isSolid(x, y - 15));
+  }
+  function mistStrike(e, p, ang) {
+    var pd = pond(); if (!pd) return false;
+    var distance = Math.min(208, Math.max(100, Math.hypot(p.x - e.x, p.y - e.y) + 20));
+    var x = e.x, y = e.y, endX = x, endY = y;
+    for (var step = 16; step <= distance; step += 16) {
+      var tx = x + Math.cos(ang) * step, ty = y + Math.sin(ang) * step;
+      if (!clearIsland(pd, tx, ty)) break;
+      endX = tx; endY = ty;
+    }
+    if (Math.hypot(endX - x, endY - y) < 48) return false;
+    e.mistLine = { x0: x, y0: y, x1: endX, y1: endY, width: 32 };
+    E._tele(e, 'mistLunge', 0.92, ang);
+    e.tele = null; // the detailed lane is rendered above the heavy fog
+    return true;
+  }
+  function mistGrasp(e, p) {
+    e.mistCircle = { x: p.x, y: p.y, rad: 57 };
+    E._tele(e, 'mistGrasp', 1.10, Math.atan2(p.y - e.y, p.x - e.x));
+    e.tele = null;
+  }
+  function eyeVolley(e, p) {
+    var pd = pond(), eyes = [];
+    if (!pd) return;
+    var count = e.hp < e.maxHp * 0.5 ? 5 : 4;
+    for (var i = 0; i < count; i++) {
+      var a = (i / count) * TAU + (e.mistCycle || 0) * 0.37;
+      var x = p.x + Math.cos(a) * 105, y = p.y + Math.sin(a) * 90;
+      if (!clearIsland(pd, x, y)) {
+        var spot = islandPoint(pd, p, 65);
+        if (!spot) continue;
+        x = spot.x; y = spot.y;
+      }
+      eyes.push({ x: x, y: y });
+    }
+    if (!eyes.length) return;
+    e.mistEyes = eyes;
+    e.mistAim = { x: p.x, y: p.y };
+    E._tele(e, 'mistVolley', 1.15, Math.atan2(p.y - e.y, p.x - e.x));
+    e.tele = null;
+  }
+  function vanish(e, p) {
+    var pd = pond(); if (!pd) return false;
+    var spot = islandPoint(pd, p, 95);
+    if (!spot) return false;
+    e.mistDest = spot;
+    e.mistDecoys = [];
+    // Three false eye-pairs and one true, more strongly swirling arrival.
+    for (var i = 0; i < 3; i++) {
+      var fake = islandPoint(pd, p, 70);
+      if (fake) e.mistDecoys.push(fake);
+    }
+    e.state = 'mistFade'; e.t = 0.46; e.mistFadeMax = e.t;
+    e.mistCd = e.hp < e.maxHp * 0.5 ? 6.4 : 8.6;
+    e.tele = null;
+    e.mistCycle = (e.mistCycle || 0) + 1;
+    e.dangerous = false;
+    return true;
+  }
+  function fireMistVolley(e) {
+    var aim = e.mistAim, eyes = e.mistEyes || [];
+    if (!aim) return;
+    for (var i = 0; i < eyes.length; i++) {
+      var o = eyes[i], a = Math.atan2(aim.y - o.y, aim.x - o.x);
+      E.projectiles.push({
+        x: o.x, y: o.y, vx: Math.cos(a) * 155, vy: Math.sin(a) * 155,
+        r: 5, dmg: e.dmg * 0.55, color: '#e775a2', kind: 'orb',
+        hostile: true, life: 1.6
+      });
+    }
+    e.mistEyes = null; e.mistAim = null;
+  }
   function brain(e, dt, p, d, ang, f) {
     var low = e.hp < e.maxHp * 0.5, rage = e.hp < e.maxHp * 0.3, sp = e.spd * f * dt * (rage ? 1.45 : low ? 1.2 : 1), k;
     e.anim = e.anim || 0;
-    if (e.state !== 'rise') e.summonCd = (e.summonCd === undefined ? 13 : e.summonCd - dt);
+    if (e.state !== 'rise') {
+      e.summonCd = (e.summonCd === undefined ? 13 : e.summonCd - dt);
+      e.mistCd = (e.mistCd === undefined ? 6.0 : e.mistCd - dt);
+    }
+    if (e.state === 'mistFade') {
+      if ((e.t -= dt) <= 0) {
+        e.hidden = true; e.state = 'mistHidden'; e.t = 1.05;
+      }
+      return;
+    }
+    if (e.state === 'mistHidden') {
+      if ((e.t -= dt) <= 0) {
+        e.x = e.mistDest.x; e.y = e.mistDest.y; e.hidden = false;
+        e.state = 'mistAppear'; e.t = 0.65; e.mistDecoys = [];
+        if (CC.fx && CC.fx.burst) CC.fx.burst(e.x, e.y, '#b12857', 12, 70);
+      }
+      return;
+    }
+    if (e.state === 'mistAppear') {
+      if ((e.t -= dt) <= 0) { e.state = 'recover'; e.t = 0.45; }
+      return;
+    }
     if (e.state === 'rise') { e.invuln = Math.max(e.invuln || 0, 0.1); if ((e.t -= dt) <= 0) { e.state = 'idle'; e.cd = 1.1; } return; }
     if (e.state === 'idle') {
       if (d > 62) mvB(e, Math.cos(ang) * sp, Math.sin(ang) * sp);
       if (!e.s1 && e.hp < e.maxHp * 0.66) { e.s1 = 1; this._tele(e, 'summon', 1.0, ang); e.tele = { kind: 'circle', rad: 120, max: 1.0 }; return; }
       if (!e.s2 && e.hp < e.maxHp * 0.33) { e.s2 = 1; this._tele(e, 'summon', 1.0, ang); e.tele = { kind: 'circle', rad: 120, max: 1.0 }; return; }
       if (e.summonCd <= 0 && activePondMinions() < 5) { this._tele(e, 'summon', 1.0, ang); e.tele = { kind: 'circle', rad: 120, max: 1.0 }; e.summonCd = 13; return; }
+      if (e.mistCd <= 0 && d < 350 && vanish(e, p)) return;
       if (e.cd <= 0) {
-        e.n = (e.n || 0) + 1; var pick = e.n % 5;
-        if (d < 100 && pick !== 3) this._tele(e, 'rake', rage ? 0.55 : 0.75, ang);
-        else if (pick === 1) { this._tele(e, 'tendrils', 0.7, ang); e.tele = { kind: 'line', ang: ang, len: 320, max: 0.7 }; }
-        else if (pick === 2) { e.atk = 'hands'; e.state = 'telegraph'; e.t = 0.5; e.tele = null; fxText(p.x, p.y - 22, 'THE WATER REACHES', '#9ad0c0', 10); }
-        else if (pick === 3 && !(p.blindT > 0) && d < 340 && e.los !== false) { this._tele(e, 'gaze', 0.95, ang); e.tele = { kind: 'line', ang: ang, len: 340, max: 0.95 }; fxText(e.x, e.y - e.r * 2.4, 'DO NOT LOOK', '#ff6a6a', 11); }
-        else this._tele(e, d < 130 ? 'rake' : 'tendrils', 0.7, ang);
+        e.n = (e.n || 0) + 1; var pick = e.n % 7;
+        if (pick === 1 && mistStrike(e, p, ang)) {
+          fxText(e.x, e.y - 65, 'MIST LUNGE', '#ffa5bd', 10);
+        } else if (pick === 2) {
+          mistGrasp(e, p); fxText(p.x, p.y - 36, 'THE MIST GRASPS', '#ff9ab4', 10);
+        } else if (pick === 3) {
+          eyeVolley(e, p); fxText(e.x, e.y - 65, 'EYES IN THE MIST', '#ffc4cf', 11);
+        } else if (pick === 4 && !(p.blindT > 0) && d < 340 && e.los !== false) {
+          this._tele(e, 'gaze', 0.95, ang); e.tele = { kind: 'line', ang: ang, len: 340, max: 0.95 };
+          fxText(e.x, e.y - 65, 'DO NOT LOOK', '#ff6a6a', 11);
+        } else if (pick === 5) {
+          this._tele(e, 'tendrils', 0.7, ang);
+          e.tele = { kind: 'line', ang: ang, len: 320, max: 0.7 };
+        } else this._tele(e, d < 125 ? 'rake' : 'tendrils', 0.75, ang);
         if (e.atk === 'tendrils' && e.tele && e.tele.kind !== 'line') e.tele = { kind: 'line', ang: ang, len: 320, max: 0.7 };
       }
     } else if (e.state === 'telegraph') {
       if ((e.t -= dt) <= 0) {
         e.tele = null;
-        if (e.atk === 'rake') {
+        if (e.atk === 'mistLunge') {
+          var line = e.mistLine;
+          e.state = 'recover'; e.t = 0.70;
+          if (line) {
+            e.x = line.x1; e.y = line.y1;
+            if (lineDistance(p.x, p.y, line.x0, line.y0, line.x1, line.y1) <
+                line.width + (p.r || 10)) hurtB(p, e, e.dmg * 1.10);
+            if (CC.fx && CC.fx.burst) CC.fx.burst(e.x, e.y, '#b5325d', 9, 75);
+            e.mistLine = null;
+          }
+        } else if (e.atk === 'mistGrasp') {
+          var circle = e.mistCircle;
+          e.state = 'recover'; e.t = 0.75;
+          if (circle && Math.hypot(p.x - circle.x, p.y - circle.y) <= circle.rad + (p.r || 10)) {
+            if (hurtB(p, e, e.dmg * 0.85)) p.slowT = Math.max(p.slowT || 0, 1.1);
+          }
+          if (circle) E.projectiles.push({ x: circle.x, y: circle.y, vx: 0, vy: 0,
+            r: 0, life: 0.35, ring: circle.rad, color: '#aa426b', fx: true });
+          e.mistCircle = null;
+        } else if (e.atk === 'mistVolley') {
+          e.state = 'recover'; e.t = 0.85; fireMistVolley(e);
+        } else if (e.atk === 'rake') {
           e.state = 'act'; e.t = 0.4; if (CC.fx && CC.fx.shake) CC.fx.shake(7);
           if (CC.fx && CC.fx.burst) { CC.fx.burst(e.x + Math.cos(ang) * 24, e.y, '#9ad0c0', 14, 130); }
           E.projectiles.push({ x: e.x, y: e.y, vx: 0, vy: 0, r: 0, life: 0.35, ring: e.telRad, color: '#5aa090', fx: true });
@@ -705,7 +847,7 @@
       if (tt >= TURN_LENGTH) { // she is gone; something else stands where she stood
         pd.stage = 'fight'; if (pd.lady) { pd.lady.hidden = true; }
         if (CC.Audio) { CC.Audio.event('laugh'); CC.Audio.play('pondspawn', { vol: 1, gap: 0, vary: 0 }); } // the lady is gone and the Mere Horror rises
-        var b = E.spawn('merehorror', pd.x, pd.y, 2); if (b) { b.maxHp = b.hp = Math.round(b.maxHp * 4); b.dmg = Math.max(1, Math.round(b.dmg * 0.7)); b.state = 'rise'; b.t = 1.4; b.miniBoss = true; b.asleep = false; b.cd = 1.5; pd.boss = b; }
+        var b = E.spawn('merehorror', pd.x, pd.y, 2); if (b) { b.maxHp = b.hp = Math.round(b.maxHp * 2); b.dmg = Math.max(1, Math.round(b.dmg * 0.7)); b.mistCd = 6.0; b.mistCycle = 0; b.state = 'rise'; b.t = 1.4; b.miniBoss = true; b.asleep = false; b.cd = 1.5; pd.boss = b; }
         if (CC.Vfx && CC.Vfx.skyFlash) CC.Vfx.skyFlash('#ff3a3a', 0.3, 0.4);
         if (CC.fx) { if (CC.fx.shake) CC.fx.shake(14); if (CC.fx.burst) { CC.fx.burst(pd.x, pd.y, '#3a2a58', 40, 180); CC.fx.burst(pd.x, pd.y, '#9ad0c0', 24, 140); } fxText(pd.x, pd.y - 60, 'THE MERE HORROR RISES', '#ff6a6a', 15); }
         if (p && p.hp > 0) { var a = Math.atan2(p.y - pd.y, p.x - pd.x); if (CC.Dungeon && CC.Dungeon.moveWithCollision) CC.Dungeon.moveWithCollision(p, Math.cos(a) * 30, Math.sin(a) * 30); }
@@ -736,56 +878,173 @@
     c.moveTo(r, -r * 0.25); c.lineTo(r + 5 + sway, r * 0.6); c.stroke();
     c.restore();
   };
+  // Persistent demon is the same horned, red-eyed shadow/skull that forms
+  // during the transformation. Stylized canvas sprite; no large texture upload.
   DRAWB.merehorror = function (c, e, r, col, dark, t) {
-    var an = e.anim || 0, frac = clamp(e.hp / e.maxHp, 0, 1), dam = 1 - frac, tele = e.state === 'telegraph', rake = tele && e.atk === 'rake' || e.state === 'act', gaze = tele && e.atk === 'gaze', mis = e.missing || {}, k;
-    var rise = e.state === 'rise' ? sm(1 - e.t / 1.4) : 1, ty = (1 - rise) * r * 2.2;
-    c.save(); c.beginPath(); c.rect(-r * 4, -r * 5, r * 8, r * 5 + r * 1.5 * 1 + (1 - rise) * 0 + r * 1.2); c.clip(); c.beginPath(); c.rect(-r * 4, -r * 5, r * 8, r * 6.4); c.clip();
-    // the pool it stands in: black water, ripples, tentacles
-    c.fillStyle = 'rgba(6,14,18,.85)'; c.beginPath(); c.ellipse(0, r * 0.75, r * 1.9, r * 0.75, 0, 0, TAU); c.fill();
-    c.strokeStyle = 'rgba(120,190,180,.35)'; c.lineWidth = 1; for (k = 0; k < 3; k++) { c.beginPath(); c.ellipse(0, r * 0.75, r * (1.2 + ((an * 0.5 + k / 3) % 1) * 0.9), r * (0.45 + ((an * 0.5 + k / 3) % 1) * 0.35), 0, 0, TAU); c.stroke(); }
+    var an = e.anim || t, frac = clamp(e.hp / Math.max(1, e.maxHp), 0, 1);
+    var alpha = e.state === 'mistFade' ? clamp(e.t / 0.46, 0, 1) :
+      e.state === 'mistAppear' ? 1 - clamp(e.t / 0.65, 0, 1) : 1;
+    if (e.hidden || e.state === 'mistHidden' || alpha <= 0.015) return;
+    var rage = 1 - frac, pulse = 0.5 + 0.5 * Math.sin(an * 4), sw = Math.sin(an * 3) * 4;
+    var rising = e.state === 'rise' ? sm(1 - e.t / 1.4) : 1;
+    c.save(); c.globalAlpha *= alpha;
+    c.translate(0, (1 - rising) * r * 2.7);
+    // Murky pool at its feet.
+    c.fillStyle = 'rgba(12,8,22,0.85)'; c.beginPath();
+    c.ellipse(0, r * 0.79, r * 1.8, r * 0.44, 0, 0, TAU); c.fill();
+    c.strokeStyle = 'rgba(230,97,127,0.38)'; c.lineWidth = 1.4;
+    c.beginPath(); c.ellipse(0, r * 0.79, r * (1.0 + pulse * 0.5), r * (0.25 + pulse * 0.10), 0, 0, TAU); c.stroke();
+    // Eight unmistakable shadow tentacles and the jagged gown.
+    c.lineCap = 'round';
+    for (var i = 0; i < 8; i++) {
+      var a = i * TAU / 8 + 0.22, dx = Math.cos(a) * (r * 2 + (i % 3) * 5);
+      var dy = r * 0.30 + Math.sin(a) * r * 0.72;
+      c.strokeStyle = i % 2 ? '#43132f' : '#130c20'; c.lineWidth = i % 2 ? 5 : 7;
+      c.beginPath(); c.moveTo(Math.cos(a) * 7, -r * 0.1);
+      c.bezierCurveTo(dx * 0.35, -r * 1.5 + sw, dx * 0.9 + Math.sin(an * 2 + i) * 7,
+        dy - 35, dx, dy + Math.cos(an * 2 + i) * 5); c.stroke();
+    }
+    c.fillStyle = e.flash > 0 ? '#fff0f5' : '#200e24';
+    c.beginPath(); c.moveTo(-r * 0.58, -r * 1.40);
+    c.lineTo(r * 0.58, -r * 1.40);
+    c.lineTo(r * 0.83, r * 0.68); c.lineTo(r * 0.28, r * 0.38);
+    c.lineTo(0, r * 0.92); c.lineTo(-r * 0.3, r * 0.41);
+    c.lineTo(-r * 0.9, r * 0.71); c.closePath(); c.fill();
+    // Rib fragments betray the human shape buried inside the shadow.
+    c.strokeStyle = '#8c6278'; c.lineWidth = 2;
+    for (i = 0; i < 4; i++) {
+      c.beginPath(); c.moveTo(-r * 0.36, -r * (0.76 - i * 0.22));
+      c.quadraticCurveTo(0, -r * (0.59 - i * 0.22), r * 0.36, -r * (0.76 - i * 0.22)); c.stroke();
+    }
+    // From the transformation: crooked crown, black skull, red eyes.
+    var hy = -r * 1.95 + Math.sin(an * 1.6) * 2;
+    c.fillStyle = '#0a0615'; c.beginPath(); c.ellipse(0, hy, r * 0.78, r * 0.90, 0, 0, TAU); c.fill();
+    c.strokeStyle = '#a35f89'; c.lineWidth = 1.8;
+    c.beginPath(); c.ellipse(0, hy, r * 0.78, r * 0.90, 0, Math.PI * 0.12, Math.PI * 0.88); c.stroke();
+    c.fillStyle = '#16091a';
+    for (i = 0; i < 5; i++) {
+      var hx = (i - 2) * r * 0.32;
+      c.beginPath(); c.moveTo(hx - 4, hy - r * 0.55);
+      c.lineTo(hx + (i - 2) * 4, hy - r * (1.45 + (i % 2) * 0.35));
+      c.lineTo(hx + 5, hy - r * 0.45); c.closePath(); c.fill();
+    }
+    // Long claws emerging from sleeves, moving to preview attacks.
+    var strike = e.atk === 'mistLunge' || e.atk === 'rake', reach = strike && e.state === 'telegraph' ? 0.5 : 0;
+    c.strokeStyle = '#aa708e'; c.lineWidth = 6;
+    for (i = -1; i <= 1; i += 2) {
+      var ex = i * r * (1.65 + reach), ey = -r * (0.20 + reach * 0.7) + sw * i;
+      c.beginPath(); c.moveTo(i * r * 0.52, -r * 1.28);
+      c.quadraticCurveTo(i * r * 1.25, -r * 0.96, ex, ey); c.stroke();
+      c.strokeStyle = '#f0afc4'; c.lineWidth = 1.7;
+      for (var claw = -1; claw <= 1; claw++) {
+        c.beginPath(); c.moveTo(ex, ey);
+        c.lineTo(ex + i * (9 + rage * 4), ey + claw * 7 + 7); c.stroke();
+      }
+      c.strokeStyle = '#aa708e'; c.lineWidth = 6;
+    }
+    c.fillStyle = e.flash > 0 ? '#ffffff' : '#ff365c';
+    c.fillRect(-r * 0.50, hy - r * 0.14, r * 0.29, r * 0.15);
+    c.fillRect(r * 0.21, hy - r * 0.14, r * 0.29, r * 0.15);
+    c.fillStyle = '#07020a'; c.beginPath(); c.ellipse(0, hy + r * 0.47, r * 0.32, r * 0.20 + pulse * r * 0.06, 0, 0, TAU); c.fill();
+    c.strokeStyle = '#ed87a5'; c.lineWidth = 1.4; c.beginPath();
+    c.moveTo(-r * 0.33, hy + r * 0.45); c.quadraticCurveTo(0, hy + r * 0.82, r * 0.33, hy + r * 0.45); c.stroke();
     c.restore();
-    c.save(); c.translate(0, ty);
-    for (k = 0; k < 7; k++) { // tentacles writhing out of the water
-      var a = k / 7 * TAU + 0.3, len = r * (1.3 + (k % 3) * 0.3), x0 = Math.cos(a) * r * 0.5, y0 = r * 0.7 + Math.sin(a) * r * 0.2, x1 = Math.cos(a) * len, y1 = r * 0.75 + Math.sin(a) * len * 0.45 - Math.sin(an * 3 + k) * 4 - (rake ? 4 : 0);
-      c.strokeStyle = '#1b2a30'; c.lineWidth = 5 - (k % 3); c.lineCap = 'round'; c.beginPath(); c.moveTo(x0, y0); c.quadraticCurveTo((x0 + x1) / 2 + Math.sin(an * 4 + k) * 5, (y0 + y1) / 2 - 8, x1, y1); c.stroke();
-      c.strokeStyle = 'rgba(120,200,190,.35)'; c.lineWidth = 1; c.beginPath(); c.moveTo(x0, y0 - 1); c.quadraticCurveTo((x0 + x1) / 2 + Math.sin(an * 4 + k) * 5, (y0 + y1) / 2 - 9, x1, y1 - 1); c.stroke();
+  };
+
+  // This pass happens AFTER darkness/fog; it is the readable demon/telegraph
+  // layer, rather than a second drawing under the same opaque mist.
+  function mistEye(c, x, y, a, t, scale) {
+    c.save(); c.globalAlpha *= a;
+    c.fillStyle = '#130718'; c.beginPath(); c.ellipse(x, y, 13 * scale, 7 * scale, 0, 0, TAU); c.fill();
+    c.fillStyle = '#ff3b61';
+    c.fillRect(x - 8 * scale, y - 2 * scale, 5 * scale, 3 * scale);
+    c.fillRect(x + 3 * scale, y - 2 * scale, 5 * scale, 3 * scale);
+    c.restore();
+  }
+  function mistTelegraph(c, e, cam, t) {
+    if (e.state === 'telegraph' && e.atk === 'mistLunge' && e.mistLine) {
+      var ln = e.mistLine, dx = ln.x1 - ln.x0, dy = ln.y1 - ln.y0;
+      var angle = Math.atan2(dy, dx), len = Math.hypot(dx, dy);
+      var progress = 1 - clamp(e.t / 0.92, 0, 1);
+      c.save(); c.translate(ln.x0 - cam.x, ln.y0 - cam.y); c.rotate(angle);
+      c.fillStyle = 'rgba(163,30,69,' + (0.18 + progress * 0.20) + ')';
+      c.fillRect(0, -ln.width, len, ln.width * 2);
+      c.strokeStyle = '#ff9eae'; c.lineWidth = 2;
+      c.beginPath(); c.moveTo(0, -ln.width); c.lineTo(len, -ln.width);
+      c.moveTo(0, ln.width); c.lineTo(len, ln.width); c.stroke();
+      c.fillStyle = '#ff456e'; c.fillRect(len * progress - 4, -ln.width, 8, ln.width * 2);
+      mistEye(c, len, -11, 0.8, t, 0.8);
+      c.restore();
     }
-    // torn gown rags hanging from the waist
-    var sway = Math.sin(an * 3) * 2;
-    for (k = 0; k < 6; k++) { var gx = -r * 0.7 + k * r * 0.28; c.fillStyle = k % 2 ? '#8c8f96' : '#b9bcc4'; c.beginPath(); c.moveTo(gx, -r * 0.2); c.lineTo(gx + r * 0.3, -r * 0.2); c.lineTo(gx + r * 0.18 + sway * (k % 2 ? 1 : -1), r * 0.85 + (k % 3) * 3); c.lineTo(gx + r * 0.04, r * 0.7); c.closePath(); c.fill(); }
-    // elongated torso: pale, ribs showing
-    var body = e.flash > 0 ? '#ffffff' : col;
-    c.fillStyle = body; c.beginPath(); c.moveTo(-r * 0.5, -r * 0.3); c.quadraticCurveTo(-r * 0.62, -r * 1.2, -r * 0.3, -r * 2.0); c.lineTo(r * 0.3, -r * 2.0); c.quadraticCurveTo(r * 0.62, -r * 1.2, r * 0.5, -r * 0.3); c.closePath(); c.fill();
-    c.strokeStyle = 'rgba(40,50,56,.55)'; c.lineWidth = 1.2; for (k = 0; k < 5; k++) { c.beginPath(); c.moveTo(-r * 0.46, -r * (0.55 + k * 0.28)); c.quadraticCurveTo(0, -r * (0.45 + k * 0.28), r * 0.46, -r * (0.55 + k * 0.28)); c.stroke(); }
-    c.strokeStyle = 'rgba(40,50,56,.5)'; c.beginPath(); c.moveTo(0, -r * 0.3); c.lineTo(0, -r * 1.9); c.stroke();
-    if (dam > 0.25) { c.fillStyle = '#4a0a16'; c.beginPath(); c.ellipse(-r * 0.15, -r * 0.9, r * 0.22, r * 0.34 + dam * 4, 0.2, 0, TAU); c.fill(); c.strokeStyle = '#e8e0d4'; c.lineWidth = 1; for (k = 0; k < 3; k++) { c.beginPath(); c.moveTo(-r * 0.3, -r * (1.05 - k * 0.15)); c.lineTo(0, -r * (1.0 - k * 0.15)); c.stroke(); } } // a torn chest
-    // arms: two huge reaching ones with black claws, two thin ones folded at the ribs
-    function arm(sgn, miss, big) {
-      if (miss) { c.fillStyle = '#2a0a12'; c.beginPath(); c.arc(sgn * r * 0.5, -r * 1.55, r * 0.14, 0, TAU); c.fill(); return; }
-      var sx = sgn * r * 0.5, sy = -r * (big ? 1.65 : 1.1), reach = rake ? 1 : tele ? 0.5 : 0, ex = sgn * r * ((big ? 1.6 : 0.95) + reach * (big ? 0.9 : 0.2)) + Math.sin(an * 3 + sgn) * 2, ey = -r * (big ? 0.5 : 0.45) - reach * r * (big ? 0.8 : 0.1) + Math.cos(an * 2.6 + sgn) * 2;
-      c.strokeStyle = body; c.lineWidth = big ? 4.2 : 2.6; c.lineCap = 'round'; c.beginPath(); c.moveTo(sx, sy); c.quadraticCurveTo(sx + sgn * r * 0.7, sy + r * 0.2, ex, ey); c.stroke();
-      c.strokeStyle = '#0c0a10'; c.lineWidth = big ? 1.8 : 1.2; for (var f = -2; f <= 2; f++) { c.beginPath(); c.moveTo(ex, ey); c.lineTo(ex + sgn * r * 0.55, ey + f * r * 0.16 + (rake ? r * 0.15 : 0)); c.stroke(); }
+    if (e.state === 'telegraph' && e.atk === 'mistGrasp' && e.mistCircle) {
+      var mk = e.mistCircle, pr = 1 - clamp(e.t / 1.10, 0, 1);
+      c.save(); c.strokeStyle = '#ff83a3'; c.lineWidth = 2;
+      c.fillStyle = 'rgba(144,26,66,' + (0.14 + 0.25 * pr) + ')';
+      c.beginPath(); c.arc(mk.x - cam.x, mk.y - cam.y, mk.rad, 0, TAU); c.fill(); c.stroke();
+      c.beginPath(); c.arc(mk.x - cam.x, mk.y - cam.y, mk.rad * (1 - pr), 0, TAU); c.stroke();
+      for (var k = 0; k < 5; k++) {
+        var a = k * TAU / 5 + t * 0.22;
+        mistEye(c, mk.x - cam.x + Math.cos(a) * mk.rad * 0.76,
+          mk.y - cam.y + Math.sin(a) * mk.rad * 0.76, pr * 0.8, t, 0.60);
+      }
+      c.restore();
     }
-    arm(-1, mis.armLeft, true); arm(1, mis.armRight, true); arm(-1, false, false); arm(1, false, false);
-    // hair: black tendrils writhing around the head
-    var hy = -r * 2.35;
-    c.strokeStyle = '#06030a'; c.lineCap = 'round';
-    for (k = 0; k < 11; k++) { var ha = -2.6 + k * 0.52, hl = r * (1.0 + (k % 4) * 0.25); c.lineWidth = 2.4; c.beginPath(); c.moveTo(0, hy); c.bezierCurveTo(Math.cos(ha) * hl * 0.5, hy + Math.sin(ha) * hl * 0.3 - 6, Math.cos(ha + Math.sin(an * 3 + k) * 0.4) * hl, hy + Math.sin(ha) * hl * 0.5 + Math.sin(an * 2.4 + k) * 5, Math.cos(ha) * hl * 1.05 + Math.sin(an * 3.5 + k * 2) * 4, hy + r * 0.8 + (k % 3) * 4); c.stroke(); }
-    // the head: a long, hollow face with black horns, red eyes and an unhinged mouth full of needles
-    if (mis.head) { c.fillStyle = '#4a0a16'; c.beginPath(); c.ellipse(0, hy + r * 0.4, r * 0.28, r * 0.22, 0, 0, TAU); c.fill(); }
-    else {
-      c.fillStyle = '#0c0a10'; c.beginPath(); c.moveTo(-r * 0.28, hy - r * 0.3); c.quadraticCurveTo(-r * 0.8, hy - r * 1.0, -r * 0.5, hy - r * 1.5); c.quadraticCurveTo(-r * 0.4, hy - r * 0.9, -r * 0.12, hy - r * 0.5); c.fill();
-      c.beginPath(); c.moveTo(r * 0.28, hy - r * 0.3); c.quadraticCurveTo(r * 0.8, hy - r * 1.0, r * 0.5, hy - r * 1.5); c.quadraticCurveTo(r * 0.4, hy - r * 0.9, r * 0.12, hy - r * 0.5); c.fill(); // horns
-      c.fillStyle = body; c.beginPath(); c.ellipse(0, hy, r * 0.42, r * 0.62, 0, 0, TAU); c.fill();
-      c.fillStyle = '#12060c'; c.beginPath(); c.ellipse(-r * 0.17, hy - r * 0.14, r * 0.15, r * 0.19, 0.2, 0, TAU); c.ellipse(r * 0.17, hy - r * 0.14, r * 0.15, r * 0.19, -0.2, 0, TAU); c.fill();
-      c.save(); c.shadowColor = '#ff2a2a'; c.shadowBlur = gaze ? 16 : 7; c.fillStyle = gaze ? '#fff0f0' : '#ff2a2a'; c.fillRect(-r * 0.2, hy - r * 0.18, 3, 2.4); c.fillRect(r * 0.12, hy - r * 0.18, 3, 2.4);
-      if (frac < 0.5) { c.fillRect(-r * 0.04, hy - r * 0.42, 2.6, 2); c.fillRect(-r * 0.3, hy - r * 0.38, 2, 1.8); c.fillRect(r * 0.24, hy - r * 0.38, 2, 1.8); } c.restore(); // more eyes open as it weakens
-      var open = (tele && (e.atk === 'gaze' || e.atk === 'summon') ? 0.9 : rake ? 0.7 : 0.25 + 0.1 * Math.sin(an * 5)) * r * 0.5;
-      c.fillStyle = '#2a0408'; c.beginPath(); c.ellipse(0, hy + r * 0.3 + open * 0.35, r * 0.2, open * 0.5 + 1, 0, 0, TAU); c.fill();
-      c.fillStyle = '#efe8d6'; for (k = 0; k < 6; k++) { var tx = -r * 0.17 + k * r * 0.068; c.beginPath(); c.moveTo(tx, hy + r * 0.3 - open * 0.1); c.lineTo(tx + r * 0.03, hy + r * 0.3 + open * 0.3); c.lineTo(tx + r * 0.06, hy + r * 0.3 - open * 0.1); c.fill(); }
+    if (e.state === 'telegraph' && e.atk === 'mistVolley' && e.mistEyes) {
+      var q = 1 - clamp(e.t / 1.15, 0, 1);
+      for (var j = 0; j < e.mistEyes.length; j++) {
+        var eyePos = e.mistEyes[j], ex = eyePos.x - cam.x, ey = eyePos.y - cam.y;
+        if (ex < -35 || ey < -35 || ex > cam.w + 35 || ey > cam.h + 35) continue;
+        mistEye(c, ex, ey, 0.30 + 0.65 * q, t, 1.0 + 0.2 * Math.sin(t * 8 + j));
+        if (e.mistAim) {
+          c.strokeStyle = 'rgba(255,132,168,' + (0.12 + 0.38 * q) + ')';
+          c.lineWidth = 1.2; c.beginPath(); c.moveTo(ex, ey);
+          c.lineTo(e.mistAim.x - cam.x, e.mistAim.y - cam.y); c.stroke();
+        }
+      }
     }
-    // damage: cracks leaking dark water
-    if (dam > 0.15) { c.strokeStyle = 'rgba(90,200,190,.6)'; c.lineWidth = 1.1; for (k = 0; k < Math.floor(dam * 7); k++) { var ca = k * 2.4 + 0.5; c.beginPath(); c.moveTo(Math.cos(ca) * r * 0.2, -r * 1.2); c.lineTo(Math.cos(ca) * r * 0.5, -r * (0.8 + (k % 3) * 0.3)); c.lineTo(Math.cos(ca + 0.3) * r * 0.45, -r * (0.5 + (k % 3) * 0.25)); c.stroke(); } if (R() < 0.1 && CC.fx && CC.fx.burst) CC.fx.burst(e.x + (R() - 0.5) * r, e.y - R() * r, '#2a4a4a', 1, 30); }
+  }
+  HP.drawBossFocus = function (c, cam) {
+    var pd = pond(), boss = pd && pd.boss;
+    if (!pd || pd.stage !== 'fight' || !boss || boss.dead || boss.hp <= 0) return;
+    var t = Date.now() / 1000, x = boss.x - cam.x, y = boss.y - cam.y;
+    c.save();
+    mistTelegraph(c, boss, cam, t);
+    // A few persistent eyes peering from the fog; the boss can use them to
+    // telegraph a vanishing act without masking the player's sprite.
+    var count = boss.state === 'mistHidden' ? 0 : 4;
+    for (var i = 0; i < count; i++) {
+      var a = i * TAU / count + t * 0.13, rr = 94 + i * 26;
+      var ex = boss.x + Math.cos(a) * rr - cam.x, ey = boss.y + Math.sin(a) * rr * 0.65 - cam.y;
+      if (ex > -24 && ex < cam.w + 24 && ey > -24 && ey < cam.h + 24)
+        mistEye(c, ex, ey, 0.23 + 0.30 * Math.sin(t * 1.6 + i) ** 2, t, 0.6);
+    }
+    if (boss.state === 'mistFade' || boss.state === 'mistHidden' || boss.state === 'mistAppear') {
+      var decoys = boss.mistDecoys || [], dest = boss.mistDest;
+      for (i = 0; i < decoys.length; i++) {
+        var d = decoys[i];
+        mistEye(c, d.x - cam.x, d.y - cam.y, 0.38 + 0.20 * Math.sin(t * 5 + i) ** 2, t, 1);
+      }
+      if (dest) {
+        var bx = dest.x - cam.x, by = dest.y - cam.y;
+        // True arrival is marked by an obvious bright ring, not a surprise hit.
+        c.strokeStyle = 'rgba(255,144,182,0.92)'; c.lineWidth = 2;
+        c.beginPath(); c.ellipse(bx, by + 8, 25, 11, 0, 0, TAU); c.stroke();
+        mistEye(c, bx, by - 56, 0.8 + 0.20 * Math.sin(t * 9) ** 2, t, 1.4);
+      }
+    }
+    if (boss.hidden || x < -100 || x > cam.w + 100 || y < -140 || y > cam.h + 100) {
+      c.restore(); return;
+    }
+    // Sharp contrasting rim, dark local aura, and a full-opacity horned body.
+    var halo = c.createRadialGradient(x, y - 42, 8, x, y - 42, 77);
+    halo.addColorStop(0, 'rgba(10,5,21,0.57)');
+    halo.addColorStop(1, 'rgba(10,5,21,0)');
+    c.fillStyle = halo; c.fillRect(x - 85, y - 130, 170, 170);
+    c.strokeStyle = '#f3b1c5'; c.lineWidth = 1.3;
+    c.beginPath(); c.ellipse(x, y + 17, 34, 14, 0, 0, TAU); c.stroke();
+    c.translate(x, y);
+    c.scale(boss.face || 1, 1);
+    DRAWB.merehorror(c, boss, boss.r || 24, boss.color || '#281126', '#14071b', t);
     c.restore();
   };
   if (F && !F._pondDraw) {

@@ -6,7 +6,7 @@ const source = readFileSync(new URL('../hauntedpond.js', import.meta.url), 'utf8
 
 function scene() {
   const enemies = {
-    TYPES: {}, list: [],
+    TYPES: {}, list: [], projectiles: [], damage(e, amount) { e.hp -= amount; return amount; },
     _think() {}, _kill() {}, update() {}, spawnForFloor() {},
     _tele(e, atk, duration, angle) {
       e.atk = atk; e.state = 'telegraph'; e.t = duration; e.ang = angle;
@@ -38,7 +38,7 @@ function scene() {
   return { CC, pd, player, enemies, getHeroDraws: () => heroDraws };
 }
 
-test('Pond Lady starts alone, receives 4x HP / 70% damage and summons four monster types', () => {
+test('Pond Lady starts alone, receives 2x HP / 70% damage and summons four monster types', () => {
   const { CC, pd, player, enemies } = scene();
   assert.equal(enemies.list.length, 0, 'island starts without monsters');
   assert.equal(CC.HauntedPond.interact(), true);
@@ -50,12 +50,12 @@ test('Pond Lady starts alone, receives 4x HP / 70% damage and summons four monst
   enemies.update(5.5);
   const boss = pd.boss;
   assert.ok(boss);
-  assert.equal(boss.maxHp, 400, 'base 100 HP becomes 400');
-  assert.equal(boss.hp, 400);
+  assert.equal(boss.maxHp, 200, 'base 100 HP becomes 200');
+  assert.equal(boss.hp, 200);
   assert.equal(boss.dmg, 14, 'base 20 damage becomes 14');
   assert.equal(pd.stage, 'fight');
 
-  boss.state = 'idle'; boss.hp = 250; boss.cd = 5;
+  boss.state = 'idle'; boss.hp = 125; boss.cd = 5;
   enemies._think(boss, 0.1, player, 80, 0, 1);
   assert.equal(boss.atk, 'summon');
   assert.equal(boss.state, 'telegraph', 'summons are announced before spawning');
@@ -138,4 +138,105 @@ test('Pond transformation includes timed cues and spawns only one boss', () => {
   assert.equal(enemies.list.filter(e => e.type === 'merehorror').length, 1);
   enemies.update(1);
   assert.equal(enemies.list.filter(e => e.type === 'merehorror').length, 1);
+});
+
+test('Mist Lunge has a locked visible warning lane and can be dodged', () => {
+  const { CC, pd, player, enemies } = scene();
+  CC.HauntedPond.interact();
+  for (let i = 0; i < 5; i++) CC.HauntedPond.advanceDialogue();
+  enemies.update(5.5);
+  const boss = pd.boss;
+  Object.assign(boss, { state: 'idle', n: 0, cd: 0, mistCd: 99, s1: 1, s2: 1 });
+  enemies._think(boss, 0.1, player, 0, 0, 1);
+  assert.equal(boss.atk, 'mistLunge');
+  assert.equal(boss.state, 'telegraph');
+  assert.ok(boss.mistLine && boss.mistLine.x1 > boss.mistLine.x0);
+  const line = { ...boss.mistLine };
+  player.y += 100; // dodge away while the attack is charging
+  const hp = player.hp;
+  enemies._think(boss, 1.0, player, 100, 0, 1);
+  assert.equal(boss.state, 'recover');
+  assert.equal(player.hp, hp, 'the attack uses its announced lane, not the moving player');
+  assert.equal(boss.x, line.x1);
+  assert.equal(boss.mistLine, null);
+});
+
+test('Mist Grasp visibly locks its circle and does not track the hero', () => {
+  const { CC, pd, player, enemies } = scene();
+  CC.HauntedPond.interact();
+  for (let i = 0; i < 5; i++) CC.HauntedPond.advanceDialogue();
+  enemies.update(5.5);
+  const boss = pd.boss;
+  Object.assign(boss, { state: 'idle', n: 1, cd: 0, mistCd: 99, s1: 1, s2: 1 });
+  enemies._think(boss, 0.1, player, 0, 0, 1);
+  assert.equal(boss.atk, 'mistGrasp');
+  const circle = { ...boss.mistCircle }, hp = player.hp;
+  player.y += 110; // move out after target has been locked
+  enemies._think(boss, 1.2, player, 110, 0, 1);
+  assert.equal(player.hp, hp);
+  assert.ok(circle.rad >= 50);
+  assert.equal(boss.mistCircle, null);
+});
+
+test('Peering Volley gives eye warnings before firing capped projectiles', () => {
+  const { CC, pd, player, enemies } = scene();
+  CC.HauntedPond.interact();
+  for (let i = 0; i < 5; i++) CC.HauntedPond.advanceDialogue();
+  enemies.update(5.5);
+  const boss = pd.boss;
+  Object.assign(boss, { state: 'idle', n: 2, cd: 0, mistCd: 99, s1: 1, s2: 1 });
+  enemies._think(boss, 0.1, player, 0, 0, 1);
+  assert.equal(boss.atk, 'mistVolley');
+  assert.ok(boss.mistEyes.length > 0 && boss.mistEyes.length <= 5);
+  assert.equal(enemies.projectiles.length, 0, 'no shots before telegraph finishes');
+  enemies._think(boss, 1.2, player, 0, 0, 1);
+  assert.ok(enemies.projectiles.length >= 1 && enemies.projectiles.length <= 5);
+  assert.equal(boss.mistEyes, null);
+});
+
+test('Disappearing demon has safe, obvious arrival and cannot be hit while vanished', () => {
+  const { CC, pd, player, enemies } = scene();
+  CC.HauntedPond.interact();
+  for (let i = 0; i < 5; i++) CC.HauntedPond.advanceDialogue();
+  enemies.update(5.5);
+  const boss = pd.boss;
+  Object.assign(boss, { state: 'idle', n: 4, cd: 7, mistCd: 0, s1: 1, s2: 1 });
+  enemies._think(boss, 0.1, player, 0, 0, 1);
+  assert.equal(boss.state, 'mistFade');
+  assert.ok(boss.mistDest, 'arrival is chosen before the boss vanishes');
+  enemies._think(boss, 0.5, player, 0, 0, 1);
+  assert.equal(boss.state, 'mistHidden');
+  assert.equal(boss.hidden, true);
+  const hp = boss.hp;
+  assert.equal(enemies.damage(boss, 50), 0, 'no hitting an empty location');
+  assert.equal(boss.hp, hp);
+  enemies._think(boss, 1.1, player, 0, 0, 1);
+  assert.equal(boss.state, 'mistAppear');
+  assert.equal(boss.hidden, false);
+  assert.ok(Math.hypot(boss.x - player.x, boss.y - player.y) >= 95,
+    'reappearance does not overlap the hero');
+  assert.equal(enemies.damage(boss, 10), 10);
+});
+
+test('Boss post-fog rendering stays available and source drawing avoids duplicates', () => {
+  const { CC, pd, enemies } = scene();
+  CC.HauntedPond.interact();
+  for (let i = 0; i < 5; i++) CC.HauntedPond.advanceDialogue();
+  enemies.update(5.5);
+  pd.h = 1;
+  const strokes = [];
+  const context = new Proxy({ globalAlpha: 1,
+    createRadialGradient() { return { addColorStop() {} }; } }, {
+    get(o, k) {
+      if (k in o) return o[k];
+      return (...args) => { strokes.push(String(k)); };
+    },
+    set(o, k, v) { o[k] = v; return true; }
+  });
+  assert.doesNotThrow(() => CC.HauntedPond.drawBossFocus(context, { x: pd.x - 180, y: pd.y - 130, w: 360, h: 260 }));
+  assert.ok(strokes.includes('fillRect'), 'the visible demon is drawn over the fog');
+  const shell = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
+  const enemySource = readFileSync(new URL('../enemies.js', import.meta.url), 'utf8');
+  assert.ok(shell.indexOf("call('HauntedPond', 'drawBossFocus'") > shell.indexOf("CC.Dungeon.drawLighting(ctx, dcam)"));
+  assert.ok(enemySource.includes("e.type === 'merehorror' && CC.HauntedPond"), 'no doubled draw under fog');
 });

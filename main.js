@@ -1312,7 +1312,10 @@
       call('QuestNav', 'draw', ctx, cam); // the faint arrow toward the next quest step
       if (CC.Dungeon && typeof CC.Dungeon.drawFront === 'function') CC.Dungeon.drawFront(ctx, dcam); // trees and props in front of the hero redraw over the entities
       if (CC.Dungeon && CC.Dungeon.realm) CC.Dungeon.drawLighting(ctx, dcam); // open-air maps light the whole scene after the entities
-      if (s.area === 'plains') call('HauntedPond', 'drawHeroFocus', ctx, dcam); // keep hero clear above dense pond fog
+      if (s.area === 'plains') {
+        call('HauntedPond', 'drawBossFocus', ctx, dcam); // visible demon and its mist attack warnings above fog
+        call('HauntedPond', 'drawHeroFocus', ctx, dcam); // player is always on top of pond fog
+      }
       call('Vfx','draw',ctx,cam); // spell particles, nova rings, explosions and lightning
       call('Vfx','drawDarkness',ctx,cam); // the Patchwork Horror's dark
       call('SpellCharge','draw',ctx,cam); // illuminated aiming circle overlays the ground
