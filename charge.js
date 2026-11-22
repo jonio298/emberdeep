@@ -420,7 +420,7 @@
               phase,phase+1.45+f*.4);ctx.stroke();
           }
           ctx.globalAlpha=(.58+.3*f)*(.92+.08*Math.sin(T*8));
-          ctx.strokeStyle='#ff3b50';ctx.lineWidth=k===0?2.3:1.7;
+          ctx.strokeStyle='#ff3b4e';ctx.lineWidth=k===0?2.3:1.7;
           ctx.beginPath();ctx.arc(ex,ey,radius,0,PI2);ctx.stroke();
           ctx.globalAlpha=.32+.36*f;ctx.beginPath();
           ctx.arc(ex,ey,radius-4,-Math.PI/2,-Math.PI/2+PI2*f);ctx.stroke();

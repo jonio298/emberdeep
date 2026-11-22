@@ -24,6 +24,9 @@ test('Wizard critical basic orb pulses three times with controlled splash',()=>{
     side={id:2,x:58,y:20,r:8,hp:200,maxHp:200};
   CC.Enemies.list.push(e,side);
   p.stats.crit=1;
+  // Prime the world's current map before creating a shot; syncWorld intentionally
+  // clears old projectiles on an area transition.
+  CC.Classes.update(.001,{noCombat:true});
   const shot=CC.Classes._h.shoot(p,0,100,1,1,7,'bolt','arcane','#5bcaff');
   assert.equal(shot.preRolledCrit,true);
   shot.x=e.x;shot.y=e.y;
