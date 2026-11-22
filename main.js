@@ -649,6 +649,7 @@
       if (s.area === 'forest' && gae && Math.hypot(p.x - gae.x, p.y - gae.y) <= 67) { CC.Multiplayer.requestTree(); CC.fx.text(p.x, p.y - 24, 'Following the leader...', '#d5e7b2', 10); return; }
       if (gst && gst.x > -900 && Math.hypot(p.x - gst.x, p.y - gst.y) <= 60) { CC.Multiplayer.requestDescend(); CC.fx.text(p.x, p.y - 24, 'Following the leader...', '#ffd36b', 10); return; }
     }
+    if (s.area === 'plains' && CC.HauntedPond && CC.HauntedPond.interact && CC.HauntedPond.interact()) return;
     if (CC.Waypoints && CC.Waypoints.interact && CC.Waypoints.interact()) return;
     if(s.area==='defense'&&CC.Defense&&CC.Defense.interact&&CC.Defense.interact())return;
     if(s.area==='tree-ascent'&&call('TreeAscent','interact'))return;
@@ -687,7 +688,7 @@
     if((s.area==='village'||s.area==='village-cellar')&&call('AbandonedVillage','nearAction'))return true;
     if(s.area==='rocky-pass'&&call('RockPass','nearAction'))return true; // the ACTION button for the way back and the way on to the village
     if(s.area==='plains'&&map&&map.passGate&&CC.RockPass&&CC.RockPass.isOpen()&&Math.hypot(p.x-map.passGate.x,p.y-map.passGate.y)<=100)return true; // climb the goat trail
-    if(s.area==='plains'&&map&&map.pond&&CC.HauntedPond){var pl=map.pond.lady;if(pl&&!pl.hidden&&Math.hypot(p.x-pl.x,p.y-pl.y)<=56)return true;}
+    if(s.area==='plains'&&CC.HauntedPond&&CC.HauntedPond.nearAction&&CC.HauntedPond.nearAction())return true;
     if (CC.Camp && CC.Camp.nearAction && CC.Camp.nearAction()) return true;
     function near(o, radius) { return o && Math.hypot(p.x - o.x, p.y - o.y) <= radius; }
     var npcs, j;
@@ -775,6 +776,10 @@
     e.preventDefault();
     try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* not fatal */ }
     var p = pos(e);
+    if (CC.HauntedPond && CC.HauntedPond.isTalking && CC.HauntedPond.isTalking()) {
+      if (!paused) pressAction('interact');
+      return;
+    }
     var u = hitUi(p.x, p.y);
     if (u) { ptrs[e.pointerId] = { kind: 'ui', drag: u.drag || null }; if (!u.drag) call('Audio', 'fx', 'click', { vol: 0.6, gap: 60 }); u.cb(p.x, p.y); return; }
     var mode = CC.state.mode;
@@ -915,6 +920,10 @@
     if (CC.Waypoints && CC.Waypoints.isOpen && CC.Waypoints.isOpen() &&
         CC.Waypoints.key(e.code)) { e.preventDefault(); return; }
     if (CC.Camp && CC.Camp.isOpen && CC.Camp.isOpen() && CC.Camp.key(e.code)) return;
+    if (playing() && CC.HauntedPond && CC.HauntedPond.isTalking && CC.HauntedPond.isTalking()) {
+      if (e.code === 'KeyF' || e.code === 'Enter' || e.code === 'Space') pressAction('interact');
+      return;
+    }
     // K / I / M open the skill tree, pack and map; Escape closes whichever is open before it would pause
     if (playing() && call('UI', 'key', e.code)) { resetInputHeld(); return; }
     if (e.code === 'Escape' || e.code === 'KeyP') { togglePause(); return; }
@@ -1032,6 +1041,18 @@
     var coopLive = !!(s.coop && CC.Multiplayer && CC.Multiplayer.active), menuOpen = uiWas || (p && p.perkOpen) || campOpen;
     if (paused || (menuOpen && !coopLive) ||
         (CC.Waypoints && CC.Waypoints.isOpen && CC.Waypoints.isOpen())) return;
+    // Freeze hero movement and combat until this dialogue/cinematic has finished.
+    if (s.area === 'plains' && CC.HauntedPond && CC.HauntedPond.isTalking && CC.HauntedPond.isTalking()) {
+      pollInput();
+      if (CC.input.interact) call('HauntedPond', 'advanceDialogue');
+      return;
+    }
+    if (s.area === 'plains' && CC.HauntedPond && CC.HauntedPond.isCinematic && CC.HauntedPond.isCinematic()) {
+      pollInput();
+      if (!(CC.Multiplayer && CC.Multiplayer.isGuest && CC.Multiplayer.isGuest())) call('Enemies', 'update', dt);
+      call('Vfx', 'update', dt);
+      return;
+    }
     noteWorld();
     if (coopLive) { // in town or a tent the world is not paused: the host simulates it, and a guest keeps reporting to the party
       if (coopHostAway()) bgWorld(dt);

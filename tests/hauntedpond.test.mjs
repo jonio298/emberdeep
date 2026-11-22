@@ -41,8 +41,13 @@ function scene() {
 test('Pond Lady starts alone, receives 4x HP / 70% damage and summons four monster types', () => {
   const { CC, pd, player, enemies } = scene();
   assert.equal(enemies.list.length, 0, 'island starts without monsters');
-  CC.HauntedPond.talk();
-  enemies.update(3.3);
+  assert.equal(CC.HauntedPond.interact(), true);
+  assert.equal(pd.stage, 'talk');
+  enemies.update(12);
+  assert.equal(pd.stage, 'talk');
+  for (let i = 0; i < 5; i++) assert.equal(CC.HauntedPond.advanceDialogue(), true);
+  assert.equal(pd.stage, 'turn');
+  enemies.update(5.5);
   const boss = pd.boss;
   assert.ok(boss);
   assert.equal(boss.maxHp, 400, 'base 100 HP becomes 400');
@@ -99,4 +104,38 @@ test('Hero is redrawn on top of dense pond fog only while near the pond', () => 
   player.x += 2000;
   CC.HauntedPond.drawHeroFocus(ctx, { x: 1800, y: 1800 });
   assert.equal(getHeroDraws(), 1, 'no extra render outside pond');
+});
+
+test('Pond dialogue requires each action and the player must be nearby', () => {
+  const { CC, pd, player, enemies } = scene();
+  player.x += 180;
+  assert.equal(CC.HauntedPond.nearAction(), false);
+  assert.equal(CC.HauntedPond.interact(), false);
+  player.x -= 180;
+  assert.equal(CC.HauntedPond.nearAction(), true);
+  assert.equal(CC.HauntedPond.interact(), true);
+  assert.equal(CC.Plains.speech.modal, true);
+  for (let i = 1; i < 5; i++) {
+    enemies.update(2);
+    assert.equal(pd.stage, 'talk');
+    assert.equal(CC.HauntedPond.advanceDialogue(), true);
+  }
+  assert.match(CC.Plains.speech.text, /Forever/);
+  assert.equal(CC.HauntedPond.advanceDialogue(), true);
+  assert.equal(pd.stage, 'turn');
+  assert.equal(CC.Plains.speech, null);
+});
+test('Pond transformation includes timed cues and spawns only one boss', () => {
+  const { CC, pd, enemies } = scene();
+  CC.HauntedPond.interact();
+  for (let i = 0; i < 5; i++) CC.HauntedPond.advanceDialogue();
+  enemies.update(1.1);
+  assert.equal(pd.boss, null);
+  enemies.update(1.8);
+  assert.equal(pd.turnCue, 2);
+  enemies.update(2.6);
+  assert.equal(pd.stage, 'fight');
+  assert.equal(enemies.list.filter(e => e.type === 'merehorror').length, 1);
+  enemies.update(1);
+  assert.equal(enemies.list.filter(e => e.type === 'merehorror').length, 1);
 });

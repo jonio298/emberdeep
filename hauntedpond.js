@@ -28,6 +28,48 @@
   function hero() { var s = CC.state; return s && s.player && !s.player.stub ? s.player : null; }
   function pond() { var P = CC.Plains, m = P && P.map; return m && m.pond && CC.Dungeon === m ? m.pond : null; }
   function fxText(x, y, s, c, z) { if (CC.fx && CC.fx.text) CC.fx.text(x, y, s, c, z); }
+
+  // The Lady must be spoken to before the nightmare can begin.
+  var LADY_LINES = [
+    'Oh... a visitor. The reeds have not whispered of one in years.',
+    'Come closer. Can you hear them singing beneath the water?',
+    'They were so lonely down there. I promised I would bring them someone.',
+    'Do not be afraid. You will never have to leave us.',
+    'Stay. Forever.'
+  ];
+  var TURN_LENGTH = 5.4;
+  HP.isTalking = function () { var pd = pond(); return !!(pd && pd.stage === 'talk'); };
+  HP.isCinematic = function () { var pd = pond(); return !!(pd && pd.stage === 'turn'); };
+  HP.nearAction = function () {
+    var pd = pond(), p = hero();
+    return !!(pd && p && (pd.stage === 'talk' || (pd.stage === 'calm' && pd.lady && !pd.lady.hidden &&
+      Math.hypot(p.x - pd.lady.x, p.y - pd.lady.y) <= 112)));
+  };
+  HP.advanceDialogue = function () {
+    var pd = pond();
+    if (!pd || pd.stage !== 'talk') return false;
+    pd.dialogueIndex++;
+    if (pd.dialogueIndex === LADY_LINES.length) {
+      if (CC.Plains) CC.Plains.speech = null;
+      pd.stage = 'turn'; pd.turnT = 0; pd.turnCue = 0;
+      if (CC.Audio && CC.Audio.play) CC.Audio.play('ghost_call_2', { vol: 0.6, gap: 0, vary: 0 });
+    } else if (CC.Plains) {
+      CC.Plains.speech = { name: 'The Lady of the Pond',
+        text: LADY_LINES[pd.dialogueIndex], modal: true, t0: Date.now() };
+    }
+    return true;
+  };
+  HP.interact = function () {
+    var pd = pond(), p = hero();
+    if (!pd || !p) return false;
+    if (pd.stage === 'talk') return HP.advanceDialogue();
+    if (pd.stage !== 'calm' || !pd.lady || pd.lady.hidden ||
+        Math.hypot(p.x - pd.lady.x, p.y - pd.lady.y) > 112) return false;
+    pd.stage = 'talk'; pd.dialogueIndex = 0;
+    if (CC.Plains) CC.Plains.speech = { name: 'The Lady of the Pond',
+      text: LADY_LINES[0], modal: true, t0: Date.now() };
+    return true;
+  };
   HP.isDone = function () { return !!HP.done; };
   HP.setDone = function (v) { HP.done = !!v; };
 
@@ -256,6 +298,70 @@
     c.globalAlpha = Math.min(1, a * 1.8); c.shadowColor = '#5ac8ff'; c.shadowBlur = 14; c.fillStyle = '#b8f0ff'; c.fillRect(-3.6, -31.6, 2.8, 2.3); c.fillRect(0.8, -31.6, 2.8, 2.3); // the blue glowing eyes
     c.restore();
   }
+
+  function drawTransformation(c, cam, foreground) {
+    var pd = pond(); if (!pd || pd.stage !== 'turn') return;
+    var x = pd.x - cam.x, y = pd.y - cam.y;
+    if (x < -260 || x > cam.w + 260 || y < -260 || y > cam.h + 260) return;
+    var t = pd.turnT, u = clamp(t / TURN_LENGTH, 0, 1);
+    var vortex = sm((u - 0.15) / 0.62), rise = sm((u - 0.48) / 0.46), i, a;
+    c.save(); c.translate(x, y);
+    if (!foreground) {
+      c.fillStyle = 'rgba(8,3,18,' + (0.15 + vortex * 0.78) + ')';
+      c.beginPath(); c.ellipse(0, 8, 20 + vortex * 116, 7 + vortex * 39, 0, 0, TAU); c.fill();
+      for (i = 0; i < 5; i++) {
+        var phase = (t * (0.3 + vortex * 0.75) + i / 5) % 1;
+        var radius = 20 + phase * (96 + vortex * 48);
+        c.strokeStyle = 'rgba(' + (i % 2 ? '199,38,76' : '177,223,216') + ',' +
+          ((0.18 + 0.45 * vortex) * (1 - phase)) + ')';
+        c.lineWidth = 1.4 + vortex * 2.4; c.beginPath();
+        c.ellipse(0, 8, radius, radius * 0.32, 0, 0, TAU); c.stroke();
+      }
+      for (i = 0; i < 18; i++) {
+        a = i * TAU / 18 - t * (0.5 + vortex * 1.5);
+        var r = 32 + vortex * (34 + (i % 4) * 13);
+        c.fillStyle = u < 0.28 ? '#ffe5ee' : i % 3 ? '#a0183f' : '#d68da2';
+        c.globalAlpha = 0.75;
+        c.fillRect(Math.cos(a) * r, Math.sin(a) * r * 0.4 - vortex * 17, 3 + vortex * 3, 2 + vortex * 2);
+      }
+      c.globalAlpha = 1;
+      var glow = c.createRadialGradient(0, -20, 2, 0, -20, 138);
+      glow.addColorStop(0, 'rgba(225,32,77,' + (0.08 + vortex * 0.50) + ')');
+      glow.addColorStop(1, 'rgba(225,32,77,0)');
+      c.fillStyle = glow; c.fillRect(-140, -160, 280, 280);
+    } else {
+      for (i = 0; i < 8; i++) {
+        a = i * TAU / 8 + t * 0.31;
+        var len = rise * (50 + (i % 3) * 24);
+        c.strokeStyle = 'rgba(' + (i % 2 ? '24,7,28' : '122,15,50') + ',' + rise + ')';
+        c.lineWidth = 3 + rise * 6; c.lineCap = 'round'; c.beginPath();
+        c.moveTo(0, -30); c.bezierCurveTo(Math.cos(a) * len * 0.5, -90,
+          Math.cos(a + t * 0.3) * len, -60 + Math.sin(a) * 40,
+          Math.cos(a) * (len + 20), -26 + Math.sin(a) * len);
+        c.stroke();
+      }
+      // Crooked crown and skull slowly rising from the Lady's dissolving body.
+      var sy = -36 - rise * 57, rs = 0.5 + rise * 1.65;
+      c.fillStyle = 'rgba(10,3,16,' + rise + ')';
+      c.beginPath(); c.ellipse(0, sy, rs * 14, rs * 19, 0, 0, TAU); c.fill();
+      for (i = 0; i < 5; i++) {
+        var hx = (i - 2) * rs * 6;
+        c.beginPath(); c.moveTo(hx, sy - rs * 12);
+        c.lineTo(hx + (i - 2) * rs * 2, sy - rs * (26 + (i % 2) * 8));
+        c.lineTo(hx + 4, sy - rs * 9); c.closePath(); c.fill();
+      }
+      c.fillStyle = 'rgba(255,44,70,' + rise + ')';
+      c.fillRect(-rs * 10, sy - rs * 4, rs * 6, rs * 3);
+      c.fillRect(rs * 4, sy - rs * 4, rs * 6, rs * 3);
+      c.strokeStyle = 'rgba(248,62,94,' + (0.1 + rise * 0.8) + ')'; c.lineWidth = 1.4;
+      for (i = 0; i < 4; i++) {
+        a = i * TAU / 4 + t * 0.22; c.beginPath(); c.moveTo(0, -25);
+        c.lineTo(Math.cos(a) * 28, -53); c.lineTo(Math.cos(a + 0.4) * 56, -40);
+        c.lineTo(Math.cos(a) * 94, 10 + Math.sin(a) * 22); c.stroke();
+      }
+    }
+    c.restore();
+  }
   HP.after = function (c, cam) {
     var pd = pond(); if (!pd) return;
     var h = pd.h, fire = pd.fire, t = Date.now() / 1000, p = hero(), i, tx0 = Math.floor(cam.x / T), ty0 = Math.floor(cam.y / T), tx1 = Math.ceil((cam.x + cam.w) / T), ty1 = Math.ceil((cam.y + cam.h) / T);
@@ -354,8 +460,14 @@
     }
     // apparitions: pale figures with glowing blue eyes that fade in, hang in the dark, and fade away
     for (i = 0; i < pd.ghosts.length; i++) ghostFig(c, pd.ghosts[i], p, t, cam);
+    if (pd.stage === 'turn') drawTransformation(c, cam, false);
     if (lady) HP.drawWoman(c, lady.x - cam.x, lady.y - cam.y, t, lady);
-    if (pd.stage === 'turn') { var u = clamp(pd.turnT / 3.2, 0, 1), pulse = 0.12 + 0.25 * Math.abs(Math.sin(t * 6)) * u; c.fillStyle = 'rgba(140,0,12,' + pulse + ')'; c.fillRect(0, 0, cam.w, cam.h); }
+    if (pd.stage === 'turn') {
+      drawTransformation(c, cam, true);
+      var u = clamp(pd.turnT / TURN_LENGTH, 0, 1);
+      c.fillStyle = 'rgba(140,0,20,' + (u * (0.07 + 0.13 * Math.abs(Math.sin(t * 7)))) + ')';
+      c.fillRect(0, 0, cam.w, cam.h);
+    }
     c.restore();
   };
 
@@ -377,12 +489,12 @@
   /* ---------- the woman ---------- */
   HP.drawWoman = function (c, sx, sy, t, pr) {
     var pd = pond(); if (!pd || pr.hidden) return;
-    var u = pd.stage === 'turn' ? clamp(pd.turnT / 3.2, 0, 1) : 0, sc = 1.25 + 0.7 * u, sway = Math.sin(t * 1.3) * 1.4, i;
+    var u = pd.stage === 'turn' ? clamp(pd.turnT / TURN_LENGTH, 0, 1) : 0, sc = 1.25 + 1.45 * sm(u), sway = Math.sin(t * (1.3 + 12 * u)) * (1.4 + 6 * u), i;
     c.save(); c.translate(sx, sy);
     var aura = c.createRadialGradient(0, -22, 2, 0, -22, 46 + u * 20); aura.addColorStop(0, u > 0.3 ? 'rgba(255,60,70,' + 0.4 * u + ')' : 'rgba(255,236,246,0.5)'); aura.addColorStop(1, 'rgba(255,236,246,0)'); c.fillStyle = aura; c.fillRect(-60, -80, 120, 120);
     c.fillStyle = 'rgba(0,0,0,0.3)'; c.beginPath(); c.ellipse(0, 3, 12 * sc, 4, 0, 0, TAU); c.fill();
     c.scale(sc, sc * (1 + 0.1 * u));
-    var shake = u > 0 ? (Math.random() - 0.5) * 2 * u * 2 : 0; c.translate(shake, 0);
+    var shake = u > 0 ? Math.sin(t * (13 + u * 19)) * 4 * u : 0; c.translate(shake, -u * 17);
     // hair: long and dark, drifting; in the turn it rises and writhes
     c.strokeStyle = u > 0.15 ? '#0a0408' : '#1c1620'; c.lineCap = 'round';
     for (i = 0; i < 9; i++) { var hx = -5 + i * 1.3, lift = u * (18 + i * 2); c.lineWidth = 2.6 - i * 0.12; c.beginPath(); c.moveTo(hx * 0.5, -31); c.bezierCurveTo(hx - 5 + sway, -26 - lift * 0.5, hx - 8 + Math.sin(t * 2 + i) * (2 + u * 6), -12 - lift, hx - 5 + Math.sin(t * 2.3 + i) * (3 + u * 8), 4 - lift * 1.4); c.stroke(); }
@@ -401,12 +513,13 @@
     c.restore();
     // drifting petals
     if (u < 0.2) { for (i = 0; i < 5; i++) { var ph = (t * 0.25 + i / 5) % 1; c.globalAlpha = Math.sin(ph * Math.PI); c.fillStyle = i % 2 ? '#ffd0e0' : '#fff'; c.beginPath(); c.ellipse(sx + Math.sin(ph * 6 + i * 2) * 20, sy - 6 - ph * 44, 1.8, 1, ph * 5, 0, TAU); c.fill(); } c.globalAlpha = 1; }
-    var p = hero(); if (p && pd.stage === 'calm' && Math.hypot(p.x - pr.x, p.y - pr.y) < 80) { c.font = 'bold 9px Georgia, serif'; c.textAlign = 'center'; c.fillStyle = '#ffe9f4'; c.fillText(pr.name + '  [F] talk', sx, sy - 58 * 1.0); c.textAlign = 'left'; }
+    var p = hero(); if (p && pd.stage === 'calm' && Math.hypot(p.x - pr.x, p.y - pr.y) < 112) { c.font = 'bold 9px Georgia, serif'; c.textAlign = 'center'; c.fillStyle = '#ffe9f4'; c.fillText(pr.name + '  [F] talk', sx, sy - 58 * 1.0); c.textAlign = 'left'; }
   };
-  HP.talk = function (pr) {
-    var pd = pond(); if (!pd || pd.stage !== 'calm') return '...';
-    pd.stage = 'turn'; pd.turnT = 0; pd.said = 0;
-    return 'Oh... a visitor. So few come this far. Stay with me a while. The water is so warm.';
+  HP.talk = function () {
+    var pd = pond(); if (!pd) return '...';
+    if (pd.stage === 'calm') HP.interact();
+    else if (pd.stage === 'talk') HP.advanceDialogue();
+    return CC.Plains && CC.Plains.speech ? CC.Plains.speech.text : '';
   };
 
   /* ---------- the fight ---------- */
@@ -558,11 +671,12 @@
     var res = oUpdate.apply(this, arguments), pd = pond();
     if (!pd) return res;
     var p = hero(), h = pd.h, target = 0, ftarget = 0, m = CC.Plains.map;
-    if (pd.stage === 'calm' && p) {
+    if ((pd.stage === 'calm' || pd.stage === 'talk') && p) {
       var tx = Math.floor(p.x / T), ty = Math.floor(p.y / T), kd = m.kind[ty * m.w + tx], dIsl = Math.hypot(p.x - pd.x, p.y - pd.y);
       if (dIsl < pd.ri * T + 6) { target = 0.97; ftarget = 1; }
       else if (kd === 6) { var u = clamp(((p.x - pd.startX) * -pd.dirx) / Math.max(1, Math.abs(pd.startX - pd.edgeX)), 0, 1); target = 0.02 + 0.93 * Math.pow(u, 1.55); ftarget = clamp((u - 0.75) / 0.25, 0, 1); } // slow at first: you will hardly notice it begin
     } else if (pd.stage === 'turn' || pd.stage === 'fight') { target = 1; ftarget = 1; }
+    if (pd.stage === 'talk') ftarget = 0;
     h += (target - h) * Math.min(1, dt * (target > h ? 1.6 : 0.5)); pd.h = h;
     pd.fire += (ftarget - pd.fire) * Math.min(1, dt * (ftarget > pd.fire ? 1.2 : 0.4));
     // apparitions: they begin to appear once the dark has set in, and gather as it deepens
@@ -574,11 +688,21 @@
       if (gdd < pd.R + 8) gl.push({ x: gx, y: gy, age: 0, life: 3 + R() * 3, vx: (R() - 0.5) * 8 + (p.x - gx) * 0.02, vy: (R() - 0.5) * 6 + (p.y - gy) * 0.02, seed: R() * 50, sc: 0.95 + R() * 0.5 });
     }
     if (pd.stage === 'turn') {
-      pd.turnT += dt; var P = CC.Plains, tt = pd.turnT;
-      if (CC.fx && CC.fx.shake && R() < dt * 6) CC.fx.shake(1 + tt);
-      if (tt > 1.3 && pd.said < 1) { pd.said = 1; P.speech = { name: 'The Lady of the Pond', text: 'Why do you look at me like that? Come closer...', t0: Date.now() }; }
-      if (tt > 2.4 && pd.said < 2) { pd.said = 2; P.speech = { name: 'The Lady of the Pond', text: 'Stay. Forever.', t0: Date.now() }; }
-      if (tt >= 3.2) { // she is gone; something else stands where she stood
+      pd.turnT += dt; var tt = pd.turnT;
+      if (CC.fx && CC.fx.shake && R() < dt * (2 + tt * 0.7)) CC.fx.shake(1 + tt * 0.65);
+      if (tt > 1.1 && pd.turnCue < 1) {
+        pd.turnCue = 1;
+        if (CC.Audio && CC.Audio.play) CC.Audio.play('waterdrop1', { vol: 0.8, gap: 0, vary: 0 });
+        fxText(pd.x, pd.y - 84, 'SOMETHING MOVES BELOW', '#a3d2c9', 11);
+      }
+      if (tt > 2.75 && pd.turnCue < 2) {
+        pd.turnCue = 2;
+        if (CC.Audio) CC.Audio.event('laugh');
+        if (CC.Vfx && CC.Vfx.skyFlash) CC.Vfx.skyFlash('#a31036', 0.2, 0.28);
+        if (CC.fx && CC.fx.burst) CC.fx.burst(pd.x, pd.y - 48, '#a41545', 16, 80);
+        fxText(pd.x, pd.y - 112, 'THE MERE AWAKENS', '#e36e90', 14);
+      }
+      if (tt >= TURN_LENGTH) { // she is gone; something else stands where she stood
         pd.stage = 'fight'; if (pd.lady) { pd.lady.hidden = true; }
         if (CC.Audio) { CC.Audio.event('laugh'); CC.Audio.play('pondspawn', { vol: 1, gap: 0, vary: 0 }); } // the lady is gone and the Mere Horror rises
         var b = E.spawn('merehorror', pd.x, pd.y, 2); if (b) { b.maxHp = b.hp = Math.round(b.maxHp * 4); b.dmg = Math.max(1, Math.round(b.dmg * 0.7)); b.state = 'rise'; b.t = 1.4; b.miniBoss = true; b.asleep = false; b.cd = 1.5; pd.boss = b; }

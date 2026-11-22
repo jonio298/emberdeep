@@ -372,6 +372,7 @@
     var s = CC.state, p = s && s.player, m = P.map;
     if (!p || !m || CC.Dungeon !== m) return false;
     var best = null, bd = 56, i;
+    if (CC.HauntedPond && CC.HauntedPond.interact && CC.HauntedPond.interact()) return true;
     if (CC.RockPass && CC.RockPass.scouting()) return true;
     if (m.passGate && CC.RockPass && CC.RockPass.isOpen() && Math.hypot(p.x - m.passGate.x, p.y - m.passGate.y) < 100) return CC.RockPass.enter();
     for (i = 0; i < m.npcs.length; i++) { var n = m.npcs[i], d = Math.hypot(p.x - n.x, p.y - n.y); if (!n.hidden && d < bd) { bd = d; best = n; } }
@@ -409,8 +410,9 @@
     var sp = P.speech;
     if (sp) {
       var age = (now - sp.t0) / 1000, p = CC.state && CC.state.player;
-      if (age > 6 || (p && P.map && P.map.npcs.every(function (n) { return Math.hypot(p.x - n.x, p.y - n.y) > 110; }))) { P.speech = null; return; }
-      if (CC.DialogBox) CC.DialogBox.draw(ctx, Wd, Hd, function () {}, { name: sp.name, text: sp.text, low: true });
+      if (!sp.modal && (age > 6 || (p && P.map && P.map.npcs.every(function (n) { return Math.hypot(p.x - n.x, p.y - n.y) > 110; })))) { P.speech = null; return; }
+      if (CC.DialogBox) CC.DialogBox.draw(ctx, Wd, Hd, function () {}, { name: sp.name,
+        text: sp.text + (sp.modal ? '  TAP / ACTION TO CONTINUE' : ''), low: true });
     }
   };
 
