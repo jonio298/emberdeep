@@ -591,13 +591,22 @@
     place(8, 6, true, H * 0.28, H * 0.65);
     for (i = 0; i < 3; i++) place(6, 5, false, 16, H - 24);
     // A guaranteed small, reachable shack several paces to the side of the main road.
+    // The large cabin clearance was too strict for a roadside building: use a
+    // one-tile footprint buffer, and reserve its approach only after placement.
+    function shackFits(x0, y0) {
+      if (x0 < 6 || y0 < 12 || x0 + 5 > W - 6 || y0 + 4 > H - 14) return false;
+      for (var yy = y0 - 1; yy <= y0 + 4; yy++)
+        for (var xx = x0 - 1; xx <= x0 + 5; xx++)
+          if (res[at(xx, yy)]) return false;
+      return true;
+    }
     var trapShack = null, sh;
     for (sh = 0; sh < 44 && !trapShack; sh++) {
       var sm = samples[Math.floor(samples.length * (0.18 + (sh % 22) * 0.029))];
       if (!sm) continue;
       var side = sh % 2 ? -1 : 1;
       var hx = Math.round(sm.x + side * 7) - 2, hy = Math.round(sm.y - 7) - 2;
-      if (!fits(hx, hy, 5, 4)) continue;
+      if (!shackFits(hx, hy)) continue;
       trapShack = { x0: hx, y0: hy, w: 5, h: 4, lit: false, trap: true, door: hx + 2 };
       reserve(hx - 3, hy - 3, hx + 8, hy + 7);
       cabins.push(trapShack);
