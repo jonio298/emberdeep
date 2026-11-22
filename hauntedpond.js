@@ -557,7 +557,12 @@
     if (CC.fx) { if (CC.fx.shake) CC.fx.shake(4); fxText(p.x, p.y - 14, '-' + dmg, '#ff5a5a', 12); }
     return dmg;
   }
-  function shootB(e, ang, spd, dmg, col, life, r) { E._shoot(e, ang, spd, dmg, col, 'orb', life); var q = E.projectiles[E.projectiles.length - 1]; if (q && r) q.r = r; }
+  function shootB(e, ang, spd, dmg, col, life, r) {
+    if(E.projectiles.length>=100)return;
+    E._shoot(e, ang, spd, dmg, col, 'orb', life);
+    var q=E.projectiles[E.projectiles.length-1];
+    if(q){if(r)q.r=r;q.pondShot=true;}
+  }
   // Summon onto the playable island only. Never put enemies in the water,
   // inside trees, or on top of a hero. Bound the total wave size for mobile.
   var POND_MINION_CAP = 8;
@@ -701,10 +706,26 @@
       E.projectiles.push({
         x: o.x, y: o.y, vx: Math.cos(a) * 155, vy: Math.sin(a) * 155,
         r: 5, dmg: e.dmg * 0.55, color: '#e775a2', kind: 'orb',
-        hostile: true, life: 1.6
+        hostile: true, life: 1.6, pondShot: true
       });
     }
     e.mistEyes = null; e.mistAim = null;
+  }
+  // Locked aim before firing: the player can dodge instead of being tracked by
+  // the shot after its 900ms warning.
+  function aimBloodOrbs(e,p,ang){
+    e.projectileAim={x:p.x,y:p.y};
+    E._tele(e,'bloodOrbs',0.90,ang);e.tele=null;
+  }
+  function fireBloodOrbs(e){
+    var target=e.projectileAim;
+    if(!target)return;
+    var aim=Math.atan2(target.y-e.y,target.x-e.x);
+    var low=e.hp<e.maxHp*.5,n=low?5:3;
+    for(var i=0;i<n;i++)shootB(e,aim+(i-(n-1)/2)*(low?.18:.23),
+      low?205:180,e.dmg*.62,'#ff78c7',2.1,6);
+    if(CC.fx&&CC.fx.burst)CC.fx.burst(e.x,e.y-15,'#fa6fbc',12,75);
+    e.projectileAim=null;
   }
   function brain(e, dt, p, d, ang, f) {
     var low = e.hp < e.maxHp * 0.5, rage = e.hp < e.maxHp * 0.3, sp = e.spd * f * dt * (rage ? 1.45 : low ? 1.2 : 1), k;
@@ -739,13 +760,15 @@
       if (e.summonCd <= 0 && activePondMinions() < 5) { this._tele(e, 'summon', 1.0, ang); e.tele = { kind: 'circle', rad: 120, max: 1.0 }; e.summonCd = 13; return; }
       if (e.mistCd <= 0 && d < 350 && vanish(e, p)) return;
       if (e.cd <= 0) {
-        e.n = (e.n || 0) + 1; var pick = e.n % 7;
+        e.n = (e.n || 0) + 1; var pick = e.n % 8;
         if (pick === 1 && mistStrike(e, p, ang)) {
           fxText(e.x, e.y - 65, 'MIST LUNGE', '#ffa5bd', 10);
         } else if (pick === 2) {
           mistGrasp(e, p); fxText(p.x, p.y - 36, 'THE MIST GRASPS', '#ff9ab4', 10);
         } else if (pick === 3) {
           eyeVolley(e, p); fxText(e.x, e.y - 65, 'EYES IN THE MIST', '#ffc4cf', 11);
+        } else if (pick === 6) {
+          aimBloodOrbs(e,p,ang);fxText(e.x,e.y-65,'BLOOD ORBS','#ffb5df',11);
         } else if (pick === 4 && !(p.blindT > 0) && d < 340 && e.los !== false) {
           this._tele(e, 'gaze', 0.95, ang); e.tele = { kind: 'line', ang: ang, len: 340, max: 0.95 };
           fxText(e.x, e.y - 65, 'DO NOT LOOK', '#ff6a6a', 11);
@@ -779,6 +802,8 @@
           e.mistCircle = null;
         } else if (e.atk === 'mistVolley') {
           e.state = 'recover'; e.t = 0.85; fireMistVolley(e);
+        } else if (e.atk === 'bloodOrbs') {
+          e.state='recover';e.t=0.8;fireBloodOrbs(e);
         } else if (e.atk === 'rake') {
           e.state = 'act'; e.t = 0.4; if (CC.fx && CC.fx.shake) CC.fx.shake(7);
           if (CC.fx && CC.fx.burst) { CC.fx.burst(e.x + Math.cos(ang) * 24, e.y, '#9ad0c0', 14, 130); }
@@ -786,7 +811,7 @@
           if (d < e.telRad + (p.r || 8) && hurtB(p, e, e.dmg * 1.15)) { mvB(p, Math.cos(ang) * 24, Math.sin(ang) * 24); if (CC.Wounds && R() < 0.4) CC.Wounds.apply(p, { dur: 2.5, dps: Math.max(2, e.dmg * 0.3), src: 'claw' }); }
         } else if (e.atk === 'tendrils') {
           e.state = 'recover'; e.t = 0.6; var n = rage ? 9 : low ? 7 : 5;
-          for (k = 0; k < n; k++) shootB(e, ang + (k - (n - 1) / 2) * 0.17, 175, e.dmg * 0.55, '#3a2a58', 2.2, 5);
+          for (k = 0; k < n; k++) shootB(e, ang + (k - (n - 1) / 2) * 0.17, 175, e.dmg * 0.55, '#b77ee7', 2.2, 5);
           if (CC.fx && CC.fx.burst) CC.fx.burst(e.x, e.y - 8, '#3a2a58', 10, 90);
         } else if (e.atk === 'hands') {
           e.state = 'recover'; e.t = 0.9; var nh = rage ? 6 : low ? 5 : 4;
@@ -989,6 +1014,19 @@
       }
       c.restore();
     }
+    if(e.state==='telegraph'&&e.atk==='bloodOrbs'&&e.projectileAim){
+      var aim=e.projectileAim,pr=1-clamp(e.t/.90,0,1);
+      var sx=e.x-cam.x,sy=e.y-cam.y-22;
+      c.save();c.strokeStyle='rgba(255,140,206,'+(0.36+0.55*pr)+')';
+      c.lineWidth=2;c.setLineDash([5,5]);c.beginPath();c.moveTo(sx,sy);
+      c.lineTo(aim.x-cam.x,aim.y-cam.y);c.stroke();c.setLineDash([]);
+      c.strokeStyle='#ffc9eb';c.lineWidth=2.3;c.beginPath();
+      c.arc(sx,sy,9+15*pr,0,TAU);c.stroke();
+      c.fillStyle='#ff99cd';
+      for(var bi=0;bi<3;bi++){var ba=t*3+bi*TAU/3;
+        c.beginPath();c.arc(sx+Math.cos(ba)*17,sy+Math.sin(ba)*17,3+2*pr,0,TAU);c.fill();}
+      c.restore();
+    }
     if (e.state === 'telegraph' && e.atk === 'mistVolley' && e.mistEyes) {
       var q = 1 - clamp(e.t / 1.15, 0, 1);
       for (var j = 0; j < e.mistEyes.length; j++) {
@@ -1003,6 +1041,36 @@
       }
     }
   }
+  // Redraw shots and the hero's slash/projectile layer after the dense fog.
+  // All draw calls here are visual only; combat and collision run exactly once.
+  HP.drawCombatFocus=function(c,cam){
+    var pd=pond(),p=hero();
+    if(!pd||!p||pd.h<.15||pd.stage!=='fight')return;
+    var px=p.x/T-pd.cx,py=(p.y/T-pd.cy)*(pd.R/pd.ry);
+    if(px*px+py*py>(pd.R+12)*(pd.R+12))return;
+    if(CC.Classes&&CC.Classes.drawPondCombat)CC.Classes.drawPondCombat(c,cam);
+    if(!E||!E.projectiles)return;
+    for(var i=0;i<E.projectiles.length&&i<120;i++){
+      var q=E.projectiles[i];if(!q.hostile||q.fx)continue;
+      var dx=q.x/T-pd.cx,dy=(q.y/T-pd.cy)*(pd.R/pd.ry);
+      if(dx*dx+dy*dy>(pd.R+12)*(pd.R+12))continue;
+      var x=q.x-cam.x,y=q.y-cam.y;
+      if(x<-20||y<-20||x>cam.w+20||y>cam.h+20)continue;
+      var r=Math.max(3,q.r||4),a=Math.atan2(q.vy||0,q.vx||1);
+      c.save();
+      c.fillStyle='rgba(4,0,12,.86)';c.beginPath();c.arc(x,y,r+5,0,TAU);c.fill();
+      c.fillStyle=q.pondShot?'rgba(255,93,173,.55)':'rgba(255,214,154,.40)';
+      c.beginPath();c.arc(x,y,r+3,0,TAU);c.fill();
+      c.strokeStyle=q.pondShot?'#ffd4f2':'#fff1c8';c.lineWidth=1.7;
+      c.beginPath();c.arc(x,y,r+2,0,TAU);c.stroke();
+      c.fillStyle=q.color||'#ff78c7';c.beginPath();c.arc(x,y,r,0,TAU);c.fill();
+      c.fillStyle='#ffffff';c.beginPath();c.arc(x,y,Math.max(1,r*.45),0,TAU);c.fill();
+      c.strokeStyle=q.pondShot?'#ff7fc5':'#ffcf91';c.lineWidth=2.2;
+      c.beginPath();c.moveTo(x-Math.cos(a)*(r+5),y-Math.sin(a)*(r+5));
+      c.lineTo(x-Math.cos(a)*(r+13),y-Math.sin(a)*(r+13));c.stroke();
+      c.restore();
+    }
+  };
   HP.drawBossFocus = function (c, cam) {
     var pd = pond(), boss = pd && pd.boss;
     if (!pd || pd.stage !== 'fight' || !boss || boss.dead || boss.hp <= 0) return;
