@@ -104,7 +104,8 @@
       perk('reset', 'Shadow Reset', 'Kills reset your dash', function (p) { flag(p, 'dashreset'); }),
       perk('cutthroat', 'Cutthroat', 'Backstabs deal much more damage', function (p) { flag(p, 'cutthroat'); }),
       perk('swift', 'Light Feet', '+12% move speed', function (p) { p.mods.speedPct += 0.12; }),
-      perk('storm', 'Knife Storm', 'Throwing knives fan out to 5', function (p) { flag(p, 'storm'); })
+      perk('storm', 'Knife Storm', 'Throwing knives fan out to 5', function (p) { flag(p, 'storm'); }),
+      perk('shadowchain', 'Shadow Chain', 'Shadow Flurry can lock onto and strike +2 more enemies', function (p) { flag(p, 'shadowchain'); })
     ]
   };
 
