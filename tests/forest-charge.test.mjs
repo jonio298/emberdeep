@@ -53,7 +53,7 @@ test('Giant Forest always creates a roadside shack with a reachable trapped ches
 });
 
 function bootThief(ranks = 0, perk = false) {
-  const hits = [], rings = [];
+  const hits = [], rings = [], knives = [];
   const player = { isHero: true, classId: 'thief', x: 20, y: 20, face: 1,
     stats: { dmg: 20 }, maxMana: 100, mana: 100, hp: 60,
     level: 1, chargeSel: 0, flags: perk ? { shadowchain: 1 } : {} };
@@ -61,7 +61,8 @@ function bootThief(ranks = 0, perk = false) {
   const CC = {
     state: { mode: 'dungeon', player },
     Enemies: { list: enemies },
-    Classes: { hitEnemy(e) { hits.push(e.id); return 1; } },
+    Classes: { hitEnemy(e) { hits.push(e.id); return 1; },
+      _h: { shoot(...args) { knives.push(args); } } },
     SkillTree: {
       chargeSelected() { return 0; },
       chargeSkills() { return [{ name: 'Shadow Flurry' }]; },
@@ -74,7 +75,7 @@ function bootThief(ranks = 0, perk = false) {
     save() {}, restore() {}, translate() {}, rotate() {}, beginPath() {}, fill() {}, stroke() {}, moveTo() {}, lineTo() {},
     ellipse() {}, fillRect() {}, arc(x, y, r) { if (this.strokeStyle === '#ff3b4e' || this.strokeStyle === '#e85d69') rings.push({ x, y, r }); }
   };
-  return { CC, player, hits, rings, ctx };
+  return { CC, player, hits, rings, knives, ctx };
 }
 
 test('first-level Shadow Flurry marks exactly one enemy and only strikes that enemy', () => {
@@ -86,6 +87,9 @@ test('first-level Shadow Flurry marks exactly one enemy and only strikes that en
   assert.ok(!b.rings.some(r => r.x === 90), 'second enemy is not marked');
   b.CC.Charge.update(0.02, false);
   assert.deepEqual(b.hits, [0]);
+  assert.equal(b.knives.length, 2, 'two knives are fired on landing');
+  assert.equal(b.knives[0][6], 'shard');
+  assert.equal(b.knives[1][7], 'knife');
   assert.equal(b.player.mana, 70);
 });
 

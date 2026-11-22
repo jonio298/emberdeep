@@ -248,9 +248,16 @@
         var fx0 = p.x, fy0 = p.y;
         var ddx = e.x - p.x, ddy = e.y - p.y, d = Math.sqrt(ddx * ddx + ddy * ddy) || 1;
         move(p, ddx / d * Math.max(0, d - 12), ddy / d * Math.max(0, d - 12));
-        if (CC.Vfx) CC.Vfx.spawn('slash', fx0, fy0, 0, { x2: p.x, y2: p.y }); else effects.push({ kind: 'slash', x: fx0, y: fy0, x2: p.x, y2: p.y, t: 0.35 + 0.08 * i, max: 0.35 + 0.08 * i });
+        if (CC.Vfx) CC.Vfx.spawn('slash', fx0, fy0, 0, { x2: p.x, y2: p.y, col:'#ff5164' }); else effects.push({ kind: 'slash', x: fx0, y: fy0, x2: p.x, y2: p.y, t: 0.35 + 0.08 * i, max: 0.35 + 0.08 * i });
+        // Two real, fast knife projectiles spring out of the landing position.
+        // They do not repeat the full backstab's damage or consume extra mana.
+        if(CC.Classes && CC.Classes._h && CC.Classes._h.shoot){
+          var ka=Math.atan2(e.y-p.y,e.x-p.x);
+          CC.Classes._h.shoot(p,ka-.16,420,.32,.34*scale,4,'shard','knife','#ff6474');
+          CC.Classes._h.shoot(p,ka+.16,420,.32,.34*scale,4,'shard','knife','#ff6474');
+        }
         hit(e, dmg * 1.8 * scale, 'shadow');
-        burst(e.x, e.y, '#b9a6ff', 8, 100);
+        burst(e.x, e.y, '#ff5164', 11, 115);
       }
       shake(3);
     }
@@ -391,16 +398,32 @@
         var locked = flurryTargets(p), k, enemy, ex, ey, radius;
         for (k = 0; k < locked.length; k++) {
           enemy = locked[k]; ex = enemy.x - cam.x; ey = enemy.y - cam.y;
-          radius = (enemy.r || 8) + 7 + 2 * (1 - f);
-          ctx.globalAlpha = (0.55 + f * 0.36) * (0.9 + 0.1 * Math.sin(T * 8));
-          ctx.strokeStyle = k === 0 ? '#ff3b4e' : '#e85d69';
-          ctx.lineWidth = k === 0 ? 2.5 : 1.7;
-          ctx.beginPath(); ctx.arc(ex, ey, radius, 0, PI2); ctx.stroke();
-          ctx.globalAlpha = 0.35 + f * 0.35;
-          ctx.beginPath(); ctx.arc(ex, ey, radius - 4, -Math.PI / 2, -Math.PI / 2 + PI2 * f); ctx.stroke();
-          ctx.globalAlpha = 0.70;
-          ctx.beginPath(); ctx.moveTo(ex - radius - 4, ey); ctx.lineTo(ex - radius + 1, ey);
-          ctx.moveTo(ex + radius - 1, ey); ctx.lineTo(ex + radius + 4, ey); ctx.stroke();
+          radius = (enemy.r || 8) + 8 + 3 * (1 - f);
+          // A low, transparent action-mist pool is anchored to the intended enemy.
+          // Thin crimson curls orbit inside the pool; avoid full-screen shaders.
+          if(typeof ctx.createRadialGradient==='function'){
+            var haze=ctx.createRadialGradient(ex,ey+4,2,ex,ey+4,radius*1.45);
+            haze.addColorStop(0,'rgba(223,30,50,'+(.23+.18*f)+')');
+            haze.addColorStop(.63,'rgba(165,24,42,'+(.16+.12*f)+')');
+            haze.addColorStop(1,'rgba(122,10,28,0)');
+            ctx.globalAlpha=.95;ctx.fillStyle=haze;
+            ctx.beginPath();ctx.ellipse(ex,ey+4,radius*1.45,radius*.75,0,0,PI2);ctx.fill();
+          }else{
+            ctx.globalAlpha=.28;ctx.fillStyle='#d72643';
+            ctx.beginPath();ctx.ellipse(ex,ey+4,radius*1.15,radius*.55,0,0,PI2);ctx.fill();
+          }
+          for(var wisp=0;wisp<4;wisp++){
+            var phase=T*(1.6+f)+wisp*PI2/4, rr=radius*(.7+.1*Math.sin(T*3+wisp));
+            ctx.strokeStyle=wisp%2?'#f43b57':'#a41733';ctx.lineWidth=1.5+f;
+            ctx.globalAlpha=(.42+.26*f)*(.75+.25*Math.sin(T*5+wisp));
+            ctx.beginPath();ctx.arc(ex+Math.cos(phase)*3,ey+Math.sin(phase)*2,rr,
+              phase,phase+1.45+f*.4);ctx.stroke();
+          }
+          ctx.globalAlpha=(.58+.3*f)*(.92+.08*Math.sin(T*8));
+          ctx.strokeStyle='#ff3b50';ctx.lineWidth=k===0?2.3:1.7;
+          ctx.beginPath();ctx.arc(ex,ey,radius,0,PI2);ctx.stroke();
+          ctx.globalAlpha=.32+.36*f;ctx.beginPath();
+          ctx.arc(ex,ey,radius-4,-Math.PI/2,-Math.PI/2+PI2*f);ctx.stroke();
         }
       }
     }

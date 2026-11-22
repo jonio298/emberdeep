@@ -27,6 +27,7 @@
   var CC = root.CC = root.CC || {};
 
   var cur = null, minions = [], projs = [], fxs = [], lastMap = null, noManaT = 0;
+  var wizardCrits = []; // small, bounded list of three-pulse impacts
 
   function rnd(a, b) { return a + Math.random() * (b - a); }
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
@@ -169,7 +170,7 @@
     syncSpells(p);
     p.hp = p.maxHp; p.mana = p.maxMana;
     cur = p;
-    minions.length = 0; projs.length = 0; fxs.length = 0;
+    minions.length = 0; projs.length = 0; fxs.length = 0; wizardCrits.length = 0;
     return p;
   }
 
@@ -412,9 +413,18 @@
       }
     }
     if (crit) {
-      fxFlash('#ffe9a0', 0.08);
-      addFx({ kind: 'ring', x: e.x, y: e.y, r: 18, t: 0.22, max: 0.22, col: '#ffd24a' });
-      fxShake(2); // Surviving crits keep blood, burst, damage pop; no added hit-stop.
+      // Crisp, in-world critical strikes: no camera freeze unless this hit killed.
+      // Thief's two strokes are visual beats of ONE crit, not a second damage roll.
+      if (CC.Settings && CC.Settings.get('critMode') !== 'off') {
+        if (p && (p.classId === 'swordsman' || p.classId === 'thief'))
+          addFx({ kind:'critSlash', x:e.x, y:e.y, r:e.r||9, a:opts.angle||Math.atan2(e.y-p.y,e.x-p.x),
+            col:'#ee2a42', twin:p.classId==='thief', t:.25, max:.25 });
+        else if (p && p.classId === 'necromancer')
+          addFx({ kind:'critSoul', x:e.x, y:e.y, r:e.r||9, a:opts.angle||0,
+            col:'#ad7cff', t:.29, max:.29 });
+      }
+      fxFlash('#cc2336', 0.045);
+      fxShake(3);
     }
     if (back && !crit) fxText(e.x, e.y - (e.r || 8) - 14, 'Backstab', '#7de0b8', 9);
     if (p && p.flags.venom && !opts.minion && type !== 'poison' && type !== 'fire' && alive(e)) ignite(e, 3, p.stats.dmg * 0.4, '#7dff5a', 'poison');
@@ -491,18 +501,20 @@
     if (fxs.length < 120) fxs.push(f);
     // Co-op: show this slash arc / spell ring / beam to the partner (trail puffs are too small to bother).
     if (!f.remote && CC.Multiplayer && CC.Multiplayer.sendFx &&
-        (f.kind === 'arc' || f.kind === 'ring' || f.kind === 'beam' || (f.kind === 'puff' && f.r >= 10)))
+        (f.kind === 'arc' || f.kind === 'ring' || f.kind === 'beam' || f.kind === 'critSlash' ||
+         f.kind === 'critSoul' || f.kind === 'critOrb' || (f.kind === 'puff' && f.r >= 10)))
       CC.Multiplayer.sendFx('fx', { kind: f.kind, x: f.x, y: f.y, a: f.a, half: f.half, r: f.r,
-        t: f.t, max: f.max, col: f.col, x2: f.kind === 'beam' ? (f.ref ? f.ref.x : f.x2) : undefined,
+        t: f.t, max: f.max, col: f.col, twin:!!f.twin, x2: f.kind === 'beam' ? (f.ref ? f.ref.x : f.x2) : undefined,
         y2: f.kind === 'beam' ? (f.ref ? f.ref.y : f.y2) : undefined });
   }
   // Effects and projectiles cast by the other player: purely visual, never damage anything here.
   function addRemoteFx(d) {
     if (!d || !isFinite(d.x) || !isFinite(d.y) || !(d.t > 0)) return;
     var f = { kind: String(d.kind), x: d.x, y: d.y, a: d.a || 0, half: d.half || 0.5, r: d.r || 10,
-      t: Math.min(1, d.t), max: Math.min(1, d.max || d.t), col: typeof d.col === 'string' ? d.col : '#fff', remote: true };
+      t: Math.min(1, d.t), max: Math.min(1, d.max || d.t), col: typeof d.col === 'string' ? d.col : '#fff',
+      twin: !!d.twin, remote: true };
     if (f.kind === 'beam') { f.x2 = isFinite(d.x2) ? d.x2 : d.x; f.y2 = isFinite(d.y2) ? d.y2 : d.y; }
-    else if (f.kind !== 'arc' && f.kind !== 'ring' && f.kind !== 'puff') return;
+    else if (['arc','ring','puff','critSlash','critSoul','critOrb'].indexOf(f.kind) < 0) return;
     addFx(f);
   }
   function addRemoteProjectile(d) {
@@ -597,7 +609,7 @@
     if (extra) for (var k in extra) pr[k] = extra[k];
     // Pre-roll only basic projectiles, so crit visuals are present at launch and
     // this exact result is reused on hit. Spells/AOE retain the old hit-time rule.
-    if ((kind === 'bolt' || kind === 'shard') && p.stats) {
+    if (((kind === 'bolt' && p.classId === 'wizard') || (kind === 'shard' && p.classId === 'necromancer')) && p.stats) {
       pr.preRolledCrit = Math.random() < p.stats.crit;
       pr.critHero = p.classId;
       if (pr.preRolledCrit) {
@@ -894,7 +906,9 @@
           if (s.pierce && !s.aoe) { // pass through, hitting each monster once
             if (!s.visual && s.hit.indexOf(e) < 0) {
               s.hit.push(e);
-              hitEnemy(e, s.dmg, s.type, { basicAttack: s.kind === 'bolt' || s.kind === 'shard', pw: s.kind === 'wave', attackKind: 'projectile',
+              if(s.kind==='bolt' && s.critHero==='wizard' && s.preRolledCrit && s.hit.length===1)
+                wizardCriticalImpact(s,e);
+              else hitEnemy(e, s.dmg, s.type, { basicAttack: s.kind === 'bolt' || s.kind === 'shard', pw: s.kind === 'wave', attackKind: 'projectile',
                 angle: s.a, color: s.col, ability: s.ability, preRolledCrit: s.hit.length === 1 ? s.preRolledCrit : false });
               fxBurst(s.x, s.y, s.col, 4, 60);
             }
@@ -919,7 +933,9 @@
         else { addFx({ kind: 'ring', x: s.x, y: s.y, r: s.aoe, t: 0.35, max: 0.35, col: '#ff8a3c' }); fxBurst(s.x, s.y, '#ff8a3c', 18, 120); }
         fxShake(4);
       } else if (target) {
-        hitEnemy(target, s.dmg, s.type, {
+        if(s.kind==='bolt' && s.critHero==='wizard' && s.preRolledCrit)
+          wizardCriticalImpact(s,target);
+        else hitEnemy(target, s.dmg, s.type, {
           basicAttack: s.kind === 'bolt' || s.kind === 'shard',
           attackKind: 'projectile', angle: s.a, color: s.col,
           preRolledCrit: s.preRolledCrit
@@ -965,7 +981,48 @@
     }
   }
 
+  // Wizard basic orb crit: three rapid DIRECT damage ticks (same overall crit
+  // damage as one old shot), each producing a modest noncritical splash. The
+  // third pulse owns the crit/kill check, so a finishing blow still animates.
+  function wizardSplash(e, amount) {
+    var l = foes(), r = 35;
+    for (var j = 0; j < l.length; j++) {
+      var other = l[j]; if (other === e || !alive(other)) continue;
+      if (Math.hypot(other.x-e.x,other.y-e.y) <= r+(other.r||8))
+        hitEnemy(other, amount, 'arcane', { noCrit:true, splash:true, critSequence:true });
+    }
+  }
+  function wizardCritPulse(seq) {
+    if (!alive(seq.target)) return;
+    var last = seq.count === 2, e = seq.target;
+    // A larger blue orb expands on impact; no extra hit-stop on nonlethal pulses.
+    hitEnemy(e, last ? seq.damage/3 : seq.damage*seq.mult/3, seq.type,
+      { basicAttack:true, attackKind:'projectile', angle:seq.angle,
+        critSequence:true, noCrit:!last, preRolledCrit:last });
+    wizardSplash(e, seq.damage*seq.mult*.105);
+    fxBurst(e.x,e.y,last?'#e7fdff':'#61c9ff',7,88);
+  }
+  function wizardCriticalImpact(s,e) {
+    if(wizardCrits.length>=12)wizardCrits.shift();
+    var seq={target:e,damage:s.dmg,mult:hero().stats.critDmg||1.75,
+      type:s.type,angle:s.a,count:0,time:0};
+    addFx({kind:'critOrb',x:e.x,y:e.y,r:Math.max(11,e.r||9),t:.37,max:.37,col:'#7edcff'});
+    wizardCritPulse(seq); // pulse 1 is instant, not one frame later
+    seq.count=1; wizardCrits.push(seq);
+  }
+  function updateWizardCrits(dt) {
+    for(var i=wizardCrits.length-1;i>=0;i--){
+      var seq=wizardCrits[i];
+      if(!alive(seq.target)){wizardCrits.splice(i,1);continue;}
+      seq.time+=dt;
+      while(seq.count<3&&seq.time>=seq.count*.11){
+        wizardCritPulse(seq);seq.count++;
+      }
+      if(seq.count>=3)wizardCrits.splice(i,1);
+    }
+  }
   function updateFx(dt) {
+    updateWizardCrits(dt);
     var fl = foes();
     for (var j = 0; j < fl.length; j++) if (fl[j]._hitFlash > 0) fl[j]._hitFlash -= dt;
     for (var i = fxs.length - 1; i >= 0; i--) {
@@ -976,7 +1033,7 @@
 
   function syncWorld() {
     var map = CC.state && CC.state.map;
-    if (map !== lastMap) { lastMap = map; minions.length = 0; projs.length = 0; fxs.length = 0; burning.length = 0; }
+    if (map !== lastMap) { lastMap = map; minions.length = 0; projs.length = 0; fxs.length = 0; burning.length = 0; wizardCrits.length = 0; }
   }
 
   function update(dt, opts) {
@@ -1251,7 +1308,47 @@
   function drawFx(c, f, cam) {
     var x = f.x - cam.x, y = f.y - cam.y, a = clamp(f.t / f.max, 0, 1);
     c.globalAlpha = a;
-    if (f.kind === 'arc') {
+    if (f.kind === 'critSlash' || f.kind === 'critSoul') {
+      var elapsed=f.max-f.t, isSoul=f.kind==='critSoul', count=f.twin?2:1;
+      c.save();c.translate(x,y);c.rotate(f.a||0);c.lineCap='round';
+      for(var cut=0;cut<count;cut++){
+        var delay=cut*.082, z=clamp((elapsed-delay)/.12,0,1);
+        if(elapsed<delay||elapsed>delay+.19)continue;
+        var fade=(1-clamp((elapsed-delay-.08)/.11,0,1))*(.7+.3*a),
+          r=Math.max(20,(f.r||9)*2.9), length=r*(.35+.75*z), shift=cut?-.27:.18;
+        var x0=-length,y0=-length*(cut?-.76:.76)+shift*8,
+          x1=length,y1=length*(cut?-.76:.76)+shift*8;
+        c.globalAlpha=fade*.50;c.strokeStyle=isSoul?'#502166':'#6a0919';c.lineWidth=13;
+        c.beginPath();c.moveTo(x0,y0);c.lineTo(x1,y1);c.stroke();
+        c.globalAlpha=fade;c.strokeStyle=isSoul?'#b66bff':'#ec1738';c.lineWidth=6;
+        c.beginPath();c.moveTo(x0,y0);c.lineTo(x1,y1);c.stroke();
+        c.strokeStyle=isSoul?'#c5ffdc':'#ff7182';c.lineWidth=2.5;
+        c.beginPath();c.moveTo(x0,y0);c.lineTo(x1,y1);c.stroke();
+        c.globalAlpha=fade*.9;c.fillStyle=isSoul?'#95ffb5':'#ff4b62';
+        for(var n=0;n<5;n++){
+          var f0=(n+1)/6,px=x0+(x1-x0)*f0,py=y0+(y1-y0)*f0;
+          c.fillRect(px-1,py-2+(n%2?4:-4),2,3);
+        }
+      }
+      c.restore();
+    } else if (f.kind === 'critOrb') {
+      var age=f.max-f.t, base=Math.max(12,f.r||12);
+      c.save();c.globalCompositeOperation='lighter';
+      for(var pulse=0;pulse<3;pulse++){
+        var u=(age-pulse*.11)/.15;
+        if(u<0||u>1)continue;
+        var fade=(1-u),rad=base*(.75+u*3.1);
+        c.globalAlpha=.15*fade;c.fillStyle='#239fff';
+        c.beginPath();c.arc(x,y,rad*1.35,0,6.2832);c.fill();
+        c.globalAlpha=.24*fade;c.fillStyle='#69cfff';
+        c.beginPath();c.arc(x,y,rad*.78,0,6.2832);c.fill();
+        c.globalAlpha=(.92-.25*u)*fade;c.strokeStyle='#c8f6ff';c.lineWidth=3.6*(1-u)+.6;
+        c.beginPath();c.arc(x,y,rad,0,6.2832);c.stroke();
+        c.globalAlpha=.88*fade;c.fillStyle='#f3ffff';
+        c.beginPath();c.arc(x,y,Math.max(2,base*.43*(1-u)),0,6.2832);c.fill();
+      }
+      c.restore();
+    } else if (f.kind === 'arc') {
       var ar = f.r * (0.75 + 0.25 * (1 - a));
       c.lineCap = 'round';
       c.strokeStyle = f.col; c.globalAlpha = a * 0.35; c.lineWidth = 6 + 8 * a; // soft outer glow
@@ -1387,7 +1484,7 @@
   // Repaint combat art after opaque pond fog, without duplicate actors or logic.
   function drawPondCombat(c,cam){
     for(var i=0;i<projs.length;i++)drawProj(c,projs[i],cam);
-    for(var j=0;j<fxs.length;j++)if(fxs[j].kind==='arc'||fxs[j].kind==='beam')drawFx(c,fxs[j],cam);
+    for(var j=0;j<fxs.length;j++)if(['arc','beam','critSlash','critSoul','critOrb'].indexOf(fxs[j].kind)>=0)drawFx(c,fxs[j],cam);
   }
   function draw(c, cam) {
     var p = hero();
@@ -1406,7 +1503,7 @@
       }
     }
     for (i = 0; i < projs.length; i++) drawProj(c, projs[i], cam);
-    for (i = 0; i < fxs.length; i++) if (fxs[i].kind === 'arc' || fxs[i].kind === 'beam') drawFx(c, fxs[i], cam);
+    for (i = 0; i < fxs.length; i++) if (['arc','beam','critSlash','critSoul','critOrb'].indexOf(fxs[i].kind)>=0) drawFx(c, fxs[i], cam);
   } // the level-up perk panel is drawn last of all by CC.Classes.drawPerkOverlay (above the HUD, trees and every other layer)
 
   /* ---------- perk picking input (taps / keys 1-3) ---------- */

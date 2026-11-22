@@ -6,6 +6,8 @@
 'use strict';
 var CC=root.CC=root.CC||{}, TAU=Math.PI*2, now=0, active=null, queue=[], held=false, cooldown=0;
 var COOLDOWN=3, IMPACT_FREEZE={normal:.10,elite:.15,boss:.20};
+// Cooldown still limits optional nonlethal cinematics. Actual critical kills are
+// never lost to it; a small queue preserves back-to-back finishers.
 var reduced=!!(root.matchMedia&&root.matchMedia('(prefers-reduced-motion: reduce)').matches);
 var LENGTHS={swordsman:1.18,thief:.90,wizard:.67,necromancer:.88};
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
@@ -42,14 +44,25 @@ function appendTargets(scene,list){
 function addTargets(list){if(active)appendTargets(active,list);}
 function mode(){return CC.Settings&&CC.Settings.get&&CC.Settings.get('critMode')||'kills';}
 function enabled(){return !(CC.Settings&&CC.Settings.get&&CC.Settings.get('critAnimations')===false)&&mode()!=='off';}
+function startScene(o){
+ active=o;now=0;
+ if(o.impact&&o.freeze&&CC.fx&&CC.fx.hitStop)CC.fx.hitStop(o.freeze);
+}
+function nextScene(){
+ var next=queue.shift()||null;
+ if(next)startScene(next);
+ else { active=null;now=0; }
+}
 function trigger(hit){
  if(!enabled())return false;
  if(!hit||!isFinite(hit.x)||!isFinite(hit.y)||['slash','projectile'].indexOf(hit.kind)<0)return false;
  if(!(CC.state&&CC.state.mode==='dungeon'))return false;
- // Surviving crits never pause gameplay by default. A single three-second clock
- // also prevents a multi-target slash from launching several cinematics.
- if(cooldown>0||active||(hit.finisher==null&&mode()!=='all'))return false;
- var id=heroKind(hit),o={
+ var id=heroKind(hit),fatal=hit.finisher!=null;
+ // Necromancer's Soul Reaper cinematic is reserved for critical kills, even
+ // when the optional all-hits mode is selected.
+ if(!fatal&&(mode()!=='all'||id==='necromancer'||cooldown>0||active))return false;
+ if(fatal&&active&&queue.length>=3)return false;
+ var o={
    kind:hit.kind,heroClass:id,
    x:hit.x,y:hit.y,sourceX:Number.isFinite(hit.sourceX)?hit.sourceX:hit.x-30,
    sourceY:Number.isFinite(hit.sourceY)?hit.sourceY:hit.y,
@@ -60,19 +73,23 @@ function trigger(hit){
  appendTargets(o,hit.targets);
  if(!o.targets.length)appendTargets(o,[{id:-1,x:o.x,y:o.y,r:o.r,anim:0,dead:false,face:1,
    type:'ghoul',color:'#917578',hp:1,maxHp:1}]);
- if(mode()!=='all'){
-   // Brief in-world cinematic: no black stage, no separate multi-second sequence.
+ if(fatal&&id==='necromancer'){
+   // The original 3-beat soul-reaping cutscene: only a critical KILL plays it.
+   // Reuse necromancer(), necroHits(), Soul Reaper sounds and monster snapshot.
+   o.duration=reduced?.48:.88;
+   o.soulReaper=true;
+ }else if(mode()!=='all'){
+   // Brief in-world kill impact for sword, thief and wizard.
    o.impact=true;o.impactType=hit.boss?'boss':hit.elite?'elite':'normal';
    o.freeze=reduced?0:IMPACT_FREEZE[o.impactType];
-   o.duration=o.freeze+.17;o.fin={id:hit.finisher,sx:0,sy:0};
-   active=o;now=0;cooldown=COOLDOWN;
-   if(o.freeze&&CC.fx&&CC.fx.hitStop)CC.fx.hitStop(o.freeze);
-   return true;
- }
- if(hit.finisher!=null&&CC.Finisher){
+   o.duration=o.freeze+.17;
+   o.fin={id:hit.finisher,sx:0,sy:0};
+ }else if(fatal&&CC.Finisher){
    o.fin={id:hit.finisher,sx:0,sy:0};o.duration=CC.Finisher.LEN[id];
  }
- active=o;now=0;cooldown=COOLDOWN;
+ if(fatal&&active){queue.push(o);return true;}
+ if(!fatal)cooldown=COOLDOWN;
+ startScene(o);
  return true;
 }
 // Kill shots only play inside the dungeon, where the cinematic stage exists.
@@ -121,13 +138,13 @@ function cueSound(){
 function update(dt){
  cooldown=Math.max(0,cooldown-clamp(dt||0,0,.12));
  if(!active||held)return;
- if(active.impact){now+=clamp(dt||0,0,.12);if(now>=active.duration){active=null;now=0;}return;}
+ if(active.impact){now+=clamp(dt||0,0,.12);if(now>=active.duration)nextScene();return;}
  var spd=(active.heroClass==='swordsman'&&!active.fin)?1.2:1; // the sword crit plays 20% faster
  if(active.heroClass==='necromancer'&&!active.fin){for(var hs=0;hs<3;hs++)if(now>=NH[hs]&&now<NH[hs]+.08){spd=.22;break;}} // each necromancer hit freezes for a beat
  now+=clamp(dt||0,0,.12)*spd;
  cueSound();
  if(active.heroClass==='necromancer'&&!active.fin&&CC.Audio){active.nh=active.nh||0;while(active.nh<3&&now>=NH[active.nh]){var hi=active.nh;CC.Audio.fx('crunch',{vol:.6,gap:0});CC.Audio.fx('wet',{vol:.4,gap:0});CC.Audio.fx('plasma'+(hi+1),{vol:1,gap:0});if(hi===0)CC.Audio.play('necrocrithit',{vol:1,gap:0,vary:0});active.nh++;}}
- if(now>=active.duration){active=queue.shift()||null;now=0;}
+ if(now>=active.duration)nextScene();
 }
 function reset(){active=null;queue.length=0;now=0;cooldown=0;held=false;}
 function view(w,h){
@@ -683,7 +700,7 @@ function drawScreen(c,W,H){
  c.font='bold '+Math.round(22*scale)+'px Georgia,serif';
  c.shadowColor='#27020b';c.shadowBlur=10;
  c.lineWidth=3.8;c.strokeStyle='#2a0712';
- var label=fin?CC.Finisher.TITLE[active.heroClass]:'CRITICAL HIT';
+ var label=active.soulReaper?'SOUL REAPER':fin?CC.Finisher.TITLE[active.heroClass]:'CRITICAL HIT';
  c.strokeText(label,W/2,textY);
  c.fillStyle=fin?CC.Finisher.colors(active.heroClass):'#ff334e';c.fillText(label,W/2,textY);
  c.shadowBlur=0;

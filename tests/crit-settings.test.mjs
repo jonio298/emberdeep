@@ -36,9 +36,30 @@ test('surviving criticals do not freeze; critical kills freeze for 100ms', () =>
   assert.equal(CC.CriticalScene.rate(), 1, 'no additional world slowdown');
   for (let i = 0; i < 4; i++) CC.CriticalScene.update(.1);
   assert.equal(CC.CriticalScene.isActive(), false, 'impact expires promptly');
-  assert.equal(CC.CriticalScene.trigger({ ...hit, finisher: 1 }), false, '3s cooldown');
-  for (let i = 0; i < 32; i++) CC.CriticalScene.update(.1);
+  assert.equal(CC.CriticalScene.trigger({ ...hit, finisher: 2 }), true, 'critical kills are not suppressed by the old 3s cooldown');
+  assert.equal(CC.CriticalScene.status().impact, true);
+});
+
+test('back-to-back lethal criticals queue instead of being lost', () => {
+  const { CC, stops } = boot();
   assert.equal(CC.CriticalScene.trigger({ ...hit, finisher: 1 }), true);
+  assert.equal(CC.CriticalScene.trigger({ ...hit, finisher: 2 }), true);
+  assert.equal(CC.CriticalScene.status().queued, 1);
+  for (let i = 0; i < 4; i++) CC.CriticalScene.update(.1);
+  assert.equal(CC.CriticalScene.isActive(), true, 'second kill becomes active');
+  for (let i = 0; i < 4; i++) CC.CriticalScene.update(.1);
+  assert.equal(CC.CriticalScene.isActive(), false);
+  assert.equal(stops.length, 2, 'each visible kill gets its own impact freeze');
+});
+
+test('Necromancer Soul Reaper cinematic starts only on a critical kill', () => {
+  const { CC } = boot();
+  const necro={ ...hit, heroClass:'necromancer' };
+  CC.Settings.set('critMode','all');
+  assert.equal(CC.CriticalScene.trigger(necro), false, 'surviving necro crits never start a cutscene');
+  assert.equal(CC.CriticalScene.trigger({ ...necro, finisher:1 }), true);
+  assert.equal(CC.CriticalScene.status().impact, false, 'Soul Reaper is the original cinematic');
+  assert.equal(CC.CriticalScene.status().duration, .88);
 });
 
 test('elite and boss critical kills have 150ms and 200ms freezes', () => {
