@@ -996,9 +996,12 @@
     if (!alive(seq.target)) return;
     var last = seq.count === 2, e = seq.target;
     // A larger blue orb expands on impact; no extra hit-stop on nonlethal pulses.
-    hitEnemy(e, last ? seq.damage/3 : seq.damage*seq.mult/3, seq.type,
-      { basicAttack:true, attackKind:'projectile', angle:seq.angle,
-        critSequence:true, noCrit:!last, preRolledCrit:last });
+    // Every pulse belongs to the SAME pre-rolled critical. If the first or
+    // second pulse kills a weak enemy, the finisher still fires on that kill;
+    // each pulse does one third of the original critical's direct damage.
+    hitEnemy(e, seq.damage/3, seq.type,
+      { basicAttack:last, attackKind:'projectile', angle:seq.angle,
+        critSequence:true, preRolledCrit:true });
     wizardSplash(e, seq.damage*seq.mult*.105);
     fxBurst(e.x,e.y,last?'#e7fdff':'#61c9ff',7,88);
   }
