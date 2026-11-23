@@ -70,7 +70,7 @@
       ['knife', 'Knife Mastery', 'Throwing Knives deal +25% damage per rank', 2, mod('spell1Pct', 0.25), 2],
       ['smoke', 'Smoke Mastery', 'Smoke Bomb deals +25% damage per rank', 2, mod('spell2Pct', 0.25), 4],
       ['venom', 'Venom Coat', 'Hits poison enemies for 3s', 2, flag('venom'), 8],
-      ['cutthroat', 'Cutthroat', 'Backstabs deal much more damage', 2, flag('cutthroat'), 12],
+      ['cutthroat', 'Cutthroat', 'Backstabs hit harder and Shadow Flurry gains +1 marked target per rank', 2, flag('cutthroat'), 12],
       ['tempo', 'Shadow Tempo', 'Spell cooldowns -10% per rank', 2, mod('spellCdr', 0.1), 18],
       ['reset', 'Shadow Reset', 'Capstone: kills reset your dash', 1, flag('dashreset'), 24]] }
   };
@@ -93,7 +93,7 @@
       { id: 'plague', name: 'Plague Nova', desc: 'A huge wave of rot that poisons and weakens every foe in reach.', lvl: 20 },
       { id: 'army', name: 'Army of the Dead', desc: 'Raise a whole army and shake the ground around you.', lvl: 30 }],
     thief: [
-      { id: 'flurry', name: 'Shadow Flurry', desc: 'Blink through several nearby foes, backstabbing each.', lvl: 1 },
+      { id: 'flurry', name: 'Shadow Flurry', desc: 'Blink to one red-marked foe. Cutthroat ranks and Shadow Chain perk add targets.', lvl: 1 },
       { id: 'venomburst', name: 'Venom Burst', desc: 'A cloud of venom that poisons and slows every foe around you.', lvl: 10 },
       { id: 'phantom', name: 'Phantom Blades', desc: 'Strike up to five foes twice each from the shadows.', lvl: 20 },
       { id: 'deathmark', name: 'Deathmark', desc: 'Mark every foe nearby; a second later each takes a killing blow.', lvl: 30 }]

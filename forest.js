@@ -22,12 +22,12 @@
 
   /* ---------- art ---------- */
   function ground(kind, hv) {
-    if (kind === 1) return hv < 0.5 ? '#4a3220' : '#432c1c';
-    if (kind === 2) return hv < 0.5 ? '#5b4a35' : '#54442f'; // main road: pale packed earth
-    if (kind === 10) return hv < 0.5 ? '#3f2f1f' : '#382a1b'; // tunnel floor: dark packed earth
-    if (kind === 6) return hv < 0.5 ? '#0e0d0b' : '#11100d'; // side trails: near-black, rotten soil
-    var g = 18 + Math.floor(hv * 10);
-    return 'rgb(' + (14 + Math.floor(hv * 6)) + ',' + (g + 14) + ',' + (g + 2) + ')';
+    if (kind === 1) return hv < 0.5 ? '#63472e' : '#58402a';
+    if (kind === 2) return hv < 0.5 ? '#80684b' : '#715d43'; // sun-worn dirt road against the grass
+    if (kind === 10) return hv < 0.5 ? '#493722' : '#40301f';
+    if (kind === 6) return hv < 0.5 ? '#302b24' : '#28241f'; // gloomy, but legible side paths
+    var g = 47 + Math.floor(hv * 14);
+    return 'rgb(' + (28 + Math.floor(hv * 9)) + ',' + (g + 12) + ',' + (g - 4) + ')';
   }
   function detail(ctx, kind, sx, sy, hv, t, tx, ty) {
     if (kind === 6) { // creepy trail: bones, grasping roots, pale glowing fungus
@@ -54,7 +54,33 @@
       return;
     }
     if (kind !== 0 && kind !== 2) return;
-    if (kind === 2 && hv < 0.3) { ctx.fillStyle = 'rgba(30,20,10,0.22)'; ctx.fillRect(sx + 4, sy + 6 + hv * 40, 24, 2); } // cart ruts
+    if (kind === 2) { // two worn wheel ruts and a thin wandering foot trail
+      ctx.fillStyle = 'rgba(47,35,24,0.22)';
+      ctx.fillRect(sx + 7 + hv * 2, sy + 1, 2, T - 1);
+      ctx.fillRect(sx + 24 - hv * 3, sy + 1, 2, T - 1);
+      if (hv > 0.35 && hv < 0.57) { // windblown pebbles, embedded in the packed earth
+        ctx.fillStyle = 'rgba(191,164,121,0.65)';
+        ctx.fillRect(sx + 14, sy + 7 + (hv * 91 % 13), 4, 2);
+        ctx.fillRect(sx + 22, sy + 19, 2, 2);
+      }
+      if (hv > 0.75) { // a stray leaf across the road
+        ctx.fillStyle = 'rgba(93,127,66,0.70)';
+        ctx.fillRect(sx + 10, sy + 9, 4, 2);
+      }
+    } else {
+      if (hv > 0.12 && hv < 0.33) { // fern fans and clover in sunlit clearings
+        ctx.strokeStyle = 'rgba(112,167,103,0.65)'; ctx.lineWidth = 1.4;
+        var fx = sx + 6 + (hv * 71 % 17), fy = sy + 13 + (hv * 139 % 11);
+        ctx.beginPath(); ctx.moveTo(fx, fy + 5); ctx.lineTo(fx, fy - 6);
+        ctx.moveTo(fx, fy - 4); ctx.lineTo(fx - 5, fy - 8);
+        ctx.moveTo(fx, fy - 1); ctx.lineTo(fx + 6, fy - 5);
+        ctx.moveTo(fx, fy + 2); ctx.lineTo(fx - 6, fy - 2); ctx.stroke();
+      }
+      if (hv > 0.79 && hv < 0.84) {
+        ctx.fillStyle = 'rgba(160,197,130,0.34)';
+        ctx.beginPath(); ctx.ellipse(sx + 14, sy + 11, 7, 3, -0.3, 0, PI2); ctx.fill();
+      }
+    }
     if (hv > 0.55) { // needles and tufts
       ctx.strokeStyle = kind === 2 ? 'rgba(90,80,60,0.5)' : 'rgba(60,110,70,0.45)'; ctx.lineWidth = 1;
       var x = sx + (hv * 977 % 1) * 26 + 3, y = sy + (hv * 313 % 1) * 24 + 5;
@@ -66,8 +92,8 @@
 
   // drooping clump of sequoia foliage hanging from a branch
   function clump(ctx, x, y, r, rnd) {
-    ctx.fillStyle = 'rgba(14,38,28,0.96)'; ctx.beginPath(); ctx.ellipse(x, y, r * 1.3, r * 0.7, 0, 0, PI2); ctx.fill();
-    ctx.fillStyle = 'rgba(32,72,48,0.9)'; ctx.beginPath(); ctx.ellipse(x - r * 0.3, y - r * 0.25, r * 0.8, r * 0.4, 0, 0, PI2); ctx.fill();
+    ctx.fillStyle = 'rgba(30,65,49,0.96)'; ctx.beginPath(); ctx.ellipse(x, y, r * 1.3, r * 0.7, 0, 0, PI2); ctx.fill();
+    ctx.fillStyle = 'rgba(58,112,79,0.92)'; ctx.beginPath(); ctx.ellipse(x - r * 0.3, y - r * 0.25, r * 0.8, r * 0.4, 0, 0, PI2); ctx.fill();
     ctx.strokeStyle = 'rgba(18,52,36,0.95)'; ctx.lineWidth = 1.4;
     for (var j = 0; j < 6; j++) {
       var x2 = x + (j - 2.5) * r * 0.45, l = r * (0.9 + rnd() * 1.3);
@@ -88,7 +114,7 @@
       ctx.beginPath(); ctx.moveTo(bx + side * (w / 2 + flare), by - 2); ctx.quadraticCurveTo(bx + side * (w / 2 + flare + 18 * m), by + 2, bx + side * (w / 2 + flare + 30 * m + rnd() * 10), by + 4 - rnd() * 3); ctx.stroke();
     }
     var g = ctx.createLinearGradient(bx - w / 2 - flare, 0, bx + w / 2 + flare, 0);
-    g.addColorStop(0, '#1e0e09'); g.addColorStop(0.35, '#5a2e1a'); g.addColorStop(0.7, '#3a1c10'); g.addColorStop(1, '#170a06');
+    g.addColorStop(0, '#28150e'); g.addColorStop(0.35, '#805038'); g.addColorStop(0.7, '#533020'); g.addColorStop(1, '#221109');
     ctx.fillStyle = g; ctx.beginPath();
     for (s = 0; s <= N; s++) { f = s / N; x = bx - half(f) + Math.sin(f * 37) * 0.9 * m; y = by - f * h; if (s) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
     for (s = N; s >= 0; s--) { f = s / N; ctx.lineTo(bx + half(f) + Math.sin(f * 37 + 2) * 0.9 * m, by - f * h); }
@@ -126,6 +152,11 @@
     var m = big ? 1.5 : 1, w = (24 + hv * 10) * m, h = (130 + hv * 110) * (big ? 1.25 : 1), topY = by - h, rnd = seeded(Math.floor(hv * 1e6) + (big ? 77 : 0));
     ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.beginPath(); ctx.ellipse(bx + 4, by + 1, w * 0.9, 7, 0, 0, PI2); ctx.fill();
     paintTrunk(ctx, bx, by, w, h, 9 * m, m, rnd, big ? 6 : 5);
+    // Pale living-moss runes in the bark, baked into the existing tree sprite cache.
+    ctx.strokeStyle = 'rgba(126,191,150,0.48)'; ctx.lineWidth = 1.2 * m;
+    ctx.beginPath(); ctx.moveTo(bx - 4 * m, by - 24 * m);
+    ctx.lineTo(bx + 2 * m, by - 31 * m); ctx.lineTo(bx - 1 * m, by - 39 * m);
+    ctx.moveTo(bx + 4 * m, by - 31 * m); ctx.lineTo(bx + 8 * m, by - 24 * m); ctx.stroke();
     if (!erase) return; // the old dark mist rectangle painted a black box around every tree; the crown now fades to transparent instead
     var fade = ctx.createLinearGradient(0, topY, 0, by - 40); // mist swallows the canopy
     fade.addColorStop(0, 'rgba(0,0,0,0.85)'); fade.addColorStop(0.6, 'rgba(0,0,0,0.25)'); fade.addColorStop(1, 'rgba(0,0,0,0)');
@@ -426,6 +457,67 @@
     ctx.fillStyle = '#d8d0b8'; ctx.fillRect(sx - 8, sy - 8, 4, 3); ctx.fillRect(sx + 4, sy - 8, 4, 3);
   }
 
+  // Weathered roadside fencing, roof timbers and a silent straw sentinel.
+  // All are sparse, cheap canvas props, not continuously allocated particle effects.
+  function drawFence(ctx, sx, sy, t, cam, pr) {
+    ctx.save(); ctx.translate(sx, sy);
+    ctx.rotate(pr.lean || 0);
+    ctx.strokeStyle = '#4c3021'; ctx.lineWidth = 4; ctx.lineCap = 'square';
+    ctx.beginPath(); ctx.moveTo(-25, 2); ctx.lineTo(-25, -23);
+    ctx.moveTo(0, 4); ctx.lineTo(2, -21);
+    ctx.moveTo(25, 1); ctx.lineTo(22, -17); ctx.stroke();
+    ctx.strokeStyle = '#9b7750'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(-25, -14); ctx.lineTo(-5, -12);
+    if (!pr.broken) ctx.lineTo(23, -11);
+    else { ctx.moveTo(6, -10); ctx.lineTo(18, -7); } // splintered missing center rail
+    ctx.moveTo(-24, -6); ctx.lineTo(-7, -5); ctx.stroke();
+    ctx.strokeStyle = '#6a5135'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(-24, -21); ctx.lineTo(-24, -14);
+    ctx.moveTo(22, -17); ctx.lineTo(20, -7); ctx.stroke();
+    ctx.restore();
+  }
+  function drawShackRoof(ctx, sx, sy) {
+    ctx.save(); ctx.fillStyle = 'rgba(12,14,10,0.35)';
+    ctx.beginPath(); ctx.ellipse(sx, sy + 18, 77, 19, 0, 0, PI2); ctx.fill();
+    ctx.fillStyle = '#3b3028'; ctx.beginPath();
+    ctx.moveTo(sx - 88, sy + 16); ctx.lineTo(sx - 69, sy - 25);
+    ctx.lineTo(sx + 62, sy - 27); ctx.lineTo(sx + 82, sy + 13);
+    ctx.lineTo(sx + 35, sy + 8); ctx.lineTo(sx - 22, sy + 15);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#927554'; ctx.lineWidth = 3;
+    for (var i = 0; i < 5; i++) { ctx.beginPath(); ctx.moveTo(sx - 69 + i * 27, sy - 21);
+      ctx.lineTo(sx - 80 + i * 27, sy + 10 + (i % 2) * 4); ctx.stroke(); }
+    ctx.fillStyle = '#58805a'; ctx.fillRect(sx - 51, sy - 15, 25, 4);
+    ctx.fillStyle = '#b2a179'; ctx.fillRect(sx + 52, sy - 16, 3, 7);
+    ctx.restore();
+  }
+  function drawStrawSentinel(ctx, sx, sy, t, cam, pr) {
+    if (pr.chest.opened) return; // its post is empty once the trap springs
+    ctx.save(); ctx.translate(sx, sy);
+    ctx.fillStyle = 'rgba(8,9,8,0.28)'; ctx.beginPath(); ctx.ellipse(0, 4, 16, 5, 0, 0, PI2); ctx.fill();
+    ctx.strokeStyle = '#594632'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(0, 3); ctx.lineTo(0, -44);
+    ctx.moveTo(-18, -31); ctx.lineTo(18, -31); ctx.stroke();
+    ctx.fillStyle = '#766243'; ctx.fillRect(-7, -37, 14, 22);
+    ctx.fillStyle = '#57402f'; ctx.fillRect(-24, -34, 16, 7);
+    ctx.fillRect(9, -34, 14, 7);
+    ctx.fillStyle = '#a28a55'; ctx.fillRect(-5, -44, 10, 10);
+    ctx.fillStyle = '#3a302a'; ctx.fillRect(-13, -47, 26, 4);
+    ctx.fillRect(-9, -54, 18, 8);
+    ctx.fillStyle = '#b5a06b'; ctx.fillRect(-18, -29, 8, 3); ctx.fillRect(12, -29, 8, 3);
+    ctx.fillStyle = '#a42d28'; ctx.fillRect(-3, -41, 2, 2); ctx.fillRect(2, -41, 2, 2);
+    ctx.restore();
+  }
+  function drawMossStone(ctx, sx, sy) {
+    ctx.fillStyle = '#626a5b'; ctx.beginPath(); ctx.moveTo(sx - 9, sy + 3);
+    ctx.lineTo(sx - 7, sy - 10); ctx.lineTo(sx + 3, sy - 19);
+    ctx.lineTo(sx + 10, sy - 4); ctx.lineTo(sx + 9, sy + 4); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#91bc99'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(sx - 4, sy - 5); ctx.lineTo(sx + 2, sy - 11);
+    ctx.lineTo(sx + 5, sy - 3); ctx.stroke();
+    ctx.fillStyle = '#73946b'; ctx.fillRect(sx - 7, sy, 10, 3);
+  }
+
   /* ---------- generation ---------- */
   function build(rng) {
     var N = W * H, kind = new Uint8Array(N), tiles = new Uint8Array(N), res = new Uint8Array(N), i, x, y;
@@ -498,6 +590,37 @@
     }
     place(8, 6, true, H * 0.28, H * 0.65);
     for (i = 0; i < 3; i++) place(6, 5, false, 16, H - 24);
+    // A guaranteed small, reachable shack several paces to the side of the main road.
+    // The large cabin clearance was too strict for a roadside building: use a
+    // one-tile footprint buffer, and reserve its approach only after placement.
+    function shackFits(x0, y0) {
+      if (x0 < 6 || y0 < 12 || x0 + 5 > W - 6 || y0 + 4 > H - 14) return false;
+      for (var yy = y0 - 1; yy <= y0 + 4; yy++)
+        for (var xx = x0 - 1; xx <= x0 + 5; xx++)
+          if (res[at(xx, yy)]) return false;
+      return true;
+    }
+    var trapShack = null, sh;
+    for (sh = 0; sh < 44 && !trapShack; sh++) {
+      var sm = samples[Math.floor(samples.length * (0.18 + (sh % 22) * 0.029))];
+      if (!sm) continue;
+      var side = sh % 2 ? -1 : 1;
+      var hx = Math.round(sm.x + side * 7) - 2, hy = Math.round(sm.y - 7) - 2;
+      if (!shackFits(hx, hy)) continue;
+      trapShack = { x0: hx, y0: hy, w: 5, h: 4, lit: false, trap: true, door: hx + 2 };
+      reserve(hx - 3, hy - 3, hx + 8, hy + 7);
+      cabins.push(trapShack);
+      // Sweep a narrow connecting footpath from the shack door back to the old road.
+      var ex = trapShack.door, ey = hy + 4;
+      for (var si0 = 0; si0 <= 20; si0++) {
+        var q0 = si0 / 20, wx = ex + (sm.x - ex) * q0, wy = ey + (sm.y - ey) * q0;
+        disc(wx, wy, 1.3, function (xx, yy) {
+          if (xx >= hx && xx < hx + 5 && yy >= hy && yy < hy + 4) return;
+          res[at(xx, yy)] = 1; kind[at(xx, yy)] = 2; tiles[at(xx, yy)] = 0;
+        });
+      }
+    }
+    if (!trapShack) return null; // reroll instead of producing a world with an unreachable encounter
     var chests = [], props = [], lights = [], npcs = [];
     cabins.forEach(function (c) {
       var xx, yy;
@@ -527,12 +650,28 @@
         for (i = 0; i < 4; i++) props.push({ x: c.x0 * T + T * (1 + rng() * (c.w - 2)), y: c.y0 * T + T * (1.4 + rng() * (c.h - 2.4)), w: 8 + rng() * 14, col: '#3a2c1e', draw: drawDebris });
         props.push({ x: (c.x0 + 1) * T + 8, y: (c.y0 + 1) * T + 6, draw: function (ctx, sx, sy) { drawWeb(ctx, sx - 14, sy - 12); } });
         var ch = ctr(c.x0 + Math.floor(c.w / 2), c.y0 + Math.floor(c.h / 2)); ch.opened = false; ch.tier = Math.min(1, rng() < 0.35 ? 1 : 0); chests.push(ch);
+        if (c.trap) {
+          ch.tier = 1;
+          ch.forestScarecrowTrap = true;
+          ch.trapSpawn = ctr(c.x0 + c.w + 1, c.y0 + c.h);
+          reserve(c.x0 + c.w, c.y0 + c.h - 1, c.x0 + c.w + 2, c.y0 + c.h + 2);
+          props.push({ x: (c.x0 + c.w / 2) * T, y: c.y0 * T + 12, draw: drawShackRoof });
+          props.push({ x: ch.trapSpawn.x, y: ch.trapSpawn.y, chest: ch, draw: drawStrawSentinel });
+        }
         for (i = 0; i < 2; i++) { // the roof and walls have given way
           var gx = c.x0 + (rng() < 0.5 ? 0 : c.w - 1), gy = c.y0 + 1 + Math.floor(rng() * (c.h - 2));
           kind[at(gx, gy)] = 0; tiles[at(gx, gy)] = 0;
         }
       }
     });
+
+    // Broken fence rails and ancient mossy markers along the worn road, with intentional gaps.
+    for (var fi = 26; fi < samples.length - 24; fi += 38) {
+      var fp = samples[fi], fs = fi % 3 === 0 ? -1 : 1;
+      var fx = (fp.x + fp.nx * fs * 3.9) * T, fy = (fp.y + fp.ny * fs * 3.9) * T;
+      props.push({ x: fx, y: fy, lean: (rng() - 0.5) * 0.22, broken: fi % 2 === 0, draw: drawFence });
+      if (fi % 3 === 1) props.push({ x: fx + 35, y: fy - 9, draw: drawMossStone });
+    }
 
     // a line of giants on both sides of the road, and gnarled trees walling each side trail (never on a path)
     function isolated(tx, ty) {
@@ -664,10 +803,25 @@
     }
     var map = CC.Realm.create({
       name: 'Giant Forest', w: W, h: H, kind: kind, tiles: tiles, spawn: spawn, stairs: stairs, chests: chests, enemySpawns: spawns, props: props, lights: lights,
-      ambient: '5,9,14,0.6', playerLight: 190, viewR: 230, fog: 0.15, ground: ground, detail: detail, drawSolid: drawSolid
+      ambient: '17,25,21,0.40', playerLight: 225, viewR: 255, fog: 0.11, ground: ground, detail: detail, drawSolid: drawSolid
     });
-    map.npcs=npcs;map.cabins=cabins;map.floor=1;map.trails=trails;
+    map.npcs=npcs;map.cabins=cabins;map.floor=1;map.trails=trails;map.trapShack=trapShack;
     map.ascentEntrance=ascentEntrance;map.mainPath=samples;map.bats=nbats;map.webs=nwebs;
+    // Hook the actual chest-open operation so keyboard, touch and co-op host paths all trigger it.
+    var baseOpenChest = map.openChest;
+    map.openChest = function (ch) {
+      var opened = baseOpenChest.call(map, ch);
+      if (!opened || !ch.forestScarecrowTrap || ch._trapTriggered) return opened;
+      ch._trapTriggered = true; // never spawn twice, including on subsequent snapshots
+      if (CC.Multiplayer && CC.Multiplayer.isGuest && CC.Multiplayer.isGuest()) return opened;
+      if (CC.Enemies && CC.Enemies.spawn && CC.Enemies.TYPES && CC.Enemies.TYPES.scarecrow) {
+        var e = CC.Enemies.spawn('scarecrow', ch.trapSpawn.x, ch.trapSpawn.y, 1, { awake: true });
+        if (e) { e.dormant = false; e.asleep = false; e.state = 'idle'; e.cd = 0.25; e.forestAmbush = true; }
+        if (CC.fx && CC.fx.burst) CC.fx.burst(ch.trapSpawn.x, ch.trapSpawn.y, '#c7a36d', 22, 115);
+        if (CC.fx && CC.fx.text) CC.fx.text(ch.trapSpawn.x, ch.trapSpawn.y - 45, 'THE STRAW STIRS!', '#ffd69b', 12);
+      }
+      return opened;
+    };
     return map;
   }
 

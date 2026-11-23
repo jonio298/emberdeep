@@ -4,7 +4,10 @@
  */
 (function(root){
 'use strict';
-var CC=root.CC=root.CC||{}, TAU=Math.PI*2, now=0, active=null, queue=[], held=false;
+var CC=root.CC=root.CC||{}, TAU=Math.PI*2, now=0, active=null, queue=[], held=false, cooldown=0;
+var COOLDOWN=3, IMPACT_FREEZE={normal:.10,elite:.15,boss:.20};
+// Cooldown still limits optional nonlethal cinematics. Actual critical kills are
+// never lost to it; a small queue preserves back-to-back finishers.
 var reduced=!!(root.matchMedia&&root.matchMedia('(prefers-reduced-motion: reduce)').matches);
 var LENGTHS={swordsman:1.18,thief:.90,wizard:.67,necromancer:.88};
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
@@ -39,10 +42,27 @@ function appendTargets(scene,list){
  }
 }
 function addTargets(list){if(active)appendTargets(active,list);}
+function mode(){return CC.Settings&&CC.Settings.get&&CC.Settings.get('critMode')||'kills';}
+function enabled(){return !(CC.Settings&&CC.Settings.get&&CC.Settings.get('critAnimations')===false)&&mode()!=='off';}
+function startScene(o){
+ active=o;now=0;
+ if(o.impact&&o.freeze&&CC.fx&&CC.fx.hitStop)CC.fx.hitStop(o.freeze);
+}
+function nextScene(){
+ var next=queue.shift()||null;
+ if(next)startScene(next);
+ else { active=null;now=0; }
+}
 function trigger(hit){
+ if(!enabled())return false;
  if(!hit||!isFinite(hit.x)||!isFinite(hit.y)||['slash','projectile'].indexOf(hit.kind)<0)return false;
  if(!(CC.state&&CC.state.mode==='dungeon'))return false;
- var id=heroKind(hit),o={
+ var id=heroKind(hit),fatal=hit.finisher!=null;
+ // Necromancer's Soul Reaper cinematic is reserved for critical kills, even
+ // when the optional all-hits mode is selected.
+ if(!fatal&&(mode()!=='all'||id==='necromancer'||cooldown>0||active))return false;
+ if(fatal&&active&&queue.length>=3)return false;
+ var o={
    kind:hit.kind,heroClass:id,
    x:hit.x,y:hit.y,sourceX:Number.isFinite(hit.sourceX)?hit.sourceX:hit.x-30,
    sourceY:Number.isFinite(hit.sourceY)?hit.sourceY:hit.y,
@@ -53,18 +73,31 @@ function trigger(hit){
  appendTargets(o,hit.targets);
  if(!o.targets.length)appendTargets(o,[{id:-1,x:o.x,y:o.y,r:o.r,anim:0,dead:false,face:1,
    type:'ghoul',color:'#917578',hp:1,maxHp:1}]);
- if(hit.finisher!=null&&CC.Finisher){
+ if(fatal&&id==='necromancer'){
+   // The original 3-beat soul-reaping cutscene: only a critical KILL plays it.
+   // Reuse necromancer(), necroHits(), Soul Reaper sounds and monster snapshot.
+   o.duration=reduced?.48:.88;
+   o.soulReaper=true;
+ }else if(mode()!=='all'){
+   // Brief in-world kill impact for sword, thief and wizard.
+   o.impact=true;o.impactType=hit.boss?'boss':hit.elite?'elite':'normal';
+   o.freeze=reduced?0:IMPACT_FREEZE[o.impactType];
+   o.duration=o.freeze+.17;
+   o.fin={id:hit.finisher,sx:0,sy:0};
+ }else if(fatal&&CC.Finisher){
    o.fin={id:hit.finisher,sx:0,sy:0};o.duration=CC.Finisher.LEN[id];
  }
- if(!active){active=o;now=0;}
- else if(queue.length<5)queue.push(o);
+ if(fatal&&active){queue.push(o);return true;}
+ if(!fatal)cooldown=COOLDOWN;
+ startScene(o);
  return true;
 }
 // Kill shots only play inside the dungeon, where the cinematic stage exists.
 function canFinish(){return !!(CC.Finisher&&CC.state&&CC.state.mode==='dungeon');}
 // A swipe's cinematic may already be running when a second target is perfectly killed.
 function finish(enemy){
- if(!active||!enemy||!CC.Finisher||active.fin)return false;
+ if(!enabled())return false;
+ if(!active||active.impact||!enemy||!CC.Finisher||active.fin)return false;
  active.fin={id:enemy.id,sx:0,sy:0};active.duration=CC.Finisher.LEN[active.heroClass]||2.8;now=0;active.snd=0;
  return true;
 }
@@ -103,17 +136,19 @@ function cueSound(){
  if(name){active.snd=1;CC.Audio.play(name,{vol:name==='swordcrit'?.6:1,gap:0,vary:0,rate:rate});}
 }
 function update(dt){
+ cooldown=Math.max(0,cooldown-clamp(dt||0,0,.12));
  if(!active||held)return;
+ if(active.impact){now+=clamp(dt||0,0,.12);if(now>=active.duration)nextScene();return;}
  var spd=(active.heroClass==='swordsman'&&!active.fin)?1.2:1; // the sword crit plays 20% faster
  if(active.heroClass==='necromancer'&&!active.fin){for(var hs=0;hs<3;hs++)if(now>=NH[hs]&&now<NH[hs]+.08){spd=.22;break;}} // each necromancer hit freezes for a beat
  now+=clamp(dt||0,0,.12)*spd;
  cueSound();
  if(active.heroClass==='necromancer'&&!active.fin&&CC.Audio){active.nh=active.nh||0;while(active.nh<3&&now>=NH[active.nh]){var hi=active.nh;CC.Audio.fx('crunch',{vol:.6,gap:0});CC.Audio.fx('wet',{vol:.4,gap:0});CC.Audio.fx('plasma'+(hi+1),{vol:1,gap:0});if(hi===0)CC.Audio.play('necrocrithit',{vol:1,gap:0,vary:0});active.nh++;}}
- if(now>=active.duration){active=queue.shift()||null;now=0;}
+ if(now>=active.duration)nextScene();
 }
-function reset(){active=null;queue.length=0;now=0;}
+function reset(){active=null;queue.length=0;now=0;cooldown=0;held=false;}
 function view(w,h){
- if(!active)return null;
+ if(!active||active.impact)return null;
  var k=reduced?0:envelope();
  var o=active,minX=o.sourceX,maxX=o.sourceX,minY=o.sourceY,maxY=o.sourceY;
  for(var i=0;i<o.targets.length;i++){
@@ -135,7 +170,7 @@ function view(w,h){
  return {x:(minX+maxX)/2,y:(minY+maxY)/2,
    scale:zoom+(impulse+nimp)*k,blend:k};
 }
-function rate(){return active&&!reduced?1-.76*envelope():1;}
+function rate(){return active&&!active.impact&&!reduced?1-.76*envelope():1;}
 function stroke(c,x1,y1,x2,y2,color,width){
  c.strokeStyle=color;c.lineWidth=width;c.beginPath();c.moveTo(x1,y1);c.lineTo(x2,y2);c.stroke();
 }
@@ -519,8 +554,47 @@ function necromancer(c,o,t){
  if(!o.fin)necroHits(c,o,t,ret);
  c.restore();
 }
+// A brief killing crit overlays the original damaged monster and a crisp weapon
+// strike, but never obscures projectiles, controls or unrelated enemies.
+function drawKillImpact(c,cam){
+ var o=active,t=now,fade=smooth((o.duration-t)/.17),x=o.x-cam.x,y=o.y-cam.y;
+ if(fade<=0||x<-90||y<-90||x>cam.w+90||y>cam.h+90)return;
+ var boss=o.impactType==='boss',elite=o.impactType==='elite';
+ var col=o.heroClass==='necromancer'?'#95ffa8':o.heroClass==='wizard'?'#8ed9ff':
+   o.heroClass==='thief'?'#ec9bff':'#fff2df';
+ var a=o.angle||0,r=16+(boss?30:elite?21:12);
+ c.save();c.translate(x,y);
+ if(o.targets&&CC.Enemies&&CC.Enemies.drawCriticalTargets&&t<o.freeze+.065){
+   c.save();c.translate(-x,-y);c.globalAlpha=.80*fade;
+   CC.Enemies.drawCriticalTargets(c,cam,o.targets.filter(function(e){return e.id===o.fin.id;}),o,t);
+   c.restore();
+ }
+ c.rotate(a);c.globalAlpha=fade;c.lineCap='round';
+ c.strokeStyle='#240814';c.lineWidth=boss?12:9;
+ c.beginPath();c.moveTo(-r,-r*.72);c.lineTo(r,r*.72);c.stroke();
+ c.strokeStyle=col;c.lineWidth=boss?5:3.5;c.stroke();
+ c.strokeStyle='#ffffff';c.lineWidth=1.4;c.stroke();
+ if(o.heroClass==='thief'){
+   c.beginPath();c.moveTo(-r,r*.72);c.lineTo(r,-r*.72);
+   c.strokeStyle='#df73ef';c.lineWidth=2.6;c.stroke();
+ }
+ if(o.heroClass==='wizard'||o.heroClass==='necromancer'){
+   c.strokeStyle=col;c.lineWidth=2;c.beginPath();c.arc(0,0,r*.72,0,TAU);c.stroke();
+ }
+ c.rotate(-a);
+ c.strokeStyle=boss?'#ff5985':elite?'#f6ba7c':'#ed607c';c.lineWidth=boss?3:2;
+ c.beginPath();c.arc(0,0,r*(.55+.45*smooth(t/Math.max(.01,o.freeze))),0,TAU);c.stroke();
+ for(var i=0;i<(boss?12:elite?9:6);i++){
+   var ang=i*TAU/(boss?12:elite?9:6)+a,d=r*(.25+.7*smooth(t/Math.max(.01,o.freeze)));
+   c.strokeStyle=i%2?col:'#c62a48';c.lineWidth=1.5;
+   c.beginPath();c.moveTo(Math.cos(ang)*d*.5,Math.sin(ang)*d*.5);
+   c.lineTo(Math.cos(ang)*d,Math.sin(ang)*d);c.stroke();
+ }
+ c.restore();
+}
 function drawWorld(c,cam){
  if(!active)return;
+ if(active.impact){drawKillImpact(c,cam);return;}
  var o=active,t=wt(),fade=smooth(now/.095)*smooth((o.duration-now)/.18);
  var fin=!!(o.fin&&CC.Finisher&&CC.Finisher.build(o).ok);
  if(fade<.001)return;
@@ -580,6 +654,21 @@ function drawWorld(c,cam){
 }
 function drawScreen(c,W,H){
  if(!active)return;
+ if(active.impact){
+   var o=active,fade=smooth((o.duration-now)/.17);
+   if(fade<=0)return;
+   c.save();
+   c.globalAlpha=(o.impactType==='boss'?.20:.07)*fade;
+   c.fillStyle=o.impactType==='boss'?'#ed315b':'#ffffff';c.fillRect(0,0,W,H);
+   if(o.impactType!=='normal'){
+     c.globalAlpha=fade;c.textAlign='center';c.textBaseline='middle';
+     c.font='bold '+(o.impactType==='boss'?20:16)+'px Georgia,serif';
+     c.strokeStyle='#200711';c.lineWidth=3;c.fillStyle='#ffe3dc';
+     var label=o.impactType==='boss'?'BOSS FINISHER':'ELITE FINISHER';
+     c.strokeText(label,W/2,Math.max(36,H*.19));c.fillText(label,W/2,Math.max(36,H*.19));
+   }
+   c.restore();return;
+ }
  var e=envelope(),t=now,fade=smooth(t/.11)*smooth((active.duration-t)/.20);
  if(fade<.003)return;
  c.save();
@@ -611,7 +700,7 @@ function drawScreen(c,W,H){
  c.font='bold '+Math.round(22*scale)+'px Georgia,serif';
  c.shadowColor='#27020b';c.shadowBlur=10;
  c.lineWidth=3.8;c.strokeStyle='#2a0712';
- var label=fin?CC.Finisher.TITLE[active.heroClass]:'CRITICAL HIT';
+ var label=active.soulReaper?'SOUL REAPER':fin?CC.Finisher.TITLE[active.heroClass]:'CRITICAL HIT';
  c.strokeText(label,W/2,textY);
  c.fillStyle=fin?CC.Finisher.colors(active.heroClass):'#ff334e';c.fillText(label,W/2,textY);
  c.shadowBlur=0;
@@ -656,12 +745,12 @@ function drawProjectile(c,s,cam){
  c.restore();
 }
 CC.CriticalScene={
- trigger:trigger,canFinish:canFinish,finish:finish,addTargets:addTargets,update:update,reset:reset,view:view,rate:rate,
+ trigger:trigger,enabled:enabled,mode:mode,canFinish:canFinish,finish:finish,addTargets:addTargets,update:update,reset:reset,view:view,rate:rate,
  isActive:function(){return !!active;},
  debugSeek:function(t,hold){now=t;held=!!hold;},
  drawWorld:drawWorld,drawScreen:drawScreen,drawProjectile:drawProjectile,
  status:function(){return {active:!!active,kind:active&&active.kind,
   heroClass:active&&active.heroClass,queued:queue.length,time:now,
-  duration:L(),targets:active?active.targets.length:0};}
+  duration:L(),cooldown:cooldown,impact:!!(active&&active.impact),impactType:active&&active.impactType,targets:active?active.targets.length:0};}
 };
 })(window);

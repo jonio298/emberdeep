@@ -3,7 +3,7 @@
  *   swordsman   Earthsplitter  - a travelling shockwave that hurls foes back and stuns them
  *   wizard      Meteor Call    - a telegraphed meteor drops on the nearest foe (or ahead) and explodes
  *   necromancer Bone Tide      - a draining nova that heals you and raises skeletons
- *   thief       Shadow Flurry  - blink through several nearby foes, backstabbing each
+ *   thief       Shadow Flurry  - lock one foe with a red circle; skill/perk upgrades chain to more
  * API (CC.Charge): update(dt, holding), draw(ctx, cam), cancel(), state. The shell calls update after Classes.update.
  * Uses only public APIs: CC.Classes.hitEnemy/status/heal/minions, CC.Enemies.list, CC.Dungeon.moveWithCollision, CC.fx.
  * Cost: 30% of max mana (min 12) paid on release, plus an 8s cooldown. Release before ARM seconds fizzles for free.
@@ -20,6 +20,7 @@
   var COOLDOWN = 8;
   var st = { hold: 0, on: false, t: 0, cool: 0, coolMax: COOLDOWN, anim: 0, warned: false, flashed: false };
   var effects = [];
+  var PI2 = Math.PI * 2;
 
   var NAMES = { swordsman: 'Earthsplitter', wizard: 'Meteor Call', necromancer: 'Bone Tide', thief: 'Shadow Flurry' };
   var COLORS = { swordsman: '#ff8a4a', wizard: '#8fd8ff', necromancer: '#7dff9a', thief: '#b9a6ff' };
@@ -69,6 +70,24 @@
   function skillIndex(p) { if (p.testChargeCls) return p.chargeSel | 0; return CC.SkillTree && CC.SkillTree.chargeSelected ? CC.SkillTree.chargeSelected(p) : 0; }
   function skillName(p) { var l = CC.SkillTree && CC.SkillTree.chargeSkills(ccls(p)); var i = skillIndex(p); return l && l[i] ? l[i].name : NAMES[ccls(p)]; }
   function within(p, r) { return foes().filter(function (f) { return alive(f) && Math.hypot(f.x - p.x, f.y - p.y) <= r + (f.r || 8); }); }
+  function flurryCap(p) {
+    var cutthroat = CC.SkillTree && CC.SkillTree.rank ? CC.SkillTree.rank(p, 'm_cutthroat') : 0;
+    return Math.min(5, 1 + cutthroat + (p.flags && p.flags.shadowchain ? 2 : 0));
+  }
+  // Keep a stable marked target throughout the hold, reacquiring only dead/out-of-range foes.
+  // The release uses this same list, rather than unexpectedly picking a different enemy.
+  function flurryTargets(p) {
+    var pool = within(p, 150).filter(function (e) { return !e.airborne && !e.collapsed; });
+    pool.sort(function (a, b) {
+      var da = Math.hypot(a.x - p.x, a.y - p.y), db = Math.hypot(b.x - p.x, b.y - p.y);
+      return da - db;
+    });
+    var cap = flurryCap(p), selected = [], prior = st.targets || [];
+    for (var i = 0; i < prior.length; i++) if (selected.length < cap && pool.indexOf(prior[i]) >= 0 && selected.indexOf(prior[i]) < 0) selected.push(prior[i]);
+    for (var j = 0; j < pool.length && selected.length < cap; j++) if (selected.indexOf(pool[j]) < 0) selected.push(pool[j]);
+    st.targets = selected;
+    return selected;
+  }
   function later(t, fn) { effects.push({ kind: 'later', t: t, max: t, fn: fn, x: 0, y: 0 }); }
   function ring(x, y, rad, col, t) { effects.push({ kind: 'ring', x: x, y: y, rad: rad, col: col, t: t, max: t }); }
   function beam(x, y, x2, y2, col, t) { effects.push({ kind: 'beam', x: x, y: y, x2: x2, y2: y2, col: col, t: t, max: t }); }
@@ -220,11 +239,8 @@
       }
       if (CC.Vfx) CC.Vfx.spawn('boneNova', p.x, p.y, rad, {}); else effects.push({ kind: 'nova', x: p.x, y: p.y, t: 0.55, max: 0.55, rad: rad });
       shake(4); burst(p.x, p.y, '#7dff9a', 22, 130);
-    } else { // thief
-      var targets = [], cap = 2 + Math.round(3 * pow);
-      l = foes().filter(function (f) { return alive(f) && Math.hypot(f.x - p.x, f.y - p.y) <= 150; });
-      l.sort(function (u, v) { return Math.hypot(u.x - p.x, u.y - p.y) - Math.hypot(v.x - p.x, v.y - p.y); });
-      targets = l.slice(0, cap);
+    } else { // thief: one marked foe by default; explicit upgrades increase the chain
+      var targets = flurryTargets(p).slice();
       p.iframes = Math.max(p.iframes || 0, 0.7);
       p.ambushT = 2; // the first strike is a guaranteed backstab crit
       for (i = 0; i < targets.length; i++) {
@@ -232,9 +248,16 @@
         var fx0 = p.x, fy0 = p.y;
         var ddx = e.x - p.x, ddy = e.y - p.y, d = Math.sqrt(ddx * ddx + ddy * ddy) || 1;
         move(p, ddx / d * Math.max(0, d - 12), ddy / d * Math.max(0, d - 12));
-        if (CC.Vfx) CC.Vfx.spawn('slash', fx0, fy0, 0, { x2: p.x, y2: p.y }); else effects.push({ kind: 'slash', x: fx0, y: fy0, x2: p.x, y2: p.y, t: 0.35 + 0.08 * i, max: 0.35 + 0.08 * i });
+        if (CC.Vfx) CC.Vfx.spawn('slash', fx0, fy0, 0, { x2: p.x, y2: p.y, col:'#ff5164' }); else effects.push({ kind: 'slash', x: fx0, y: fy0, x2: p.x, y2: p.y, t: 0.35 + 0.08 * i, max: 0.35 + 0.08 * i });
+        // Two real, fast knife projectiles spring out of the landing position.
+        // They do not repeat the full backstab's damage or consume extra mana.
+        if(CC.Classes && CC.Classes._h && CC.Classes._h.shoot){
+          var ka=Math.atan2(e.y-p.y,e.x-p.x);
+          CC.Classes._h.shoot(p,ka-.16,420,.32,.34*scale,4,'shard','knife','#ff6474');
+          CC.Classes._h.shoot(p,ka+.16,420,.32,.34*scale,4,'shard','knife','#ff6474');
+        }
         hit(e, dmg * 1.8 * scale, 'shadow');
-        burst(e.x, e.y, '#b9a6ff', 8, 100);
+        burst(e.x, e.y, '#ff5164', 11, 115);
       }
       shake(3);
     }
@@ -243,7 +266,7 @@
 
   function ready(p) {
     if (ccls(p) !== 'thief') return true;
-    return !!foes().filter(function (f) { return alive(f) && Math.hypot(f.x - p.x, f.y - p.y) <= 150; }).length;
+    return skillIndex(p) === 0 ? flurryTargets(p).length > 0 : within(p, 150).length > 0;
   }
 
   /* ---------- update ---------- */
@@ -309,10 +332,12 @@
               st.warned = true;
               text(p.x, p.y - 22, st.cool > 0 ? 'Charge ' + st.cool.toFixed(1) + 's' : 'No mana', '#9aa8c8', 9);
             }
-          } else { st.on = true; st.t = 0; st.flashed = false; if (CC.Audio) CC.Audio.chargeStart(false, 0.6); } // the main attack's charge-up is 40% quieter
+          } else { st.on = true; st.t = 0; st.targets = []; st.flashed = false; if (CC.Audio) CC.Audio.chargeStart(false, 0.6); } // the main attack's charge-up is 40% quieter
         }
       } else {
-        st.t = Math.min(FULL, st.t + dt); if (CC.Audio) CC.Audio.chargeSet(st.t / FULL);
+        st.t = Math.min(FULL, st.t + dt);
+        if (ccls(p) === 'thief' && skillIndex(p) === 0) flurryTargets(p);
+        if (CC.Audio) CC.Audio.chargeSet(st.t / FULL);
         if (st.t >= FULL && !st.flashed) { st.flashed = true; burst(p.x, p.y, COLORS[p.classId] || '#fff', 16, 110); shake(2); }
       }
     } else {
@@ -330,7 +355,7 @@
     }
   }
 
-  function cancel() { if (st.on && CC.Audio) CC.Audio.chargeEnd(false); st.hold = 0; st.on = false; st.t = 0; st.warned = false; st.flashed = false; }
+  function cancel() { if (st.on && CC.Audio) CC.Audio.chargeEnd(false); st.hold = 0; st.on = false; st.t = 0; st.targets = []; st.warned = false; st.flashed = false; }
 
   /* ---------- drawing ---------- */
   function arc(ctx, x, y, r, a0, a1, col, w, alpha) {
@@ -363,11 +388,43 @@
         ctx.globalAlpha = 0.8 * (1 - ph); ctx.fillStyle = col;
         ctx.beginPath(); ctx.arc(px + Math.cos(a) * (34 * (1 - ph) + 6), py + Math.sin(a) * (34 * (1 - ph) + 6), 2.2, 0, 6.3); ctx.fill();
       }
-    } else { // thief: shadow afterimages fan out behind
+    } else { // thief: shadow afterimages and a crimson lock-on over actual release targets
       for (i = 1; i <= 3; i++) {
         ctx.globalAlpha = 0.18 * f * (4 - i) / 3;
         ctx.fillStyle = '#7a62d8';
         ctx.beginPath(); ctx.ellipse(px - (p.face || 1) * i * 6 * (0.3 + f), py + 2, 6, 9, 0, 0, 6.3); ctx.fill();
+      }
+      if (skillIndex(p) === 0) {
+        var locked = flurryTargets(p), k, enemy, ex, ey, radius;
+        for (k = 0; k < locked.length; k++) {
+          enemy = locked[k]; ex = enemy.x - cam.x; ey = enemy.y - cam.y;
+          radius = (enemy.r || 8) + 8 + 3 * (1 - f);
+          // A low, transparent action-mist pool is anchored to the intended enemy.
+          // Thin crimson curls orbit inside the pool; avoid full-screen shaders.
+          if(typeof ctx.createRadialGradient==='function'){
+            var haze=ctx.createRadialGradient(ex,ey+4,2,ex,ey+4,radius*1.45);
+            haze.addColorStop(0,'rgba(223,30,50,'+(.23+.18*f)+')');
+            haze.addColorStop(.63,'rgba(165,24,42,'+(.16+.12*f)+')');
+            haze.addColorStop(1,'rgba(122,10,28,0)');
+            ctx.globalAlpha=.95;ctx.fillStyle=haze;
+            ctx.beginPath();ctx.ellipse(ex,ey+4,radius*1.45,radius*.75,0,0,PI2);ctx.fill();
+          }else{
+            ctx.globalAlpha=.28;ctx.fillStyle='#d72643';
+            ctx.beginPath();ctx.ellipse(ex,ey+4,radius*1.15,radius*.55,0,0,PI2);ctx.fill();
+          }
+          for(var wisp=0;wisp<4;wisp++){
+            var phase=T*(1.6+f)+wisp*PI2/4, rr=radius*(.7+.1*Math.sin(T*3+wisp));
+            ctx.strokeStyle=wisp%2?'#f43b57':'#a41733';ctx.lineWidth=1.5+f;
+            ctx.globalAlpha=(.42+.26*f)*(.75+.25*Math.sin(T*5+wisp));
+            ctx.beginPath();ctx.arc(ex+Math.cos(phase)*3,ey+Math.sin(phase)*2,rr,
+              phase,phase+1.45+f*.4);ctx.stroke();
+          }
+          ctx.globalAlpha=(.58+.3*f)*(.92+.08*Math.sin(T*8));
+          ctx.strokeStyle='#ff3b4e';ctx.lineWidth=k===0?2.3:1.7;
+          ctx.beginPath();ctx.arc(ex,ey,radius,0,PI2);ctx.stroke();
+          ctx.globalAlpha=.32+.36*f;ctx.beginPath();
+          ctx.arc(ex,ey,radius-4,-Math.PI/2,-Math.PI/2+PI2*f);ctx.stroke();
+        }
       }
     }
     arc(ctx, px, py + 2, 17, 0, 6.2832, '#000', 4, 0.35);

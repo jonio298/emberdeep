@@ -1,16 +1,29 @@
 /* CC.Settings - player options, remembered in this browser.
  *   autoEquip  equip a looted piece automatically when it is better than what you wear (Loot.autoEquip reads CC.state.autoEquip)
  *   autoLevel  spend skill points and pick level-up perks for you
+ *   critAnimations  legacy enabled switch; critMode controls kills/all/off cinematics
  *   stick      'floating' (appears under your thumb) or 'fixed' (always in the corner)
  * Opened from the gear button in the HUD (the Settings tab of the character screen).
  */
 (function (root) {
   'use strict';
   var CC = root.CC = root.CC || {};
-  var KEY = 'emberdeep-settings', v = { autoEquip: true, autoLevel: false, stick: 'floating' }, clock = 0;
+  var KEY = 'emberdeep-settings', v = { autoEquip: true, autoLevel: false, critAnimations: true, critMode: 'kills', stick: 'floating' }, clock = 0;
   try { var raw = localStorage.getItem(KEY); if (raw) { var o = JSON.parse(raw); for (var k in v) if (o && o[k] !== undefined) v[k] = o[k]; } } catch (_) { /* storage may be blocked */ }
+  if(v.critAnimations===false)v.critMode='off'; // Existing saves migrate cleanly.
+  if(['kills','all','off'].indexOf(v.critMode)<0)v.critMode='kills';
   function save() { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch (_) { /* optional */ } }
   function apply() { if (CC.state) CC.state.autoEquip = !!v.autoEquip; }
+  function changed(key) {
+    if(key==='critAnimations')v.critMode=v.critAnimations?'kills':'off';
+    if(key==='critMode'){
+      if(['kills','all','off'].indexOf(v.critMode)<0)v.critMode='kills';
+      v.critAnimations=v.critMode!=='off';
+    }
+    save();apply();
+    if((key==='critAnimations'||key==='critMode')&&CC.CriticalScene&&CC.CriticalScene.reset)
+      CC.CriticalScene.reset();
+  }
 
   // Spend every available skill point (first affordable skill in tree order), and take the first offered perk.
   function autoLevel(p) {
@@ -25,8 +38,8 @@
   }
   CC.Settings = {
     get: function (key) { return v[key]; },
-    set: function (key, val) { v[key] = val; save(); apply(); },
-    toggle: function (key) { v[key] = !v[key]; save(); apply(); return v[key]; },
+    set: function (key, val) { v[key] = val; changed(key); },
+    toggle: function (key) { v[key] = !v[key]; changed(key); return v[key]; },
     all: function () { return v; },
     tick: function (dt) {
       apply();
