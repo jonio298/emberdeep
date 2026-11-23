@@ -339,12 +339,14 @@
     });
     var a = AB[selAb], locked = (p.level || 1) < a.lvl; yy += 32;
     tx(c, a.name, x + 8, yy + 6, 15, a.col); tx(c, a.cost + ' mana  ·  ' + a.cd + 's cooldown', x + w - 8, yy + 6, 10, COL.dim, 'right');
-    tx(c, a.desc, x + 8, yy + 24, 10, COL.text);
+    tx(c, 'TAP:  ' + a.desc, x + 8, yy + 24, 10, COL.text);
+    var hi = a.orig && CC.SpellCharge && CC.SpellCharge.heldInfo ? CC.SpellCharge.heldInfo(p.classId, a.orig) : null; // what holding the button does
+    tx(c, hi ? 'HOLD:  ' + hi.name + '  -  aim it' + (hi.mult ? ', +' + Math.round((hi.mult - 1) * 100) + '% damage' : '') + ', costs more mana' : 'HOLD:  no charged form (only your two starting spells charge)', x + 8, yy + 38, 10, hi ? a.col : COL.dim);
     var cur = p.slots.indexOf(a.id);
-    if (locked) tx(c, 'Unlocks at level ' + a.lvl, x + 8, yy + 42, 11, '#ffd36b');
-    else btn(c, addHit, x + 4, yy + 32, w - 8, 22, cur >= 0 ? 'In slot ' + ROMAN[cur] + '  -  move to slot ' + ROMAN[selSlot] : 'Put in slot ' + ROMAN[selSlot], cur !== selSlot, function () { S.assign(p, selSlot, a.id); }, '#39644a');
-    yy += 62;
-    var rh = Math.max(32, Math.min(46, (y + h - yy - 40) / 5));
+    if (locked) tx(c, 'Unlocks at level ' + a.lvl, x + 8, yy + 56, 11, '#ffd36b');
+    else btn(c, addHit, x + 4, yy + 44, w - 8, 22, cur >= 0 ? 'In slot ' + ROMAN[cur] + '  -  move to slot ' + ROMAN[selSlot] : 'Put in slot ' + ROMAN[selSlot], cur !== selSlot, function () { S.assign(p, selSlot, a.id); }, '#39644a');
+    yy += 74;
+    var rh = Math.max(30, Math.min(46, (y + h - yy - 40) / 5));
     KEYS.forEach(function (k, n) {
       var nd = NODE[k], r = rk(p, nodeId(a.id, k)), cb = S.canBuy(p, a.id, k), ry = yy + n * rh;
       c.fillStyle = 'rgba(255,255,255,0.05)'; c.fillRect(x + 4, ry, w - 8, rh - 3);

@@ -161,6 +161,7 @@ function drag(x,y,viewW,viewH){
  var ax=dx*sx,ay=dy*sy;
  active.drag=dd<8?null:{x:ax,y:ay,distance:Math.hypot(ax,ay)};
 }
+SC.heldInfo=function(cls,slot){var d=(DEFINITIONS[cls]||{})[slot];return d?{name:d.name,color:d.color,shape:d.shape,mult:d.mult}:null;};
 function cancel(){if(active&&active.snd&&CC.Audio)CC.Audio.chargeEnd(false);active=null;}
 function clear(){active=null;effects.length=0;}
 function isActive(){return !!active;}

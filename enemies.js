@@ -1345,6 +1345,7 @@
         ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(0, 1, r * (e.boss ? 1.0 : 0.9), r * 0.8, 0, 0, PI2); ctx.fill();
         ctx.fillStyle = e.boss ? '#ff7ad0' : '#ff3a3a'; ctx.fillRect(-4, -3, 2, 2); ctx.fillRect(-1, -4, 2, 2); ctx.fillRect(2, -3, 2, 2); break;
       default: // Area-specific monsters are rendered by their own scene modules.
+        if (CC.HoldGuide && CC.HoldGuide.drawMonster && CC.HoldGuide.drawMonster(ctx, e, r, col, dark, t)) break;
         if (CC.TreeWeasel && CC.TreeWeasel.drawMonster &&
             CC.TreeWeasel.drawMonster(ctx,e,r,col,dark,t)) break;
         if (CC.WoundArt && CC.WoundArt.drawMonster &&
@@ -1354,7 +1355,7 @@
         if (CC.Forest && CC.Forest.drawMonster && CC.Forest.drawMonster(ctx, e, r, col, dark, t)) break;
         ctx.fillStyle = col; ctx.beginPath(); ctx.arc(0, 0, r, 0, PI2); ctx.fill();
     }
-    if (!e.collapsed && e.type !== 'grinmask' && e.type !== 'screegolem') horrorArt(ctx, e, look, r, col, dark, t); // the mask paints its own gore
+    if (!e.collapsed && e.type !== 'grinmask' && e.type !== 'screegolem' && e.type !== 'trainingDummy') horrorArt(ctx, e, look, r, col, dark, t); // the mask paints its own gore
     ctx.restore(); // restore anatomy clipping
     if (!e.collapsed && CC.WoundArt) CC.WoundArt.paint(ctx,e,look,r,t);
     ctx.restore();

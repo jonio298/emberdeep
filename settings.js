@@ -8,7 +8,7 @@
 (function (root) {
   'use strict';
   var CC = root.CC = root.CC || {};
-  var KEY = 'emberdeep-settings', v = { autoEquip: true, autoLevel: false, critAnimations: true, critMode: 'kills', stick: 'floating' }, clock = 0;
+  var KEY = 'emberdeep-settings', v = { autoEquip: true, autoLevel: false, critAnimations: true, critMode: 'kills', stick: 'floating', tutorial: true }, clock = 0;
   try { var raw = localStorage.getItem(KEY); if (raw) { var o = JSON.parse(raw); for (var k in v) if (o && o[k] !== undefined) v[k] = o[k]; } } catch (_) { /* storage may be blocked */ }
   if(v.critAnimations===false)v.critMode='off'; // Existing saves migrate cleanly.
   if(['kills','all','short','off'].indexOf(v.critMode)<0)v.critMode='kills';

@@ -603,7 +603,7 @@
   var paused = false, uiWas = false;
   function playing() { return CC.state.mode === 'town' || CC.state.mode === 'dungeon'; }
   function pressAction(name) {
-    if (playing() && !paused && !uiOpen() && !(CC.state.player && CC.state.player.perkOpen)) pending[name] = true;
+    if (playing() && !paused && !uiOpen() && !(CC.state.player && CC.state.player.perkOpen)) { pending[name] = true; call('HoldGuide', 'onAction', name); }
   }
   CC.useManaPotion = function () {
     var s=CC.state,p=s&&s.player;
@@ -1448,9 +1448,12 @@
       var sInfo = CC.Skills && /^spell[1-4]$/.test(name) && p && p.slots ? CC.Skills.slotInfo(p, name) : null;
       var col = name === 'potion' ? '225,55,70' : name === 'mpotion' ? '60,130,235' : contextual ? '105,205,170' :
         name === 'attack' ? '255,140,70' : name === 'dash' ? '120,220,160' : '140,120,255';
-      ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 6.3);
-      ctx.fillStyle = 'rgba(' + col + ',' + (on ? 0.7 : 0.35) + ')'; ctx.fill();
-      ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.stroke();
+      var lockedBtn = !!(sInfo && (sInfo.locked || sInfo.empty)) || ((name === 'spell1' || name === 'spell2') && !sInfo && p && p.spells && name === 'spell2' && (p.level || 1) < 4);
+      if (!(CC.HoldGuide && CC.HoldGuide.button(ctx, name, b, { on: on, sInfo: sInfo, contextual: contextual, locked: lockedBtn }))) {
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 6.3);
+        ctx.fillStyle = 'rgba(' + col + ',' + (on ? 0.7 : 0.35) + ')'; ctx.fill();
+        ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.stroke();
+      }
       var cdK = sInfo ? sInfo.key : name, cd = !contextual && p && p.cd ? p.cd[cdK] : 0, cdMax = !contextual && p && p.cdMax ? (p.cdMax[cdK] || (sInfo && sInfo.cdMax)) : 0;
       if (cd > 0 && cdMax > 0) {
         var f = Math.min(1, cd / cdMax);
@@ -1491,6 +1494,7 @@
         label(txt, b.x, b.y - (lines.length > 1 ? 14 : 9), 11, locked ? '#9a93b0' : '#d9d2ff');
         for (var li = 0; li < lines.length; li++) label(lines[li], b.x, b.y + (lines.length > 1 ? 0 : 6) + li * 10, locked ? 9 : 9, locked ? '#ffd36b' : '#fff');
       } else label(txt, b.x, b.y, name==='spell1'||name==='spell2'?15:b.r>35?15:11, '#fff');
+      if (CC.HoldGuide) CC.HoldGuide.decorate(ctx, name, b, { on: on, sInfo: sInfo, contextual: contextual, locked: lockedBtn }); // the held effect and the HOLD hint
       var charge=chargeHUD&&chargeHUD.slot===name?chargeHUD:null;
       if(name==='spell1'||name==='spell2'||name==='spell3'||name==='spell4'||name==='dash'){
         var manaCost=charge?charge.cost:(name==='dash'?null:sInfo?(sInfo.empty||sInfo.locked?null:sInfo.cost):p&&p.cost&&p.cost[name]);
@@ -1771,6 +1775,7 @@
       drawHud(); call('Defense','drawScreen',ctx,W,H,addButton); drawDead();
     }
     if (m === 'town' || m === 'dungeon') call('Classes', 'drawPerkOverlay', ctx); // level-up perk choice: on top of everything
+    if (m === 'town' || m === 'dungeon') call('HoldGuide', 'overlay', ctx, W, H, btns, function (x, y, w, h, cb) { ui.push({ x: x, y: y, w: w, h: h, cb: cb }); }); // the tutorial overlays sit above everything
   }
 
   /* ---------- main loop ---------- */
@@ -1785,7 +1790,7 @@
       else {
         dt *= call('CriticalScene', 'rate') || 1;
         acc += dt;
-        if (call('AbandonedVillage', 'frozen')) acc = 0; // the impaling freeze-frame: the world holds still
+        if (call('AbandonedVillage', 'frozen') || call('HoldGuide', 'frozen')) acc = 0; // the impaling freeze-frame: the world holds still
         while (acc >= STEP) { update(STEP); acc -= STEP; }
       }
       call('BetaNotes', 'tick', realDt, (CC.state.mode === 'town' || CC.state.mode === 'dungeon') && !paused && !uiOpen() && !(CC.state.player && CC.state.player.perkOpen)); // 20 minutes of real play opens the notepad

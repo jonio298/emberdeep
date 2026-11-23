@@ -572,6 +572,7 @@
       yy += 74;
     }
     row('Auto equip', 'Wear loot automatically when it is better than your gear.', S.get('autoEquip') ? 'ON  -  tap to turn off' : 'OFF  -  tap to turn on', S.get('autoEquip'), function () { S.toggle('autoEquip'); });
+    row('Tutorial hints', 'Hold-to-charge lessons, HOLD tags and the training dummy. Saved for you.', S.get('tutorial') !== false ? 'ON  -  tap to turn off' : 'OFF  -  tap to turn on', S.get('tutorial') !== false, function () { S.set('tutorial', S.get('tutorial') === false); });
     row('Auto level', 'Spend skill points and pick level-up perks for you.', S.get('autoLevel') ? 'ON  -  tap to turn off' : 'OFF  -  tap to turn on', S.get('autoLevel'), function () { S.toggle('autoLevel'); });
     // Killing blows get the freeze by default; long-form crits are optional.
     (function(){
@@ -606,7 +607,7 @@
           rr(c,bx,by,bw,27,5);c.fillStyle=on?'#2a604f':'#1e1a2b';c.fill();
           c.lineWidth=1.3;c.strokeStyle=on?COL.good:COL.line;c.stroke();
           tx(c,D.PRESETS[modes[i]].name,bx+bw/2,by+14,10,on?'#e7ffe9':COL.dim,'center');
-          hit(bx,by,bw,27,function(){D.setMode(modes[i]);});
+          hit(bx,by,bw,27,function(){D.setMode(modes[i]);if((modes[i]==='hard'||modes[i]==='dev')&&CC.HoldGuide)CC.HoldGuide.showAim();});
         })(di);
       }
       yy+=80;
