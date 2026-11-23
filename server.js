@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { networkInterfaces } from 'node:os';
 import { wss } from './api/ws.js';
 import { handleStats, recordView, statsKeyNote } from './stats.js';
+import { handleFeedback } from './feedback.js';
 
 const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)));
 const PORT = Number(process.env.PORT) || 3000;
@@ -18,10 +19,11 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; ch
   '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav', '.webp': 'image/webp' };
 // Only the game's own files are served: never dotfiles, server code, node_modules or tests.
-const BLOCKED = /^\/(\.|node_modules\/|api\/|tests\/|data\/|server\.js|stats\.js|package(-lock)?\.json|vercel\.json)/;
+const BLOCKED = /^\/(\.|node_modules\/|api\/|tests\/|data\/|server\.js|stats\.js|feedback\.js|package(-lock)?\.json|vercel\.json)/;
 
 const server = createServer(async (req, res) => {
   try {
+    if (handleFeedback(req, res)) return; // the beta tester notepad: POST /api/feedback (saved, and emailed when configured)
     if (handleStats(req, res, () => wss.clients.size)) return; // /stats, /api/stats (private, needs the key) and the /api/hit beacon
     let path = decodeURIComponent((req.url || '/').split('?')[0]);
     if (path.endsWith('/')) path += 'index.html';

@@ -364,7 +364,7 @@
     var viaEnemies = CC.Enemies && typeof CC.Enemies.damage === 'function';
     if (viaEnemies) { try { CC.Enemies.damage(e, dmg, type); } catch (err) { e.hp -= dmg; } }
     else e.hp -= dmg;
-    var necroCinema = crit && p && p.classId === 'necromancer' && opts.basicAttack && !opts.minion && !opts.splash && !killShot && CC.state.mode === 'dungeon' && CC.CriticalScene && !(opts.attackGroup && opts.attackGroup.cinematicStarted) && !(p.pw && p.pw.rapid > 0);
+    var necroCinema = crit && (e.dead || e.hp <= 0) && p && p.classId === 'necromancer' && opts.basicAttack && !opts.minion && !opts.splash && !killShot && CC.state.mode === 'dungeon' && CC.CriticalScene && !(opts.attackGroup && opts.attackGroup.cinematicStarted) && !(p.pw && p.pw.rapid > 0);
     if (!necroCinema) fxText(e.x, e.y - (e.r || 8) - 4, crit ? dmg + '!' : String(dmg), crit ? '#f04c57' : back ? '#7de0b8' : '#fff', crit ? 16 : 10); // a necromancer crit shows its damage as three counters in the cinematic instead
     if (CC.Audio && !(opts.noCrit && !opts.basicAttack) && !opts.minion && type !== 'poison') CC.Audio.event('hit', { x: e.x, y: e.y, crit: crit, skip: !!necroCinema, plasma: !!(opts.basicAttack && p && (p.classId === 'wizard' || p.classId === 'necromancer') && !crit && !opts.minion), slash: !!(opts.basicAttack && p && (p.classId === 'swordsman' || p.classId === 'thief') && !e.ghost) });
     fxBurst(e.x, e.y, crit ? '#ffd24a' : '#ffffff', crit ? 14 : 4, crit ? 110 : 60);
@@ -387,7 +387,8 @@
     }
     if (p && p.pw && p.pw.explode > 0 && (opts.basicAttack || opts.pw) && !opts.splash && !opts.minion)
       explodeAt(e, dmg); // exploding power-up: every basic hit bursts into splash damage
-    if (crit && opts.basicAttack && !opts.minion && !opts.splash && !(p && p.pw && p.pw.rapid > 0)) {
+    // The critical close-up cutscene is for kills only: a critical that leaves the enemy standing is just a big number.
+    if (crit && opts.basicAttack && !opts.minion && !opts.splash && !(p && p.pw && p.pw.rapid > 0) && (e.dead || e.hp <= 0)) {
       var attackGroup = opts.attackGroup;
       var participants = criticalGroup(p,e,dmg,type,opts);
       if (CC.CriticalScene) {

@@ -57,6 +57,7 @@ function beacon(req, res, url) {
   }
   res.end(); return true;
 }
+export function statsAuth(url) { return authorized(url); } // reused by the feedback list
 function authorized(url) {
   const a = Buffer.from(String(url.searchParams.get('key') || '')), b = Buffer.from(KEY);
   return a.length === b.length && timingSafeEqual(a, b);

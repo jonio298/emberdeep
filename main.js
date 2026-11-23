@@ -1741,8 +1741,9 @@
 
   /* ---------- main loop ---------- */
   var last = 0, acc = 0;
+  CC.setPaused = function (v) { paused = !!v; resetInputHeld(); }; // used by the beta notepad (betanotes.js) to hold the game while it is open
   function frame(now) {
-    var dt = Math.min(0.1, (now - last) / 1000 || 0);
+    var dt = Math.min(0.1, (now - last) / 1000 || 0), realDt = dt;
     last = now;
     try {
       call('CriticalScene', 'update', dt);
@@ -1753,6 +1754,7 @@
         if (call('AbandonedVillage', 'frozen')) acc = 0; // the impaling freeze-frame: the world holds still
         while (acc >= STEP) { update(STEP); acc -= STEP; }
       }
+      call('BetaNotes', 'tick', realDt, (CC.state.mode === 'town' || CC.state.mode === 'dungeon') && !paused && !uiOpen() && !(CC.state.player && CC.state.player.perkOpen)); // 20 minutes of real play opens the notepad
       draw();
     } catch (e) {
       if (!warned.frame) { warned.frame = 1; console.error('frame error', e); }
