@@ -995,7 +995,7 @@
       if (tt >= TURN_LENGTH) { // she is gone; something else stands where she stood
         pd.stage = 'fight'; if (pd.lady) { pd.lady.hidden = true; }
         if (CC.Audio) { CC.Audio.event('laugh'); CC.Audio.play('pondspawn', { vol: 1, gap: 0, vary: 0 }); } // the lady is gone and the Mere Horror rises
-        var b = E.spawn('merehorror', pd.x, pd.y, 2); if (b) { b.maxHp = b.hp = Math.round(b.maxHp * 2); b.dmg = Math.max(1, Math.round(b.dmg * 0.7)); b.mistCd = 6.0; b.mistCycle = 0; b.state = 'rise'; b.t = 1.4; b.miniBoss = true; b.asleep = false; b.cd = 1.5; pd.boss = b; }
+        var b = E.spawn('merehorror', pd.x, pd.y, 2); if (b) { b.maxHp = b.hp = Math.round(b.maxHp * 2); b.dmg = Math.max(1, Math.round(b.dmg * 0.98)); b.mistCd = 6.0; b.mistCycle = 0; b.state = 'rise'; b.t = 1.4; b.miniBoss = true; b.asleep = false; b.cd = 1.5; pd.boss = b; }
         if (CC.Vfx && CC.Vfx.skyFlash) CC.Vfx.skyFlash('#ff3a3a', 0.3, 0.4);
         if (CC.fx) { if (CC.fx.shake) CC.fx.shake(14); if (CC.fx.burst) { CC.fx.burst(pd.x, pd.y, '#3a2a58', 40, 180); CC.fx.burst(pd.x, pd.y, '#9ad0c0', 24, 140); } fxText(pd.x, pd.y - 60, 'THE MERE HORROR RISES', '#ff6a6a', 15); }
         if (p && p.hp > 0) { var a = Math.atan2(p.y - pd.y, p.x - pd.x); if (CC.Dungeon && CC.Dungeon.moveWithCollision) CC.Dungeon.moveWithCollision(p, Math.cos(a) * 30, Math.sin(a) * 30); }
@@ -1317,6 +1317,43 @@
       c.restore();
     }
   };
+  // The warnings for every attack are redrawn ABOVE the fog, brighter and in additive light, so they can always be seen: the generic circle and line telegraphs,
+  // the ground zones her hands and bursts leave, and her spirit shots.
+  function drawBossTele(c, boss, cam, t) {
+    var bx = boss.x - cam.x, by = boss.y - cam.y, pulse = 0.5 + 0.5 * Math.sin(t * 11), tl = boss.tele, i, k;
+    c.save(); c.globalCompositeOperation = 'lighter'; c.lineCap = 'round';
+    if (boss.state === 'telegraph') {
+      var pr = tl && tl.max ? 1 - clamp(boss.t / tl.max, 0, 1) : 1 - clamp(boss.t / 1.0, 0, 1);
+      if (tl && tl.kind === 'line') {
+        var len = tl.len || 300, ang = tl.ang || 0; c.save(); c.translate(bx, by - 10); c.rotate(ang);
+        c.fillStyle = 'rgba(255,50,110,' + (0.2 + 0.3 * pr) + ')'; c.fillRect(0, -14, len, 28);
+        c.strokeStyle = 'rgba(255,205,225,' + (0.7 + 0.3 * pulse) + ')'; c.lineWidth = 2.6; c.beginPath(); c.moveTo(0, -14); c.lineTo(len, -14); c.moveTo(0, 14); c.lineTo(len, 14); c.stroke();
+        c.fillStyle = 'rgba(255,255,255,' + (0.45 + 0.4 * pulse) + ')'; c.fillRect(len * pr - 4, -14, 8, 28); c.restore();
+      } else if (tl && tl.kind === 'circle') {
+        var rad = tl.rad || boss.telRad || 80; c.fillStyle = 'rgba(255,50,110,' + (0.16 + 0.26 * pr) + ')'; c.beginPath(); c.arc(bx, by + 6, rad, 0, TAU); c.fill();
+        c.strokeStyle = 'rgba(255,205,225,' + (0.75 + 0.25 * pulse) + ')'; c.lineWidth = 3; c.beginPath(); c.arc(bx, by + 6, rad, 0, TAU); c.stroke();
+        c.lineWidth = 2; c.beginPath(); c.arc(bx, by + 6, rad * (1 - pr), 0, TAU); c.stroke();
+        for (k = 0; k < 8; k++) { var a = k * TAU / 8 + t * 0.5; c.fillStyle = 'rgba(255,230,240,.8)'; c.fillRect(bx + Math.cos(a) * rad - 2, by + 6 + Math.sin(a) * rad * 0.9 - 2, 4, 4); }
+      } else if (!tl) { // casts with no ground marker (spirit hunt, vine, bone cage): a pulsing ring of light round the caster, coloured for the spell
+        var col = boss.atk === 'spectral' ? '120,255,225' : boss.atk === 'vineThrow' ? '130,255,150' : boss.atk === 'boneCage' ? '255,240,205' : '255,150,190', rr = (boss.r || 24) * (2.2 + 0.9 * pr);
+        c.strokeStyle = 'rgba(' + col + ',' + (0.55 + 0.4 * pulse) + ')'; c.lineWidth = 3; c.beginPath(); c.ellipse(bx, by - 30, rr, rr * 0.7, 0, 0, TAU); c.stroke();
+        c.lineWidth = 1.6; c.beginPath(); c.ellipse(bx, by - 30, rr * (1 - pr * 0.6), rr * 0.7 * (1 - pr * 0.6), 0, 0, TAU); c.stroke();
+        var rg = c.createRadialGradient(bx, by - 30, 4, bx, by - 30, rr); rg.addColorStop(0, 'rgba(' + col + ',' + (0.1 + 0.25 * pr) + ')'); rg.addColorStop(1, 'rgba(' + col + ',0)'); c.fillStyle = rg; c.beginPath(); c.arc(bx, by - 30, rr, 0, TAU); c.fill();
+      }
+    }
+    var zs = E.zones || []; // ground bursts: rings that close in and flash before they hit
+    for (i = 0; i < zs.length; i++) {
+      var z = zs[i]; if (z.owner !== boss && z.owner !== undefined && z.owner !== null) continue; var zp = 1 - clamp(z.t / Math.max(0.01, z.max || z.t), 0, 1), zx = z.x - cam.x, zy = z.y - cam.y;
+      if (zx < -90 || zx > cam.w + 90 || zy < -90 || zy > cam.h + 90) continue;
+      c.fillStyle = 'rgba(255,60,120,' + (0.14 + 0.24 * zp) + ')'; c.beginPath(); c.arc(zx, zy, z.rad, 0, TAU); c.fill();
+      c.strokeStyle = 'rgba(255,215,230,' + (0.65 + 0.35 * pulse) + ')'; c.lineWidth = 2.6; c.beginPath(); c.arc(zx, zy, z.rad, 0, TAU); c.stroke(); c.lineWidth = 1.6; c.beginPath(); c.arc(zx, zy, z.rad * (1 - zp), 0, TAU); c.stroke();
+    }
+    for (i = 0; i < E.projectiles.length; i++) { // her shots keep a bright halo so they read through the fog
+      var q = E.projectiles[i]; if (!q.pondShot || q.fx || q.life <= 0) continue; var qx = q.x - cam.x, qy = q.y - cam.y; if (qx < -30 || qx > cam.w + 30 || qy < -30 || qy > cam.h + 30) continue;
+      var hg = c.createRadialGradient(qx, qy, 0, qx, qy, 16); hg.addColorStop(0, q.spectral ? 'rgba(170,255,235,.8)' : 'rgba(255,170,215,.75)'); hg.addColorStop(1, 'rgba(255,90,160,0)'); c.fillStyle = hg; c.beginPath(); c.arc(qx, qy, 16, 0, TAU); c.fill();
+    }
+    c.restore();
+  }
   HP.drawBossFocus = function (c, cam) {
     var pd = pond(), boss = pd && pd.boss;
     if (!pd || pd.stage !== 'fight' || !boss || boss.dead || boss.hp <= 0) return;
@@ -1324,6 +1361,7 @@
     c.save();
     mistTelegraph(c, boss, cam, t);
     drawBossExtras(c, cam, boss, t);
+    drawBossTele(c, boss, cam, t);
     // A few persistent eyes peering from the fog; the boss can use them to
     // telegraph a vanishing act without masking the player's sprite.
     var count = boss.state === 'mistHidden' ? 0 : 4;

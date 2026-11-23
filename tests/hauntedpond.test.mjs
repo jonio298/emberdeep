@@ -41,7 +41,7 @@ function scene() {
   return { CC, pd, player, enemies, getHeroDraws: () => heroDraws };
 }
 
-test('Pond Lady starts alone, receives 2x HP / 70% damage and summons four monster types', () => {
+test('Pond Lady starts alone, receives 2x HP / 98% damage and summons four monster types', () => {
   const { CC, pd, player, enemies } = scene();
   assert.equal(enemies.list.length, 0, 'island starts without monsters');
   assert.equal(CC.HauntedPond.interact(), true);
@@ -55,7 +55,7 @@ test('Pond Lady starts alone, receives 2x HP / 70% damage and summons four monst
   assert.ok(boss);
   assert.equal(boss.maxHp, 200, 'base 100 HP becomes 200');
   assert.equal(boss.hp, 200);
-  assert.equal(boss.dmg, 14, 'base 20 damage becomes 14');
+  assert.equal(boss.dmg, 20, 'base 20 damage becomes 20 (0.7 x 1.4 = 0.98 of base)');
   assert.equal(pd.stage, 'fight');
 
   boss.state = 'idle'; boss.hp = 125; boss.cd = 5;
