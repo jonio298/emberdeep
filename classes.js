@@ -145,7 +145,7 @@
       cdr: Math.min(0.5, m.cdrPct + it.cdr),
       lifesteal: m.lifesteal + it.lifesteal,
       regen: m.regenHp + it.regen,
-      manaRegen: 2 + m.regenMana
+      manaRegen: (2 + m.regenMana) * (p.classId === 'wizard' ? 1.25 : 1) // the wizard regenerates mana 25% faster, from level 1
     };
     p.speed = p.stats.speed;
     if (p.maxHp > oldHp) p.hp += p.maxHp - oldHp;
