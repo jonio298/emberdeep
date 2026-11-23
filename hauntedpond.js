@@ -543,6 +543,7 @@
     E._kill = function (e) {
       var was = e && e.type === 'merehorror' && !e.dead, res = oKill.apply(this, arguments);
       if (was) {
+        clearWalls(true); if (VINE.on) endVine();
         fxText(e.x, e.y - 40, 'THE MERE RETURNS TO THE WATER', '#cfe8e0', 12); if (CC.fx && CC.fx.shake) CC.fx.shake(10);
         if (CC.Loot && CC.Loot.roll) { CC.Loot.roll(e, e.floor, 0); CC.Loot.roll(e, e.floor, 0); CC.Loot.roll(e, e.floor, 0); }
       }
@@ -727,12 +728,123 @@
     if(CC.fx&&CC.fx.burst)CC.fx.burst(e.x,e.y-15,'#fa6fbc',12,75);
     e.projectileAim=null;
   }
+  /* ===== the Drowned Queen's new attacks: spectral homing shots, a cage of bone walls, and the vine that lifts you and throws you ===== */
+  var BW = { on: false, tiles: [], t: 0, life: 7, map: null, sw: false }, VINE = { on: false };
+  function sm01q(x) { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); }
+  function fireSpectral(e, p) { // spirits that curve after you
+    var n = e.hp < e.maxHp * 0.5 ? 5 : 4, base = Math.atan2(p.y - (e.y - 40), p.x - e.x), k;
+    for (k = 0; k < n; k++) { shootB(e, base + (k - (n - 1) / 2) * 0.5, 112, e.dmg * 0.7, '#a8f0e0', 4.6, 6); var q = E.projectiles[E.projectiles.length - 1]; if (q) { q.spectral = true; q.turn = 1.6 + k * 0.18; q.trail = []; } }
+    if (CC.Audio) CC.Audio.fx('m_ghost_cast', { x: e.x, y: e.y, vol: 0.8, k: 0.8, gap: 0 });
+  }
+  function steerSpectral(dt, p) {
+    if (!p) return; var i, q;
+    for (i = 0; i < E.projectiles.length; i++) {
+      q = E.projectiles[i]; if (!q.spectral || q.life <= 0) continue;
+      var cur = Math.atan2(q.vy, q.vx), want = Math.atan2(p.y - q.y, p.x - q.x), dl = Math.atan2(Math.sin(want - cur), Math.cos(want - cur)), sp = Math.hypot(q.vx, q.vy);
+      cur += clamp(dl, -q.turn * dt, q.turn * dt); q.vx = Math.cos(cur) * sp; q.vy = Math.sin(cur) * sp; q.trail.push({ x: q.x, y: q.y }); if (q.trail.length > 10) q.trail.shift();
+    }
+  }
+  function clearWalls(burst) {
+    if (!BW.on) return; var m = BW.map;
+    BW.tiles.forEach(function (w) { if (!w.gone && m && m.tiles[w.idx] === 1) m.tiles[w.idx] = 0; if (burst && !w.gone && CC.fx && CC.fx.burst) CC.fx.burst(w.tx * T + 16, w.ty * T + 16, '#d8ccb0', 5, 60); });
+    BW.tiles = []; BW.on = false;
+  }
+  function raiseBoneCage(e, p, at) { // a ring of bone walls, two tiles out, closes round the player
+    var m = CC.Plains && CC.Plains.map; if (!m) return; clearWalls(); var cx = Math.floor(at.x / T), cy = Math.floor(at.y / T), dx, dy;
+    for (dy = -2; dy <= 2; dy++) for (dx = -2; dx <= 2; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== 2) continue; var tx = cx + dx, ty = cy + dy; if (tx < 1 || ty < 1 || tx >= m.w - 1 || ty >= m.h - 1) continue;
+      var idx = ty * m.w + tx; if (m.tiles[idx] || m.kind[idx] === 5) continue; m.tiles[idx] = 1; BW.tiles.push({ idx: idx, tx: tx, ty: ty, hp: 3, rise: 0, seed: R() * 50 });
+    }
+    BW.on = BW.tiles.length > 0; BW.t = 0; BW.map = m;
+    if (BW.on) { if (CC.fx) { if (CC.fx.shake) CC.fx.shake(7); if (CC.fx.burst) CC.fx.burst(at.x, at.y, '#d8ccb0', 16, 120); } if (CC.Audio) { CC.Audio.fx('crunch', { vol: 1, gap: 0 }); CC.Audio.fx('thump', { vol: 0.8, gap: 0 }); } fxText(at.x, at.y - 34, 'TRAPPED IN BONE', '#e8dcc0', 11); }
+  }
+  function updateWalls(dt, p) {
+    if (!BW.on) return; var m = BW.map, i, w;
+    BW.t += dt; for (i = 0; i < BW.tiles.length; i++) BW.tiles[i].rise = Math.min(1, BW.tiles[i].rise + dt * 3.2);
+    if (p) { // the player can break the walls: melee swings hit the ones in front, shots chip them
+      if (p.atkAnim > 0.15 && !BW.sw) { BW.sw = true; for (i = 0; i < BW.tiles.length; i++) { w = BW.tiles[i]; if (w.gone) continue; var wx = w.tx * T + 16, wy = w.ty * T + 16, dd = Math.hypot(wx - p.x, wy - p.y), ad = Math.atan2(wy - p.y, wx - p.x) - (p.swingAng || 0); if (dd < 58 && Math.cos(ad) > 0.2) hitWall(w); } } else if (!(p.atkAnim > 0.05)) BW.sw = false;
+      var pr = CC.Classes && CC.Classes.projectiles; if (pr) for (i = 0; i < pr.length; i++) { var s = pr[i]; if (s.visual || s.life <= 0) continue; for (var k = 0; k < BW.tiles.length; k++) { w = BW.tiles[k]; if (!w.gone && Math.hypot(s.x - (w.tx * T + 16), s.y - (w.ty * T + 16)) < 17) { hitWall(w); s.life = 0; break; } } }
+    }
+    if (BW.t > BW.life) clearWalls(true);
+  }
+  function hitWall(w) {
+    w.hp--; w.shake = 0.2; if (CC.Audio) CC.Audio.fx('crunch', { x: w.tx * T + 16, y: w.ty * T + 16, vol: 0.7, gap: 60 }); if (CC.fx && CC.fx.burst) CC.fx.burst(w.tx * T + 16, w.ty * T + 16, '#d8ccb0', 4, 60);
+    if (w.hp <= 0) { w.gone = true; if (BW.map && BW.map.tiles[w.idx] === 1) BW.map.tiles[w.idx] = 0; }
+  }
+  function startVine(e, p) { VINE.on = true; VINE.ph = 'reach'; VINE.t = 0; VINE.boss = e; VINE.tipx = e.x; VINE.tipy = e.y - 60; if (CC.Audio) CC.Audio.fx('m_plant_amb', { x: e.x, y: e.y, vol: 0.9, k: 0.8, gap: 0 }); }
+  function endVine() { var p = hero(); if (p) { p.liftZ = 0; p.psyPull = null; } VINE.on = false; var e = VINE.boss; if (e && e.state === 'act') e.t = Math.min(e.t, 0.35); }
+  function updateVine(dt) {
+    if (!VINE.on) return; var e = VINE.boss, p = hero(), pd = pond(), f;
+    if (!e || e.dead || e.hp <= 0 || !p || p.hp <= 0) { endVine(); return; }
+    VINE.t += dt; var ph = VINE.ph;
+    if (ph !== 'reach') { p.psyT = Math.max(p.psyT || 0, 0.3); p.invuln = Math.max(p.invuln || 0, 0.15); }
+    if (ph === 'reach') {
+      f = Math.min(1, VINE.t / 0.5); VINE.tipx = e.x + (p.x - e.x) * f; VINE.tipy = (e.y - 60) + (p.y - 10 - (e.y - 60)) * f;
+      if (VINE.t >= 0.5) { if (Math.hypot(p.x - e.x, p.y - e.y) < 340 && !(p.invuln > 0.6)) { VINE.ph = 'lift'; VINE.t = 0; VINE.a0 = Math.atan2(p.y - e.y, p.x - e.x); hurtB(p, e, e.dmg * 0.4); if (CC.Audio) CC.Audio.fx('wet', { vol: 0.8, gap: 0 }); fxText(p.x, p.y - 30, 'GRABBED!', '#9fe0a0', 12); } else endVine(); }
+    } else if (ph === 'lift') {
+      f = Math.min(1, VINE.t / 0.8); p.liftZ = 36 * sm01q(f); var tx = e.x + Math.cos(VINE.a0) * 52, ty = e.y + Math.sin(VINE.a0) * 44, k = Math.min(1, dt * 6); mvB(p, (tx - p.x) * k, (ty - p.y) * k);
+      if (VINE.t >= 0.8) { VINE.ph = 'swing'; VINE.t = 0; }
+    } else if (ph === 'swing') {
+      f = Math.min(1, VINE.t / 0.7); var sa = VINE.a0 + f * Math.PI * 1.6, sx = e.x + Math.cos(sa) * 54, sy = e.y + Math.sin(sa) * 44; mvB(p, sx - p.x, sy - p.y); p.liftZ = 36 + 6 * Math.sin(f * Math.PI);
+      if (VINE.t >= 0.7) { // let go: pick a landing spot out on the island
+        VINE.ph = 'throw'; VINE.t = 0; VINE.from = { x: p.x, y: p.y }; var out = Math.atan2(p.y - e.y, p.x - e.x), land = null, tries;
+        for (tries = 0; tries < 9 && !land; tries++) { var a = out + (R() - 0.5) * 1.6, dd = 180 + R() * 70, lx = p.x + Math.cos(a) * dd, ly = p.y + Math.sin(a) * dd; if (!pd || clearIsland(pd, lx, ly)) land = { x: lx, y: ly }; }
+        VINE.land = land || (pd && islandPoint(pd, p, 120)) || { x: p.x + Math.cos(out) * 120, y: p.y + Math.sin(out) * 120 }; if (CC.Audio) CC.Audio.fx('dash', { vol: 0.9, gap: 0 });
+      }
+    } else if (ph === 'throw') {
+      f = Math.min(1, VINE.t / 0.55); mvB(p, VINE.from.x + (VINE.land.x - VINE.from.x) * f - p.x, VINE.from.y + (VINE.land.y - VINE.from.y) * f - p.y); p.liftZ = 44 * Math.sin(f * Math.PI) + 6 * (1 - f);
+      if (VINE.t >= 0.55) { // the landing
+        p.liftZ = 0; p.invuln = 0; hurtB(p, e, e.dmg * 1.25); p.psyT = 0.7; if (CC.fx) { if (CC.fx.shake) CC.fx.shake(10); if (CC.fx.burst) CC.fx.burst(p.x, p.y + 6, '#6a5a44', 14, 110); } if (CC.Audio) { CC.Audio.fx('thump', { vol: 1, gap: 0 }); CC.Audio.fx('crunch', { vol: 0.7, gap: 0 }); }
+        if (CC.Wounds && R() < 0.5) CC.Wounds.apply(p, { dur: 3, dps: Math.max(2, e.dmg * 0.25), src: e }); endVine();
+      }
+    }
+  }
+  function boneWallArt(c, x, y, rise, hp, seed, t) { // a barricade of bone: spine column, ribs and a skull on top
+    var h = 40 * rise, k, sw = Math.sin(t * 2 + seed) * 0.5; if (h < 2) return;
+    c.save(); c.translate(x, y + 13); c.fillStyle = 'rgba(0,0,0,.4)'; c.beginPath(); c.ellipse(0, 1, 15, 5, 0, 0, TAU); c.fill();
+    for (k = 0; k < 5; k++) { var vy = -k * h / 5.2; c.fillStyle = '#d8ccb0'; c.strokeStyle = '#2e261e'; c.lineWidth = 1; c.beginPath(); c.ellipse(sw * k * 0.3, vy - 3, 6.5 - k * 0.3, 3.4, 0, 0, TAU); c.fill(); c.stroke(); }
+    c.strokeStyle = '#cfc3a4'; c.lineWidth = 3; c.lineCap = 'round'; for (k = 0; k < 3; k++) { var ry = -h * (0.25 + k * 0.22); c.beginPath(); c.moveTo(-14 + k, ry + 8); c.quadraticCurveTo(-5, ry - 9, 0, ry); c.quadraticCurveTo(5, ry - 9, 14 - k, ry + 8); c.stroke(); }
+    c.fillStyle = '#e6dcc0'; c.strokeStyle = '#2e261e'; c.beginPath(); c.arc(0, -h - 5, 7, 0, TAU); c.fill(); c.stroke(); c.fillStyle = '#10060a'; c.fillRect(-4, -h - 7, 3, 3.4); c.fillRect(1, -h - 7, 3, 3.4); c.fillStyle = 'rgba(120,255,220,.7)'; c.fillRect(-3, -h - 6, 1.4, 1.4); c.fillRect(2, -h - 6, 1.4, 1.4);
+    c.strokeStyle = '#e6dcc0'; c.lineWidth = 2.4; c.beginPath(); c.moveTo(-10, -h + 4); c.lineTo(-14, -h - 8); c.moveTo(10, -h + 4); c.lineTo(14, -h - 8); c.stroke(); // jagged spurs
+    if (hp < 3) { c.strokeStyle = '#2e261e'; c.lineWidth = 1; c.beginPath(); c.moveTo(-3, -h * 0.9); c.lineTo(2, -h * 0.5); c.lineTo(-2, -h * 0.2); if (hp < 2) { c.moveTo(5, -h * 0.8); c.lineTo(0, -h * 0.4); } c.stroke(); }
+    c.restore();
+  }
+  function drawBossExtras(c, cam, boss, t) { // everything the new attacks put on the field
+    var i, p = hero();
+    if (boss.state === 'telegraph' && boss.atk === 'boneCage' && boss.cageAt) { // bone spurs push up through the ground round the target
+      var u = 1 - clamp(boss.t / 1.0, 0, 1), bx = boss.cageAt.x - cam.x, by = boss.cageAt.y - cam.y;
+      c.strokeStyle = 'rgba(232,220,192,' + (0.35 + 0.4 * u) + ')'; c.lineWidth = 1.6; c.beginPath(); c.ellipse(bx, by + 8, 66, 30, 0, 0, TAU); c.stroke();
+      for (i = 0; i < 12; i++) { var a = i * TAU / 12, sx = bx + Math.cos(a) * 66, sy = by + 8 + Math.sin(a) * 30, hh = 6 + 12 * u; c.fillStyle = '#e8dcc0'; c.beginPath(); c.moveTo(sx - 3, sy); c.lineTo(sx, sy - hh); c.lineTo(sx + 3, sy); c.fill(); }
+    }
+    if (boss.state === 'telegraph' && boss.atk === 'vineThrow' && p) { c.strokeStyle = 'rgba(120,230,140,' + (0.25 + 0.3 * Math.sin(t * 14) ** 2) + ')'; c.lineWidth = 2; c.setLineDash([6, 5]); c.beginPath(); c.moveTo(boss.x - cam.x, boss.y - 60 - cam.y); c.lineTo(p.x - cam.x, p.y - 8 - cam.y); c.stroke(); c.setLineDash([]); }
+    // bone walls
+    if (BW.on) for (i = 0; i < BW.tiles.length; i++) { var w = BW.tiles[i]; if (w.gone) continue; if (w.shake > 0) w.shake -= 0.016; boneWallArt(c, w.tx * T + 16 - cam.x + (w.shake > 0 ? Math.sin(t * 90) * 1.5 : 0), w.ty * T + 16 - cam.y, w.rise, w.hp, w.seed, t); }
+    // spectral shots: ghostly skulls with a trailing wisp
+    for (i = 0; i < E.projectiles.length; i++) {
+      var q = E.projectiles[i]; if (!q.spectral || q.life <= 0) continue; var tr = q.trail || [], k, qx = q.x - cam.x, qy = q.y - cam.y;
+      c.save(); c.globalCompositeOperation = 'lighter';
+      for (k = 0; k < tr.length; k++) { c.globalAlpha = (k / tr.length) * 0.4; c.fillStyle = '#7fe8d0'; c.beginPath(); c.arc(tr[k].x - cam.x, tr[k].y - cam.y, 2 + k * 0.45, 0, TAU); c.fill(); }
+      var sg = c.createRadialGradient(qx, qy, 0, qx, qy, 15); sg.addColorStop(0, 'rgba(190,255,240,.7)'); sg.addColorStop(1, 'rgba(60,200,180,0)'); c.globalAlpha = 1; c.fillStyle = sg; c.fillRect(qx - 15, qy - 15, 30, 30); c.restore();
+      c.fillStyle = '#e8fff8'; c.beginPath(); c.arc(qx, qy, 5, 0, TAU); c.fill(); c.fillStyle = '#04201c'; c.fillRect(qx - 3, qy - 2, 2, 2.4); c.fillRect(qx + 1, qy - 2, 2, 2.4); c.fillRect(qx - 1.5, qy + 1.5, 3, 1.4);
+    }
+    // the vine: thorny, dark green, reaching from her hand to you, coiled round you while you are held
+    if (VINE.on && p) {
+      var hx = boss.x - cam.x + 10, hy = boss.y - 62 - cam.y, ex = (VINE.ph === 'reach' ? VINE.tipx : p.x) - cam.x, ey = (VINE.ph === 'reach' ? VINE.tipy : p.y - 10 - (p.liftZ || 0)) - cam.y;
+      if (VINE.ph !== 'throw' || VINE.t < 0.1) {
+        var pts = [], n = 16, s; for (s = 0; s <= n; s++) { var f = s / n; pts.push({ x: hx + (ex - hx) * f + Math.sin(t * 6 + f * 7) * 5 * Math.sin(f * Math.PI), y: hy + (ey - hy) * f + Math.sin(f * Math.PI) * 16 + Math.cos(t * 5 + f * 6) * 3 }); }
+        var g2 = c.createLinearGradient(hx, hy, ex, ey); qRibbon(c, pts, 6, 3.6, '#24542e', '#0d2415', 'rgba(150,230,160,.55)');
+        for (s = 1; s < n; s += 2) { var q2 = pts[s]; c.fillStyle = '#143a1c'; c.beginPath(); c.moveTo(q2.x, q2.y - 3); c.lineTo(q2.x + 3, q2.y - 8); c.lineTo(q2.x + 1.5, q2.y - 2); c.fill(); }
+        if (VINE.ph !== 'reach') { c.strokeStyle = '#1c4a26'; c.lineWidth = 3; for (s = 0; s < 3; s++) { c.beginPath(); c.ellipse(ex, ey + 4 + s * 5, 9, 3.4, 0, 0, TAU); c.stroke(); } }
+      }
+    }
+  }
   function brain(e, dt, p, d, ang, f) {
     var low = e.hp < e.maxHp * 0.5, rage = e.hp < e.maxHp * 0.3, sp = e.spd * f * dt * (rage ? 1.45 : low ? 1.2 : 1), k;
     e.anim = e.anim || 0;
     if (e.state !== 'rise') {
       e.summonCd = (e.summonCd === undefined ? 13 : e.summonCd - dt);
       e.mistCd = (e.mistCd === undefined ? 6.0 : e.mistCd - dt);
+      e.cageCd = (e.cageCd === undefined ? 11 : e.cageCd - dt); e.vineCd = (e.vineCd === undefined ? 9 : e.vineCd - dt);
     }
     if (e.state === 'mistFade') {
       if ((e.t -= dt) <= 0) {
@@ -759,6 +871,8 @@
       if (!e.s2 && e.hp < e.maxHp * 0.33) { e.s2 = 1; this._tele(e, 'summon', 1.0, ang); e.tele = { kind: 'circle', rad: 120, max: 1.0 }; return; }
       if (e.summonCd <= 0 && activePondMinions() < 5) { this._tele(e, 'summon', 1.0, ang); e.tele = { kind: 'circle', rad: 120, max: 1.0 }; e.summonCd = 13; return; }
       if (e.mistCd <= 0 && d < 350 && vanish(e, p)) return;
+      if (e.vineCd <= 0 && d < 320 && d > 40 && p.hp > 0 && !(p.psyT > 0) && !VINE.on) { this._tele(e, 'vineThrow', 0.9, ang); e.tele = null; e.vineCd = 20 + R() * 6; fxText(e.x, e.y - 70, 'THE VINE REACHES', '#9fe0a0', 11); return; }
+      if (e.cageCd <= 0 && d < 420 && !BW.on) { this._tele(e, 'boneCage', 1.0, ang); e.tele = null; e.cageAt = { x: p.x, y: p.y }; e.cageCd = 17 + R() * 6; fxText(e.x, e.y - 70, 'BONES RISE', '#e8dcc0', 11); return; }
       if (e.cd <= 0) {
         e.n = (e.n || 0) + 1; var pick = e.n % 8;
         if (pick === 1 && mistStrike(e, p, ang)) {
@@ -772,6 +886,8 @@
         } else if (pick === 4 && !(p.blindT > 0) && d < 340 && e.los !== false) {
           this._tele(e, 'gaze', 0.95, ang); e.tele = { kind: 'line', ang: ang, len: 340, max: 0.95 };
           fxText(e.x, e.y - 65, 'DO NOT LOOK', '#ff6a6a', 11);
+        } else if (pick === 7) {
+          this._tele(e, 'spectral', 0.8, ang); e.tele = null; fxText(e.x, e.y - 70, 'THE DROWNED HUNT', '#a8f0e0', 11);
         } else if (pick === 5) {
           this._tele(e, 'tendrils', 0.7, ang);
           e.tele = { kind: 'line', ang: ang, len: 320, max: 0.7 };
@@ -802,6 +918,12 @@
           e.mistCircle = null;
         } else if (e.atk === 'mistVolley') {
           e.state = 'recover'; e.t = 0.85; fireMistVolley(e);
+        } else if (e.atk === 'spectral') {
+          e.state = 'recover'; e.t = 0.9; fireSpectral(e, p);
+        } else if (e.atk === 'boneCage') {
+          e.state = 'recover'; e.t = 0.9; raiseBoneCage(e, p, e.cageAt || p);
+        } else if (e.atk === 'vineThrow') {
+          e.state = 'act'; e.t = 3.4; startVine(e, p);
         } else if (e.atk === 'bloodOrbs') {
           e.state='recover';e.t=0.8;fireBloodOrbs(e);
         } else if (e.atk === 'rake') {
@@ -838,6 +960,7 @@
     var res = oUpdate.apply(this, arguments), pd = pond();
     if (!pd) return res;
     var p = hero(), h = pd.h, target = 0, ftarget = 0, m = CC.Plains.map;
+    if (pd.boss && !pd.boss.dead && pd.boss.hp > 0) { updateVine(dt); updateWalls(dt, p); steerSpectral(dt, p); } else { clearWalls(false); if (VINE.on) endVine(); }
     if ((pd.stage === 'calm' || pd.stage === 'talk') && p) {
       var tx = Math.floor(p.x / T), ty = Math.floor(p.y / T), kd = m.kind[ty * m.w + tx], dIsl = Math.hypot(p.x - pd.x, p.y - pd.y);
       if (dIsl < pd.ri * T + 6) { target = 0.97; ftarget = 1; }
@@ -903,97 +1026,125 @@
     c.moveTo(r, -r * 0.25); c.lineTo(r + 5 + sway, r * 0.6); c.stroke();
     c.restore();
   };
-  /* ---------- The Drowned Queen (the Mere Horror's body): detailed pixel art, redrawn every frame on a tiny 80x100 canvas and scaled up without smoothing ---------- */
-  var QW = 80, QH = 100, QC = null;
-  function qHash(a, b) { var s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return s - Math.floor(s); }
+  /* ---------- The Drowned Queen (the Mere Horror's body): smooth, detailed horror art. She is painted with gradients and curves on a private canvas (so she can flash white
+     when hit and carry a pink rim light for the fog) and then drawn into the scene. Design units: about 135 tall, standing in her pool at (0,0). ---------- */
+  var QCV = null, QQ = 2.4;
+  function qh(a, b) { var s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return s - Math.floor(s); }
   function qCanvas() {
-    if (QC || typeof document === 'undefined') return QC;
-    function mk() { var cv = document.createElement('canvas'); cv.width = QW; cv.height = QH; return { cv: cv, g: cv.getContext('2d') }; }
-    QC = { main: mk(), edge: mk(), hair: mk() }; return QC;
+    if (QCV || typeof document === 'undefined') return QCV;
+    var cv = document.createElement('canvas'); cv.width = 340; cv.height = 430; QCV = { cv: cv, g: cv.getContext('2d') }; return QCV;
   }
-  function drawQueen(g, an, o) {
-    var i, k, x, y, s, rage = o.rage, breathe = Math.sin(an * 1.7), pulse = 0.5 + 0.5 * Math.sin(an * 4.2), reach = o.reach;
-    var hp = false; // hair and drips are painted on their own layer (no pink rim), so the strands read as hair and not as scribbles
-    function R(px, py, w, h, col) { if (hp !== !!o.hairOnly) return; g.fillStyle = col; g.fillRect(Math.round(px), Math.round(py), w, h); }
-    function line(x0, y0, x1, y1, col, th) { var n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)) | 0, q; for (q = 0; q <= n; q++) { var f = n ? q / n : 0; R(x0 + (x1 - x0) * f, y0 + (y1 - y0) * f, th || 1, th || 1, col); } }
-    g.clearRect(0, 0, QW, QH);
-    // ---- the pool: black water with slow ripples ----
-    for (y = 86; y < 97; y++) { var hw = 30 * Math.sqrt(1 - Math.pow((y - 91) / 6, 2)); if (isNaN(hw)) continue; R(40 - hw, y, hw * 2, 1, y % 2 ? '#05030a' : '#0a0612'); }
-    for (k = 0; k < 3; k++) { var rp = ((an * 0.5 + k / 3) % 1), rw = 6 + rp * 24; g.globalAlpha = 1 - rp; R(40 - rw, 91 + Math.sin(k * 3) * 2, 1, 1, '#4a2a5a'); R(40 + rw, 91 + Math.sin(k * 3) * 2, 1, 1, '#4a2a5a'); g.globalAlpha = 1; }
-    // ---- hair behind the head and shoulders: long wet black strands that writhe on their own ----
-    function strand(i, front) {
-      var side = i % 2 ? 1 : -1, x0 = 40 + side * (12 + (i % 5) * 1.4), y0 = 10 + (i % 4) * 3, L = 32 + (i * 7 % 9) + rage * 4, ph = i * 1.37, amp = 2.4 + rage * 1.8; hp = true;
-      for (var q = 0; q < L; q++) { var f = q / L, sx = x0 + side * (f * 5 + Math.pow(f, 2) * 4) + Math.sin(an * 2.1 + ph + f * 6) * amp * (0.4 + f) + Math.cos(an * 1.3 + ph * 2) * f * 2, sy = y0 + q * 1.05 + Math.sin(an * 1.7 + ph) * f * 1.5;
-        R(sx, sy, f < 0.3 ? 3 : f < 0.7 ? 2 : 1, 1, (q + i) % 9 === 0 ? '#4a4478' : (q + i) % 4 === 0 ? '#241f3c' : '#0e0b18'); }
-      hp = false;
+  function qBlob(g, cx, cy, rx, ry, col, al, seed) { // an irregular patch (rot, bruising, wet shine)
+    g.globalAlpha = al; g.fillStyle = col; g.beginPath(); var n = 9, i;
+    for (i = 0; i <= n; i++) { var a = i / n * TAU, k = 0.75 + 0.5 * qh(seed, i); i ? g.lineTo(cx + Math.cos(a) * rx * k, cy + Math.sin(a) * ry * k) : g.moveTo(cx + rx * k, cy); }
+    g.closePath(); g.fill(); g.globalAlpha = 1;
+  }
+  function qRibbon(g, pts, w0, w1, c0, c1, hi) { // a tapering, flowing limb (tentacle, root or strand of hair) with an edge highlight
+    var n = pts.length, L = [], R2 = [], i;
+    for (i = 0; i < n; i++) { var p0 = pts[Math.max(0, i - 1)], p1 = pts[Math.min(n - 1, i + 1)], dx = p1.x - p0.x, dy = p1.y - p0.y, l = Math.hypot(dx, dy) || 1, w = (w0 + (w1 - w0) * i / (n - 1)) / 2; L.push({ x: pts[i].x - dy / l * w, y: pts[i].y + dx / l * w }); R2.push({ x: pts[i].x + dy / l * w, y: pts[i].y - dx / l * w }); }
+    var gr = g.createLinearGradient(pts[0].x, pts[0].y, pts[n - 1].x, pts[n - 1].y); gr.addColorStop(0, c0); gr.addColorStop(1, c1);
+    g.fillStyle = gr; g.beginPath(); g.moveTo(L[0].x, L[0].y); for (i = 1; i < n; i++) g.lineTo(L[i].x, L[i].y); for (i = n - 1; i >= 0; i--) g.lineTo(R2[i].x, R2[i].y); g.closePath(); g.fill();
+    if (hi) { g.strokeStyle = hi; g.lineWidth = 0.7; g.globalAlpha = 0.6; g.beginPath(); g.moveTo(L[0].x, L[0].y); for (i = 1; i < n; i++) g.lineTo(L[i].x, L[i].y); g.stroke(); g.globalAlpha = 1; }
+  }
+  function qLimb(an, i, x0, y0, dirx, len, phase, bend) { var pts = [], s; for (s = 0; s <= 18; s++) { var f = s / 18; pts.push({ x: x0 + dirx * f * len * 0.8 + Math.sin(an * 1.5 + phase + f * 5) * (3 + f * 9) * bend, y: y0 + f * len * 0.55 + Math.abs(Math.sin(an * 1.1 + phase)) * 3 * f }); } return pts; }
+  function qClaw(g, x, y, ang, len, curl, col) { // one long hooked claw, bone-pale to a dark tip
+    var pts = [], s; for (s = 0; s <= 10; s++) { var f = s / 10, a = ang + curl * f * f; pts.push({ x: x + Math.cos(a) * len * f * 0.95, y: y + Math.sin(a) * len * f * 0.95 }); }
+    qRibbon(g, pts, 3.2, 0.3, '#efe5c8', '#4a3a34', 'rgba(255,255,255,.8)');
+  }
+  function drawQueenArt(g, an, o) {
+    var i, k, s, rage = o.rage, breathe = Math.sin(an * 1.7), pulse = 0.5 + 0.5 * Math.sin(an * 4.2), reach = o.reach;
+    g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, 340, 430); g.setTransform(QQ, 0, 0, QQ, 170, 410); g.lineCap = 'round'; g.lineJoin = 'round';
+    // ---- the pool: black water, ripples, the red eyes reflected ----
+    var pg = g.createRadialGradient(0, 0, 4, 0, 0, 72); pg.addColorStop(0, '#02010a'); pg.addColorStop(0.75, 'rgba(10,5,20,.95)'); pg.addColorStop(1, 'rgba(10,5,20,0)'); g.fillStyle = pg; g.beginPath(); g.ellipse(0, 0, 72, 19, 0, 0, TAU); g.fill();
+    for (k = 0; k < 3; k++) { var rp = (an * 0.45 + k / 3) % 1; g.strokeStyle = 'rgba(150,70,110,' + (0.4 * (1 - rp)) + ')'; g.lineWidth = 1; g.beginPath(); g.ellipse(0, 0, 18 + rp * 50, 4 + rp * 12, 0, 0, TAU); g.stroke(); }
+    g.fillStyle = 'rgba(255,40,70,' + (0.18 + 0.12 * pulse) + ')'; g.beginPath(); g.ellipse(0, -2, 5, 11, 0, 0, TAU); g.fill();
+    // ---- hair behind: long, wet and black, writhing on its own ----
+    function hair(front) {
+      for (var h = 0; h < 14; h++) {
+        if ((h < 8) === front) continue; var side = h % 2 ? 1 : -1, x0 = side * (15 + (h % 5) * 2.2), y0 = -118 + (h % 4) * 5, pts = [], L = 88 + (h * 13 % 30) + rage * 8, ph = h * 1.37, amp = 5 + rage * 4;
+        for (s = 0; s <= 22; s++) { var f = s / 22; pts.push({ x: x0 + side * (f * 14 + f * f * 10) + Math.sin(an * 2.1 + ph + f * 5) * amp * (0.3 + f) + Math.cos(an * 1.3 + ph * 2) * f * 5, y: y0 + f * L + Math.sin(an * 1.7 + ph) * f * 4 }); }
+        qRibbon(g, pts, 4.4, 0.6, '#0a0712', '#1c1630', 'rgba(150,130,210,.7)');
+      }
     }
-    for (i = 0; i < 6; i++) strand(i, false); // (drawn on the hair layer)
-    // ---- the lower body: a tangled mass of submerged roots and tentacles, each moving alone ----
+    hair(false);
+    // ---- the lower body: a tangled mass of submerged roots and tentacles, each with a mind of its own ----
     for (i = 0; i < 9; i++) {
-      var dir = (i % 2 ? 1 : -1) * (0.4 + (i % 5) * 0.28), ph2 = i * 2.1, len = 30 + (i % 4) * 3, th = i % 3 === 0 ? 3 : 2;
-      for (s = 0; s < len; s++) { var f2 = s / len, tx = 40 + dir * (f2 * 22) + Math.sin(an * 1.6 + ph2 + f2 * 5) * (2 + f2 * 5) + (i - 4) * 1.2 * (1 - f2), ty = 62 + f2 * 28 + Math.abs(Math.sin(an * 1.1 + ph2)) * 2 * f2;
-        var w2 = f2 < 0.4 ? th + 1 : f2 < 0.75 ? th : th - 1; R(tx - w2 / 2, ty, w2, 2, i % 2 ? '#1a1024' : '#120a1c'); if (s % 4 === 0) R(tx - w2 / 2, ty, 1, 1, '#3c2650'); if (s % 7 === 3) R(tx, ty, 1, 1, '#241632'); // knots and a wet highlight
-        if (f2 > 0.92 && i % 3 === 1) R(tx + dir * 1.5, ty - 1, 1, 2, '#1a1024'); } // a curled tip
+      var dir = (i % 2 ? 1 : -1) * (0.45 + (i % 5) * 0.3), pts2 = qLimb(an, i, (i - 4) * 3.5, -52, dir, 96 + (i % 4) * 8, i * 2.1, 1);
+      qRibbon(g, pts2, 14 - (i % 3) * 2, 1.5, '#1d0f28', '#0a0510', i % 2 ? 'rgba(120,70,150,.55)' : null);
+      for (s = 3; s < 15; s += 3) { var q2 = pts2[s]; g.fillStyle = 'rgba(190,150,200,.18)'; g.beginPath(); g.arc(q2.x, q2.y + 2, 1.5, 0, TAU); g.fill(); } // suckers
     }
-    // ---- the torn ceremonial gown: dark violet with tarnished gold trim, ragged strips swaying ----
-    for (y = 48; y < 72; y++) {
-      var f3 = (y - 48) / 24, hw2 = 9 + f3 * 14 + Math.sin(an * 1.2 + y * 0.4) * 0.6, gl = 40 - hw2, gr = 40 + hw2;
-      for (x = Math.floor(gl); x <= gr; x++) { var n3 = qHash(x, y), col = n3 < 0.12 ? '#0d0614' : n3 < 0.4 ? '#321646' : '#27103a'; R(x, y, 1, 1, col); }
-      R(gl, y, 1, 1, '#9a7a30'); R(gr, y, 1, 1, '#9a7a30'); if (y % 6 === 2) { R(gl + 1, y, 3, 1, '#6a5020'); R(gr - 3, y, 3, 1, '#6a5020'); }
+    // ---- the torn ceremonial gown ----
+    var sway = Math.sin(an * 1.3) * 2;
+    var gg = g.createLinearGradient(0, -80, 0, -18); gg.addColorStop(0, '#46205e'); gg.addColorStop(0.6, '#26113a'); gg.addColorStop(1, '#0e0616');
+    g.fillStyle = gg; g.beginPath(); g.moveTo(-20, -86); g.lineTo(20, -86); g.lineTo(34 + sway, -50);
+    for (i = 0; i <= 10; i++) { var hx = 34 - i * 6.8 + sway * 0.5, hy = -28 + (i % 2 ? 11 : -3) + qh(i, 3) * 9 + Math.sin(an * 1.8 + i * 1.4) * 2; g.lineTo(hx, hy); }
+    g.lineTo(-34 + sway, -50); g.closePath(); g.fill();
+    g.strokeStyle = 'rgba(8,2,14,.6)'; g.lineWidth = 1.2; for (i = 0; i < 7; i++) { g.beginPath(); g.moveTo(-14 + i * 4.6, -84); g.quadraticCurveTo(-18 + i * 6 + sway, -55, -30 + i * 10 + sway, -26 + (i % 2) * 6); g.stroke(); } // folds
+    g.strokeStyle = '#b08c3a'; g.lineWidth = 1.5; g.setLineDash([4, 2]); g.beginPath(); g.moveTo(-20, -86); g.lineTo(-34 + sway, -50); g.moveTo(20, -86); g.lineTo(34 + sway, -50); g.stroke(); g.setLineDash([]); // tarnished gold trim
+    for (i = 0; i < 6; i++) qBlob(g, -22 + i * 8.5, -66 + qh(i, 6) * 28, 3 + qh(i, 2) * 3, 2.5 + qh(i, 4) * 3, '#05020a', 0.85, i); // rot holes
+    g.fillStyle = 'rgba(180,120,210,.12)'; g.beginPath(); g.ellipse(-8, -62, 4, 14, 0.3, 0, TAU); g.fill(); // wet sheen
+    // ---- the torso: emaciated, rotting, the ribs showing, breathing ----
+    var tg = g.createLinearGradient(-22, -120, 22, -78); tg.addColorStop(0, '#6a5a54'); tg.addColorStop(0.5, '#4a3a3c'); tg.addColorStop(1, '#2c2026');
+    g.fillStyle = tg; g.beginPath(); g.moveTo(-24, -117); g.quadraticCurveTo(0, -125, 24, -117); g.quadraticCurveTo(14 + breathe * 1.4, -98, 11, -76); g.lineTo(-11, -76); g.quadraticCurveTo(-14 - breathe * 1.4, -98, -24, -117); g.closePath(); g.fill();
+    qBlob(g, -10, -104, 7, 5, '#34503c', 0.5, 4); qBlob(g, 9, -92, 6, 7, '#34503c', 0.45, 9); qBlob(g, 0, -84, 5, 4, '#1a0d12', 0.7, 2);
+    var hg = g.createRadialGradient(0, -98, 0, 0, -98, 14); hg.addColorStop(0, 'rgba(255,40,60,' + (0.45 + 0.35 * pulse) + ')'); hg.addColorStop(1, 'rgba(255,40,60,0)'); g.fillStyle = hg; g.beginPath(); g.arc(0, -98, 14, 0, TAU); g.fill(); // a dead heart still glowing red behind the ribs
+    for (k = 0; k < 6; k++) { var ry = -112 + k * 6.6, rw = 17 - k * 1.5 + breathe * 1.3 * (1 - k * 0.12); g.strokeStyle = '#120a0c'; g.lineWidth = 4.2; g.beginPath(); g.moveTo(-rw, ry + 3.5); g.quadraticCurveTo(0, ry - 4, rw, ry + 3.5); g.stroke(); g.strokeStyle = k % 2 ? '#c8bb9a' : '#dccfb0'; g.lineWidth = 2.6; g.beginPath(); g.moveTo(-rw, ry + 2.5); g.quadraticCurveTo(0, ry - 5, rw, ry + 2.5); g.stroke(); g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 0.7; g.beginPath(); g.moveTo(-rw + 1, ry + 1.8); g.quadraticCurveTo(0, ry - 5.8, rw - 1, ry + 1.8); g.stroke(); }
+    g.strokeStyle = '#e8dcbc'; g.lineWidth = 2.4; g.beginPath(); g.moveTo(0, -120); g.lineTo(0, -76); g.stroke(); for (k = 0; k < 8; k++) { g.fillStyle = '#b8ab8a'; g.beginPath(); g.arc(0, -118 + k * 5.4, 1.6, 0, TAU); g.fill(); } // sternum and spine knuckled
+    g.strokeStyle = '#e8dcbc'; g.lineWidth = 3; g.beginPath(); g.moveTo(-26, -118); g.quadraticCurveTo(-12, -123, 0, -119); g.quadraticCurveTo(12, -123, 26, -118); g.stroke(); // collarbones
+    // ---- the arms: uneven, skeletal, with oversized hooked claws ----
+    function arm(sx, sy, ex, ey, hx, hy, ext, flip) {
+      var bx = hx + (hx - ex) * ext, by = hy + (hy - ey) * ext;
+      qRibbon(g, [{ x: sx, y: sy }, { x: (sx + ex) / 2, y: (sy + ey) / 2 + 1.5 }, { x: ex, y: ey }], 5.2, 3.8, '#d8ccae', '#b8ab8a', 'rgba(255,255,255,.5)');
+      qRibbon(g, [{ x: ex, y: ey }, { x: (ex + bx) / 2, y: (ey + by) / 2 }, { x: bx, y: by }], 3.8, 2.6, '#b8ab8a', '#9a8e72', null);
+      [[sx, sy, 4.2], [ex, ey, 4.6], [bx, by, 3.2]].forEach(function (j) { g.fillStyle = '#e4d8b8'; g.beginPath(); g.arc(j[0], j[1], j[2], 0, TAU); g.fill(); g.strokeStyle = '#6a5e48'; g.lineWidth = 0.8; g.stroke(); });
+      g.strokeStyle = 'rgba(70,40,46,.8)'; g.lineWidth = 1; for (var m = 1; m < 4; m++) { g.beginPath(); g.moveTo(sx + (ex - sx) * m / 4, sy + (ey - sy) * m / 4); g.quadraticCurveTo(sx + (ex - sx) * m / 4 + 4, sy + (ey - sy) * m / 4 + 9, ex + (m - 2) * 2, ey + 12 + m * 2); g.stroke(); } // tendon strands
+      for (var cl = 0; cl < 5; cl++) qClaw(g, bx, by, Math.atan2(by - ey, bx - ex) + (cl - 2) * 0.34 + Math.sin(an * 3 + cl + flip) * 0.1, 19 + (cl % 2) * 5 + rage * 3, 1.3 * (flip ? 1 : -1), '#efe5c8');
     }
-    for (i = 0; i < 9; i++) { var sx2 = 17 + i * 5.7, sl = 5 + qHash(i, 4) * 7, sway = Math.sin(an * 1.8 + i * 1.4) * 1.5; for (k = 0; k < sl; k++) R(sx2 + sway * (k / sl), 70 + k, i % 2 ? 2 : 3, 1, k === sl - 1 ? '#9a7a30' : k % 3 === 0 ? '#1c0a28' : '#2c1240'); } // torn hem strips
-    for (i = 0; i < 6; i++) R(24 + i * 6 + qHash(i, 9) * 3, 54 + qHash(i, 2) * 12, 3, 2, '#08030c'); // rotted holes
-    // ---- the torso: emaciated, ribs showing, breathing ----
-    for (y = 34; y < 50; y++) { var f4 = (y - 34) / 16, hw3 = 11 - f4 * 4.5 + (y < 40 ? 1 : 0) + breathe * 0.5 * (1 - f4); for (x = Math.floor(40 - hw3); x <= 40 + hw3; x++) { var n4 = qHash(x, y + 20); R(x, y, 1, 1, n4 < 0.18 ? '#26352c' : n4 < 0.3 ? '#241218' : '#4a3038'); } }
-    line(29, 36, 40, 35, '#d6c9a6', 1); line(40, 35, 51, 36, '#d6c9a6', 1); // collarbones
-    R(40, 35, 1, 15, '#e4d8b6', 1); for (y = 37; y < 49; y += 2) R(40, y, 1, 1, '#9a8f70'); // the spine, knuckled
-    for (k = 0; k < 6; k++) { var ry = 38 + k * 2.4, rw = 7.5 - k * 0.55 + breathe * 0.7 * (1 - k * 0.12); for (s = 1; s <= rw; s++) { var yy = ry + Math.pow(s / rw, 2) * 2.2; R(40 - s, yy, 1, 1, k % 2 ? '#c4b794' : '#d6c9a6'); R(40 + s, yy, 1, 1, k % 2 ? '#c4b794' : '#d6c9a6'); } R(40 - rw - 1, ry + 2.2, 1, 1, '#8a7e62'); R(40 + rw + 1, ry + 2.2, 1, 1, '#8a7e62'); }
-    // ---- the arms: uneven, skeletal, ending in oversized hooked claws ----
-    function arm(sx, sy, ex, ey, hx, hy, ext) {
-      var bx = hx + (hx - ex) * ext, by = hy + (hy - ey) * ext; line(sx, sy, ex, ey, '#cfc3a0', 2); line(ex, ey, bx, by, '#c4b794', 2);
-      R(sx - 1, sy - 1, 3, 3, '#e4d8b6'); R(ex - 1, ey - 1, 3, 3, '#e4d8b6'); for (var m = 1; m < 6; m++) { var f = m / 6; if (m % 2) R(sx + (ex - sx) * f, sy + (ey - sy) * f + 1, 1, 1, '#4a3038'); } // rot clinging to the bone
-      for (var cl = 0; cl < 4; cl++) { var a0 = Math.atan2(by - ey, bx - ex) + (cl - 1.5) * 0.42 + Math.sin(an * 3 + cl) * 0.12, cx0 = bx, cy0 = by, len2 = 8 + (cl % 2) * 2.5 + rage * 1.5; // each claw curls in on itself
-        for (var u = 0; u < len2; u++) { var ang = a0 + Math.pow(u / len2, 1.4) * 1.5, px = cx0 + Math.cos(ang) * u * 0.9, py2 = cy0 + Math.sin(ang) * u * 0.9; R(px, py2, u < len2 * 0.7 ? 2 : 1, u < len2 * 0.7 ? 2 : 1, u > len2 - 3 ? '#3a2a2a' : '#eee4c8'); } }
+    arm(-24, -114, -40 - reach * 8, -84 + reach * 3, -50 - reach * 18, -42 - reach * 6, 0.25, 0); // the long left arm, dragging low
+    arm(24, -114, 44, -100, 52 + reach * 8, -128 - reach * 10, 0.2, 1); // the shorter right arm, raised
+    for (i = 0; i < 5; i++) { g.fillStyle = i % 2 ? '#1c0a28' : '#3a1a52'; g.beginPath(); g.moveTo(-24 - i * 2, -118 + i * 4); g.lineTo(-30 - i * 3 - Math.sin(an + i) * 1, -104 + i * 6); g.lineTo(-20 - i * 2, -108 + i * 4); g.fill(); g.beginPath(); g.moveTo(24 + i * 2, -118 + i * 4); g.lineTo(30 + i * 3 + Math.sin(an + i) * 1, -104 + i * 6); g.lineTo(20 + i * 2, -108 + i * 4); g.fill(); } // sleeve rags
+    // ---- the head: a rotting skull, flesh peeling away, a torn grin from ear to ear ----
+    var jaw = 2.5 + Math.max(0, Math.sin(an * 5.3)) * (4 + rage * 4) + (Math.sin(an * 23) > 0.93 ? 4 : 0), hy0 = -142;
+    var sg = g.createRadialGradient(-4, hy0 - 4, 2, 0, hy0, 24); sg.addColorStop(0, '#cfc3a2'); sg.addColorStop(0.6, '#9c9070'); sg.addColorStop(1, '#4a4034');
+    g.fillStyle = sg; g.beginPath(); g.moveTo(0, hy0 - 22); g.bezierCurveTo(19, hy0 - 22, 23, hy0 - 4, 18, hy0 + 8); g.lineTo(13, hy0 + 18); g.lineTo(-13, hy0 + 18); g.lineTo(-18, hy0 + 8); g.bezierCurveTo(-23, hy0 - 4, -19, hy0 - 22, 0, hy0 - 22); g.closePath(); g.fill();
+    qBlob(g, -12, hy0 - 6, 8, 11, '#5a3c3a', 0.88, 1); qBlob(g, 13, hy0 - 12, 6, 9, '#3c4a3c', 0.85, 5); qBlob(g, 8, hy0 + 8, 6, 5, '#4a2a2c', 0.8, 7); qBlob(g, -8, hy0 + 12, 5, 4, '#5a3c3a', 0.8, 3); qBlob(g, 0, hy0 - 18, 9, 4, '#4a3a30', 0.55, 8);
+    g.strokeStyle = 'rgba(40,24,20,.75)'; g.lineWidth = 0.8; for (i = 0; i < 6; i++) { g.beginPath(); g.moveTo(-6 + i * 3.5, hy0 - 22); g.lineTo(-8 + i * 3.8 + qh(i, 1) * 5, hy0 - 12 - qh(i, 2) * 6); g.lineTo(-6 + i * 3.2, hy0 - 6); g.stroke(); } // cracks across the bone
+    g.strokeStyle = 'rgba(240,170,200,.65)'; g.lineWidth = 1; g.beginPath(); g.moveTo(-17, hy0 - 6); g.bezierCurveTo(-19, hy0 - 18, -8, hy0 - 24, 0, hy0 - 23); g.stroke(); // rim light on the skull
+    for (i = -1; i <= 1; i += 2) { // flaps of torn cheek
+      g.fillStyle = '#5a3438'; g.beginPath(); g.moveTo(i * 17, hy0 + 4); g.lineTo(i * 25, hy0 + 14 + Math.sin(an * 2 + i) * 1.5); g.lineTo(i * 19, hy0 + 20); g.lineTo(i * 13, hy0 + 14); g.closePath(); g.fill(); g.strokeStyle = '#a02a3c'; g.lineWidth = 0.8; g.stroke();
     }
-    arm(29, 38, 21 - reach * 4, 52 + reach * 2, 13 - reach * 6, 68 - reach * 3, 0.25); // the long left arm, dragging low
-    arm(51, 38, 62, 46, 64 + reach * 5, 34 - reach * 6, 0.2); // the shorter right arm, raised
-    for (i = 0; i < 4; i++) { R(30 - i * 2 - Math.sin(an + i) * 0.5, 38 + i * 2, 2, 3, i % 2 ? '#1c0a28' : '#321646'); R(50 + i * 2 + Math.sin(an + i) * 0.5, 38 + i * 2, 2, 3, i % 2 ? '#1c0a28' : '#321646'); } // sleeve rags
-    // ---- the head: a rotting, half-exposed skull with a torn, impossibly wide grin ----
-    var hcx = 40, hcy = 22, jawOpen = 1.5 + Math.max(0, Math.sin(an * 5.3)) * (2 + rage * 2) + (Math.sin(an * 23) > 0.93 ? 2 : 0); // the jaw twitches
-    for (y = -12; y <= 12; y++) { var hw4 = 11 * Math.sqrt(1 - Math.pow(y / 12.5, 2)); for (x = -Math.floor(hw4); x <= hw4; x++) { var n5 = qHash(x + 7, y + 3), edge = x > hw4 - 1.6 ? 1 : 0; var col2 = n5 < 0.16 ? '#5a4038' : n5 < 0.26 ? '#3c5040' : (y < -2 && x > 2 && n5 < 0.5) ? '#6a5446' : '#cfc6aa'; if (edge) col2 = '#8a806a'; R(hcx + x, hcy + y, 1, 1, col2); } }
-    R(hcx - 1, hcy + 3, 3, 3, '#14060c'); R(hcx, hcy + 2, 1, 1, '#14060c'); // the nose hole
-    for (i = -1; i <= 1; i += 2) { line(hcx + i * 11, hcy + 6, hcx + i * 15, hcy + 1, '#14060c', 1); line(hcx + i * 11, hcy + 7, hcx + i * 14, hcy + 4, '#8a2a3a', 1); R(hcx + i * 15, hcy, 1, 1, '#14060c'); } // torn cheeks, split back toward the ears
-    for (i = -1; i <= 1; i += 2) { R(hcx + i * 5 - 2, hcy - 5, 5, 5, '#06020a'); var gl2 = Math.floor(2 + pulse * 1 + rage); g.globalAlpha = 0.35 + 0.3 * pulse; R(hcx + i * 5 - 3, hcy - 6, 7, 7, '#7a0c1a'); g.globalAlpha = 1; R(hcx + i * 5 - 1, hcy - 4, 3, 3, o.flash ? '#ffffff' : pulse > 0.5 ? '#ff3a4a' : '#d4182c'); R(hcx + i * 5, hcy - 3, 1, 1, '#ffd0d0'); } // the red eyes, pulsing
-    var my = hcy + 8, mw = 13; // the mouth
-    R(hcx - mw, my, mw * 2 + 1, jawOpen + 3, '#0a0208'); // the black opening, wider than any face should allow
-    for (x = -mw; x <= mw; x++) { if (x % 2) continue; var th2 = 2 + (qHash(x, 1) * 3 | 0); R(hcx + x, my - 1, 2, th2, qHash(x, 5) < 0.3 ? '#b8ae88' : '#ece3c0'); R(hcx + x, my - 2, 2, 1, '#8a806a'); } // crooked upper teeth
-    var jy = my + 3 + jawOpen; for (x = -9; x <= 9; x++) R(hcx + x, jy, 1, 3, x % 4 === 0 ? '#8a806a' : '#cfc6aa'); // the lower jaw
-    for (x = -8; x <= 8; x += 2) R(hcx + x, jy - (1 + (qHash(x, 8) * 3 | 0)), 1, 2 + (qHash(x, 8) * 3 | 0), '#ece3c0'); // lower teeth, uneven
-    if (jawOpen > 3) R(hcx - 1, my + 2, 3, 2, '#5a1626'); // a glimpse of tongue
-    // ---- the crown: crooked and tarnished, one spike broken, a red stone in the tallest ----
-    for (x = -10; x <= 10; x++) { var cy = hcy - 12 + Math.floor(x * 0.18) + 1; R(hcx + x, cy, 1, 3, Math.abs(x) % 4 === 0 ? '#6a5018' : '#c8a040'); R(hcx + x, cy, 1, 1, '#f0d070'); }
-    var spk = [-9, -5, 0, 5, 9], sh = [6, 8, 11, 5, 7];
-    for (i = 0; i < 5; i++) { var bx2 = hcx + spk[i], by2 = hcy - 13 + Math.floor(spk[i] * 0.18); for (k = 0; k < sh[i] - (i === 3 ? 0 : 0); k++) { var wv = Math.max(1, 3 - (k * 3 / sh[i] | 0)); R(bx2 - (wv >> 1), by2 - k, wv, 1, k > sh[i] - 3 ? '#f0d070' : '#c8a040'); } if (i === 3) R(bx2 - 1, by2 - 5, 3, 1, '#0a0615'); } // spike 4 is snapped off
-    R(hcx - 1, hcy - 22, 3, 3, '#d02030'); R(hcx, hcy - 21, 1, 1, '#ff8a9a'); for (i = 0; i < 6; i++) R(hcx - 9 + i * 3.5, hcy - 11, 1, 1, '#4a6a40'); // the stone, and green tarnish
-    // ---- the hair in front, over the shoulders ----
-    for (i = 6; i < 10; i++) strand(i, true);
-    // ---- dripping black water ----
-    hp = true;
-    for (i = 0; i < 12; i++) { var pd = (an * 0.9 + i * 0.173) % 1, dx = i < 4 ? 14 + i * 3 : i < 8 ? 24 + (i - 4) * 9 : 56 + (i - 8) * 3, dy0 = i < 4 ? 70 : i < 8 ? 74 : 40 + (i - 8) * 6, dyy = dy0 + pd * pd * (88 - dy0); g.globalAlpha = 1 - pd * 0.5; R(dx, dyy, 1, 2, '#2a1c3c'); R(dx, dyy, 1, 1, '#7a64a0'); g.globalAlpha = 1; }
-    hp = false;
+    for (i = -1; i <= 1; i += 2) { // the eyes: black sockets, a red fire that pulses, black water weeping out
+      g.fillStyle = '#020104'; g.beginPath(); g.ellipse(i * 8.5, hy0 - 5, 7.4, 8.6, i * 0.12, 0, TAU); g.fill(); g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 2; g.stroke();
+      var eg = g.createRadialGradient(i * 8.5, hy0 - 5, 0, i * 8.5, hy0 - 5, 5.6); eg.addColorStop(0, o.flash ? '#fff' : 'rgba(255,70,90,' + (0.9 + 0.1 * pulse) + ')'); eg.addColorStop(0.45, 'rgba(210,20,40,' + (0.6 + 0.3 * pulse) + ')'); eg.addColorStop(1, 'rgba(120,0,20,0)'); g.fillStyle = eg; g.beginPath(); g.arc(i * 8.5, hy0 - 5, 5.6, 0, TAU); g.fill(); g.globalAlpha = 0.18 + 0.12 * pulse; g.fillStyle = '#ff2a3a'; g.beginPath(); g.arc(i * 8.5, hy0 - 5, 11, 0, TAU); g.fill(); g.globalAlpha = 1;
+      g.fillStyle = '#ffd0d6'; g.beginPath(); g.arc(i * 8.5 - 0.6, hy0 - 5.6, 0.9, 0, TAU); g.fill();
+      var tw = (an * 0.7 + (i > 0 ? 0.4 : 0)) % 1; g.strokeStyle = 'rgba(10,6,20,.85)'; g.lineWidth = 1.6; g.beginPath(); g.moveTo(i * 9, hy0 + 1); g.lineTo(i * 10 + Math.sin(an * 2) * 0.5, hy0 + 10 + tw * 6); g.stroke(); }
+    g.fillStyle = '#10060a'; g.beginPath(); g.moveTo(0, hy0 + 2); g.lineTo(-3.4, hy0 + 8); g.lineTo(3.4, hy0 + 8); g.closePath(); g.fill(); // the nose hole
+    var my = hy0 + 11, mw = 22; // the mouth: wide, black, full of crooked teeth, the jaw twitching
+    g.fillStyle = '#07020a'; g.beginPath(); g.moveTo(-mw, my - 1); g.quadraticCurveTo(0, my - 3, mw, my - 1); g.quadraticCurveTo(mw * 0.8, my + jaw + 9, 0, my + jaw + 12); g.quadraticCurveTo(-mw * 0.8, my + jaw + 9, -mw, my - 1); g.closePath(); g.fill();
+    var thr = g.createRadialGradient(0, my + jaw * 0.5 + 4, 0, 0, my + jaw * 0.5 + 4, 12); thr.addColorStop(0, 'rgba(150,20,40,' + (0.3 + 0.2 * pulse) + ')'); thr.addColorStop(1, 'rgba(150,20,40,0)'); g.fillStyle = thr; g.fillRect(-12, my - 2, 24, jaw + 14); // a dull red glow far down the throat
+    for (i = 0; i < 15; i++) { var tx = -mw + 2 + i * (mw * 2 - 4) / 14, th = 5 + qh(i, 1) * 5, tl = (qh(i, 2) - 0.5) * 0.5; g.save(); g.translate(tx, my - 1.5 + Math.sin(i * 0.4) * -1.5); g.rotate(tl); g.fillStyle = qh(i, 5) < 0.3 ? '#a8a07c' : '#eee5c4'; g.beginPath(); g.moveTo(-1.7, 0); g.lineTo(1.7, 0); g.lineTo(0.2 * (qh(i, 3) - 0.5), th); g.closePath(); g.fill(); g.strokeStyle = 'rgba(40,24,20,.5)'; g.lineWidth = 0.4; g.stroke(); g.restore(); } // crooked upper teeth
+    for (i = 0; i < 11; i++) { var bx2 = -mw * 0.8 + i * (mw * 1.6) / 10, bh = 4 + qh(i, 7) * 5; g.save(); g.translate(bx2, my + jaw + 9 - Math.sin(i / 10 * Math.PI) * 2); g.rotate((qh(i, 9) - 0.5) * 0.5); g.fillStyle = qh(i, 8) < 0.3 ? '#a8a07c' : '#e6dcba'; g.beginPath(); g.moveTo(-1.6, 0); g.lineTo(1.6, 0); g.lineTo(0, -bh); g.closePath(); g.fill(); g.restore(); } // lower teeth
+    if (jaw > 5.5) { g.strokeStyle = '#7a1c2c'; g.lineWidth = 2.4; g.beginPath(); g.moveTo(-2, my + 3); g.quadraticCurveTo(0, my + jaw + 8, 3, my + jaw + 16 + Math.sin(an * 9) * 2); g.stroke(); } // a long grey tongue lolling out
+    g.strokeStyle = 'rgba(10,6,20,.8)'; g.lineWidth = 1.2; for (i = 0; i < 4; i++) { var dd = (an * 0.9 + i * 0.27) % 1; g.beginPath(); g.moveTo(-9 + i * 6, my + jaw + 11); g.lineTo(-9 + i * 6, my + jaw + 11 + 8 + dd * 18); g.stroke(); } // black water drooling from the mouth
+    // ---- the crown: crooked, tarnished, one spike snapped, a red stone in the tallest, weed wound through it ----
+    g.save(); g.translate(0, hy0 - 22); g.rotate(-0.09); var cg = g.createLinearGradient(0, -6, 0, 6); cg.addColorStop(0, '#f2d97a'); cg.addColorStop(0.5, '#c8a040'); cg.addColorStop(1, '#6a5018'); g.fillStyle = cg;
+    g.beginPath(); g.moveTo(-17, 6); g.lineTo(-17, -2); [[-13, -9], [-9, -2], [-5, -11], [-1, -2], [3, -16], [7, -2], [10, -4], [12, -8], [14, -2]].forEach(function (pt) { g.lineTo(pt[0], pt[1]); }); g.lineTo(17, -2); g.lineTo(17, 6); g.closePath(); g.fill();
+    g.strokeStyle = '#3a2a0a'; g.lineWidth = 0.8; g.stroke(); g.fillStyle = '#d02030'; g.beginPath(); g.ellipse(3, -9, 2.4, 3, 0, 0, TAU); g.fill(); g.fillStyle = 'rgba(255,200,210,.8)'; g.beginPath(); g.arc(2.2, -10, 0.9, 0, TAU); g.fill();
+    g.strokeStyle = '#46683c'; g.lineWidth = 1.4; g.beginPath(); g.moveTo(-17, 2); g.quadraticCurveTo(-8, 7, 0, 2); g.quadraticCurveTo(8, -1, 17, 3); g.stroke(); for (i = 0; i < 5; i++) { g.fillStyle = 'rgba(80,140,80,.6)'; g.fillRect(-14 + i * 7, 0 + (i % 2) * 2, 1.4, 1.4); }
+    g.restore();
+    hair(true);
+    // ---- dripping black water and drifting mist ----
+    for (i = 0; i < 12; i++) { var pd = (an * 0.9 + i * 0.173) % 1, dx = i < 4 ? -52 + i * 3 : i < 8 ? -30 + (i - 4) * 18 : 46 + (i - 8) * 6, dy0 = i < 4 ? -46 : i < 8 ? -22 : -100 + (i - 8) * 14, dyy = dy0 + pd * pd * (-dy0); g.globalAlpha = 1 - pd * 0.4; g.fillStyle = '#1c1228'; g.beginPath(); g.ellipse(dx, dyy, 1.3, 2.3, 0, 0, TAU); g.fill(); g.fillStyle = 'rgba(200,160,230,.7)'; g.fillRect(dx - 0.6, dyy - 1, 0.6, 1); g.globalAlpha = 1; }
+    for (i = 0; i < 6; i++) { var mx = Math.sin(an * 0.5 + i * 1.7) * 40, my2 = -8 - ((an * 8 + i * 17) % 40); g.fillStyle = 'rgba(70,30,80,' + (0.12 * (1 - (-my2 - 8) / 40)) + ')'; g.beginPath(); g.arc(mx, my2, 14, 0, TAU); g.fill(); }
   }
   function drawQueenSprite(c, e, r, an, frac, rage, strike) {
-    var Q = qCanvas(); if (!Q) return false;
-    drawQueen(Q.main.g, an, { rage: rage, reach: strike, flash: e.flash > 0 }); drawQueen(Q.hair.g, an, { rage: rage, reach: strike, flash: e.flash > 0, hairOnly: true });
-    if (e.flash > 0) { var hg = Q.hair.g; hg.globalCompositeOperation = 'source-atop'; hg.globalAlpha = 0.75; hg.fillStyle = '#fff'; hg.fillRect(0, 0, QW, QH); hg.globalAlpha = 1; hg.globalCompositeOperation = 'source-over'; }
-    if (e.flash > 0) { var g = Q.main.g; g.globalCompositeOperation = 'source-atop'; g.globalAlpha = 0.75; g.fillStyle = '#fff'; g.fillRect(0, 0, QW, QH); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; }
-    // a 1-pixel pink rim so she stays readable in the pond's fog
-    var eg = Q.edge.g, off = [[1, 0], [-1, 0], [0, 1], [0, -1]], i; eg.clearRect(0, 0, QW, QH); eg.globalCompositeOperation = 'source-over';
-    for (i = 0; i < 4; i++) eg.drawImage(Q.main.cv, off[i][0], off[i][1]);
-    eg.globalCompositeOperation = 'source-in'; eg.fillStyle = '#f0a8c4'; eg.fillRect(0, 0, QW, QH); eg.globalCompositeOperation = 'source-over';
-    var S = (r / 24) * 1.25; c.save(); c.imageSmoothingEnabled = false;
-    c.drawImage(Q.edge.cv, -QW / 2 * S, r * 0.84 - 92 * S, QW * S, QH * S); c.drawImage(Q.main.cv, -QW / 2 * S, r * 0.84 - 92 * S, QW * S, QH * S); c.drawImage(Q.hair.cv, -QW / 2 * S, r * 0.84 - 92 * S, QW * S, QH * S);
-    c.restore(); return true;
+    var Q = qCanvas(); if (!Q) return false; var g = Q.g;
+    drawQueenArt(g, an, { rage: rage, reach: strike, flash: e.flash > 0 });
+    if (e.flash > 0) { g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-atop'; g.globalAlpha = 0.7; g.fillStyle = '#fff'; g.fillRect(0, 0, 340, 430); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; }
+    if (!(e.flash > 0)) { g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-atop'; var dg = g.createLinearGradient(0, 40, 0, 430); dg.addColorStop(0, 'rgba(6,2,10,.1)'); dg.addColorStop(1, 'rgba(6,2,12,.62)'); g.fillStyle = dg; g.fillRect(0, 0, 340, 430); var vg = g.createRadialGradient(170, 200, 60, 170, 200, 220); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.45)'); g.fillStyle = vg; g.fillRect(0, 0, 340, 430); g.globalAlpha = 0.28; g.fillStyle = '#0a0410'; for (var gi = 0; gi < 26; gi++) { g.beginPath(); g.ellipse(120 + qh(gi, 1) * 100, 60 + qh(gi, 2) * 330, 3 + qh(gi, 3) * 10, 5 + qh(gi, 4) * 16, 0, 0, TAU); g.fill(); } g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; }
+    var S = (r / 24) / QQ * 1.05; c.save(); c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
+    c.shadowColor = 'rgba(255,120,170,.75)'; c.shadowBlur = 5; c.translate(0, r * 0.84); c.scale(S, S); c.drawImage(Q.cv, -170, -410); // a soft pink rim light so she stays visible in the fog
+    c.shadowBlur = 0; c.drawImage(Q.cv, -170, -410); c.restore(); return true;
   }
 
   // Persistent demon is the same horned, red-eyed shadow/skull that forms
@@ -1172,6 +1323,7 @@
     var t = Date.now() / 1000, x = boss.x - cam.x, y = boss.y - cam.y;
     c.save();
     mistTelegraph(c, boss, cam, t);
+    drawBossExtras(c, cam, boss, t);
     // A few persistent eyes peering from the fog; the boss can use them to
     // telegraph a vanishing act without masking the player's sprite.
     var count = boss.state === 'mistHidden' ? 0 : 4;

@@ -340,7 +340,7 @@
     addFx({ kind: 'ring', x: e.x, y: e.y, r: r, t: 0.28, max: 0.28, col: '#ff9a3a' });
     fxBurst(e.x, e.y, '#ffb050', 8, 100);
   }
-  var KILL_SHOT_CHANCE = 0.2; // a crit on a monster at 1/3 health or less: 1 in 5 is a perfect critical
+  var PERFECT_CHANCE = 0.02; // 1 in 50 basic attacks is a PERFECT HIT: four times the damage, and its own kill cutscene if it kills
   function hitEnemy(e, dmg, type, opts) {
     var p = hero();
     if (!alive(e)) return 0;
@@ -354,22 +354,21 @@
       back = behind || p.ambushT > 0 || e.stunT > 0 || e.slowT > 0;
       if (back) { dmg *= p.flags.cutthroat ? 2.2 : 1.5; if (p.ambushT > 0) { p.ambushT = 0; crit = true; } }
     }
+    var baseDmg = dmg, perfect = !!(!opts.minion && !opts.splash && opts.basicAttack && p && !(p.pw && p.pw.rapid > 0) && Math.random() < PERFECT_CHANCE);
+    if (perfect) crit = true;
     if (crit) dmg *= p.stats.critDmg;
+    if (perfect) dmg = baseDmg * 4; // a perfect hit is exactly four times a normal hit
     if (p && CC.Skills && !opts.minion) dmg *= CC.Skills.preHit(p, e, type, opts); // vulnerable foes, war cry, executes...
-    // PERFECT CRITICAL (kill shot): a basic-attack crit on a non-boss already at 1/3 health
-    // or less has a 1-in-10 chance to be an instant kill with a class finisher cinematic.
-    var killShot = !!(crit && opts.basicAttack && !opts.minion && !opts.splash && p && !e.boss && !(p.pw && p.pw.rapid > 0) &&
-      e.maxHp > 0 && e.hp <= e.maxHp / 3 && Math.random() < KILL_SHOT_CHANCE &&
-      CC.CriticalScene && CC.CriticalScene.canFinish && CC.CriticalScene.canFinish());
-    if (killShot) { e.rose = true; dmg = Math.max(dmg, Math.ceil(((e.hp || 1) + (e.shield || 0)) / 0.2) + 1); }
     dmg = Math.max(1, Math.round(dmg));
     var viaEnemies = CC.Enemies && typeof CC.Enemies.damage === 'function';
     if (viaEnemies) { try { CC.Enemies.damage(e, dmg, type); } catch (err) { e.hp -= dmg; } }
     else e.hp -= dmg;
     // Only an actual post-damage death (not a skeleton collapse) earns hit-stop.
-    var lethalCrit = !!(crit && !alive(e) && !e.collapsed);
-    var necroCinema = crit && lethalCrit && p && p.classId === 'necromancer' && opts.basicAttack && !opts.minion && !opts.splash && !killShot && CC.state.mode === 'dungeon' && CC.CriticalScene && CC.CriticalScene.enabled && CC.CriticalScene.enabled() && !(opts.attackGroup && opts.attackGroup.cinematicStarted) && !(p.pw && p.pw.rapid > 0);
-    if (!necroCinema) fxText(e.x, e.y - (e.r || 8) - 4, crit ? dmg + '!' : String(dmg), crit ? '#f04c57' : back ? '#7de0b8' : '#fff', crit ? 16 : 10); // a necromancer crit shows its damage as three counters in the cinematic instead
+    var lethalCrit = !!(crit && !alive(e) && !e.collapsed), perfectKill = !!(perfect && lethalCrit); // a critical that kills plays its hero's kill cutscene; a perfect hit that kills plays the perfect-kill one
+    var necroCinema = crit && lethalCrit && p && p.classId === 'necromancer' && opts.basicAttack && !opts.minion && !opts.splash && !perfectKill && CC.state.mode === 'dungeon' && CC.CriticalScene && CC.CriticalScene.enabled && CC.CriticalScene.enabled() && !(opts.attackGroup && opts.attackGroup.cinematicStarted) && !(p.pw && p.pw.rapid > 0);
+    if (perfect) fxText(e.x, e.y - (e.r || 8) - 22, 'Perfect Hit!', '#ffd700', 14); // gold
+    else if (crit && !(opts.critSequence && opts.pulseIndex > 0)) fxText(e.x, e.y - (e.r || 8) - 20, 'Critical!', '#ffd24a', 11); // every critical says so (a wizard's three-hit crit says it once)
+    if (!necroCinema) fxText(e.x, e.y - (e.r || 8) - 4, crit ? dmg + '!' : String(dmg), perfect ? '#ffd700' : crit ? '#f04c57' : back ? '#7de0b8' : '#fff', crit ? 16 : 10); // a necromancer crit shows its damage as three counters in the cinematic instead
     if (CC.Audio && !(opts.noCrit && !opts.basicAttack) && !opts.minion && type !== 'poison') CC.Audio.event('hit', { x: e.x, y: e.y, crit: crit, skip: !!necroCinema, plasma: !!(opts.basicAttack && p && (p.classId === 'wizard' || p.classId === 'necromancer') && !crit && !opts.minion), slash: !!(opts.basicAttack && p && (p.classId === 'swordsman' || p.classId === 'thief') && !e.ghost) });
     fxBurst(e.x, e.y, crit ? '#fff3d0' : '#ffffff', crit ? 18 : 4, crit ? 125 : 60);
     if (p && !opts.minion && (type === 'slash' || type === 'melee' || type === 'physical') &&
@@ -398,16 +397,14 @@
       if (CC.CriticalScene) {
         if (attackGroup && attackGroup.cinematicStarted && CC.CriticalScene.addTargets) {
           CC.CriticalScene.addTargets(participants);
-          if (lethalCrit && CC.CriticalScene.mode && CC.CriticalScene.mode()==='all' &&
-              CC.CriticalScene.finish && CC.CriticalScene.finish(e)) e._finisher = true;
+          if (perfectKill && CC.CriticalScene.finish && CC.CriticalScene.finish(e)) e._finisher = true;
         } else {
           var cinematicStarted = CC.CriticalScene.trigger({ kind: opts.attackKind === 'projectile' ? 'projectile' : 'slash',
             heroClass: p.classId, x: e.x, y: e.y, r: e.r || 9, angle: opts.angle || 0,
             color: opts.color || '#e5c5b3', damage: dmg, sourceX: p.x, sourceY: p.y,
             targets:participants, radius:critRadius(p.classId),
-            finisher: lethalCrit ? e.id : null, elite: !!e.elite, boss: !!e.boss });
-          if (cinematicStarted && lethalCrit && CC.CriticalScene.mode &&
-              CC.CriticalScene.mode()==='all') e._finisher = true;
+            finisher: perfectKill ? e.id : null, lethal: lethalCrit, elite: !!e.elite, boss: !!e.boss });
+          if (cinematicStarted && perfectKill) e._finisher = true;
           if (cinematicStarted && attackGroup) attackGroup.cinematicStarted = true;
         }
       }
@@ -429,8 +426,6 @@
     if (back && !crit) fxText(e.x, e.y - (e.r || 8) - 14, 'Backstab', '#7de0b8', 9);
     if (p && p.flags.venom && !opts.minion && type !== 'poison' && type !== 'fire' && alive(e)) ignite(e, 3, p.stats.dmg * 0.4, '#7dff5a', 'poison');
     if (p && !opts.minion && p.stats.lifesteal > 0) heal(p, dmg * p.stats.lifesteal);
-    if (killShot && alive(e) && CC.Enemies && CC.Enemies._kill) { e.hp = 0; try { CC.Enemies._kill(e); } catch (err) { /* normal damage already applied */ } }
-    if (killShot && !alive(e)) fxText(e.x, e.y - (e.r || 8) - 18, 'KILL SHOT', '#ff4b5c', 11);
     if (alive(e) && e.type === 'scarecrow' && p && CC.ScarecrowFlock && CC.ScarecrowFlock.slashCrows && !(opts.noCrit && !opts.basicAttack) && Math.random() < 0.25) // any hit (slash, arrow, bolt, spell) has a 1 in 4 chance to tear 1-3 crows out of the straw; damage-over-time ticks don't count
       CC.ScarecrowFlock.slashCrows(e, opts.angle, p);
     if (alive(e) && p && CC.Skills) CC.Skills.onHit(p, e, dmg, type, opts); // magic blade, synergies, effects
@@ -615,6 +610,7 @@
       if (pr.preRolledCrit) {
         pr.col = p.classId === 'wizard' ? '#52ceff' : '#b67bff';
         pr.critAge = 0;
+        if (p.classId === 'wizard') pr.r = (pr.r || 4) * 1.1; // the wizard's critical orb is 10% bigger
       }
     }
     if (p.pw && p.pw.rapid > 0 && !pr.aoe) pr.pierce = true; // rapid fire power-up: shots pass through monsters
@@ -1001,7 +997,7 @@
     // each pulse does one third of the original critical's direct damage.
     hitEnemy(e, seq.damage/3, seq.type,
       { basicAttack:last, attackKind:'projectile', angle:seq.angle,
-        critSequence:true, preRolledCrit:true });
+        critSequence:true, preRolledCrit:true, pulseIndex:seq.count });
     wizardSplash(e, seq.damage*seq.mult*.105);
     fxBurst(e.x,e.y,last?'#e7fdff':'#61c9ff',7,88);
   }
@@ -1009,7 +1005,8 @@
     if(wizardCrits.length>=12)wizardCrits.shift();
     var seq={target:e,damage:s.dmg,mult:hero().stats.critDmg||1.75,
       type:s.type,angle:s.a,count:0,time:0};
-    addFx({kind:'critOrb',x:e.x,y:e.y,r:Math.max(11,e.r||9),t:.37,max:.37,col:'#7edcff'});
+    addFx({kind:'critOrb',x:e.x,y:e.y,r:Math.max(11,e.r||9),t:.7,max:.7,col:'#7edcff'});
+    addFx({kind:'critBall',x:e.x,y:e.y,ref:e,r:e.r||9,t:.85,max:.85,col:'#7edcff'}); // the glowing ball rests on the enemy and pulses once per hit
     wizardCritPulse(seq); // pulse 1 is instant, not one frame later
     seq.count=1; wizardCrits.push(seq);
   }
@@ -1018,7 +1015,7 @@
       var seq=wizardCrits[i];
       if(!alive(seq.target)){wizardCrits.splice(i,1);continue;}
       seq.time+=dt;
-      while(seq.count<3&&seq.time>=seq.count*.11){
+      while(seq.count<3&&seq.time>=seq.count*.2){
         wizardCritPulse(seq);seq.count++;
       }
       if(seq.count>=3)wizardCrits.splice(i,1);
@@ -1338,7 +1335,7 @@
       var age=f.max-f.t, base=Math.max(12,f.r||12);
       c.save();c.globalCompositeOperation='lighter';
       for(var pulse=0;pulse<3;pulse++){
-        var u=(age-pulse*.11)/.15;
+        var u=(age-pulse*.2)/.22;
         if(u<0||u>1)continue;
         var fade=(1-u),rad=base*(.75+u*3.1);
         c.globalAlpha=.15*fade;c.fillStyle='#239fff';
@@ -1350,6 +1347,17 @@
         c.globalAlpha=.88*fade;c.fillStyle='#f3ffff';
         c.beginPath();c.arc(x,y,Math.max(2,base*.43*(1-u)),0,6.2832);c.fill();
       }
+      c.restore();
+    } else if (f.kind === 'critBall') { // the wizard's critical orb sits on the enemy's centre and swells with each of its three hits
+      var rb = f.ref && alive(f.ref) ? f.ref : null, bx = (rb ? rb.x : f.x) - cam.x, by = (rb ? rb.y - (rb.r || 9) * 0.45 : f.y) - cam.y, ageb = f.max - f.t, pls = 0, pk, tb = Date.now() / 1000;
+      for (pk = 0; pk < 3; pk++) pls = Math.max(pls, Math.exp(-Math.pow((ageb - pk * 0.2) / 0.07, 2)));
+      var fadeb = clamp(f.t / 0.2, 0, 1), rb2 = Math.max(8, (f.r || 9) * 0.8) * 1.1 * (1 + 0.55 * pls);
+      c.save(); c.globalCompositeOperation = 'lighter';
+      var gb = c.createRadialGradient(bx, by, 0, bx, by, rb2 * 2.8); gb.addColorStop(0, 'rgba(70,175,255,' + (0.6 * fadeb * (0.6 + 0.4 * pls)) + ')'); gb.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = gb; c.fillRect(bx - rb2 * 3, by - rb2 * 3, rb2 * 6, rb2 * 6);
+      c.globalAlpha = fadeb * (0.8 + 0.2 * pls); c.fillStyle = '#58b4ff'; c.beginPath(); c.arc(bx, by, rb2, 0, 6.2832); c.fill();
+      c.fillStyle = '#e9fdff'; c.beginPath(); c.arc(bx, by, rb2 * 0.5, 0, 6.2832); c.fill();
+      c.strokeStyle = '#c8f6ff'; c.lineWidth = 1.6; c.globalAlpha = fadeb * (0.6 + 0.4 * pls); c.beginPath(); c.arc(bx, by, rb2 * (1.25 + 0.3 * pls), 0, 6.2832); c.stroke();
+      for (pk = 0; pk < 3; pk++) { var sa = tb * 9 + pk * 2.0944; c.globalAlpha = fadeb * 0.8; c.fillStyle = '#c6efff'; c.fillRect(bx + Math.cos(sa) * rb2 * 1.5 - 1, by + Math.sin(sa) * rb2 * 1.5 - 1, 2, 2); }
       c.restore();
     } else if (f.kind === 'arc') {
       var ar = f.r * (0.75 + 0.25 * (1 - a));
@@ -1460,6 +1468,7 @@
     var sq = p.moving ? 1 + Math.sin(p.anim * 14) * 0.04 : 1 + Math.sin(p.anim * 3) * 0.015, st = (p.atkAnim || 0) > 0 ? 1.08 : 1;
     var fh = CC.HeroBlood && CC.HeroBlood.flinch(p); // hit reaction: lean and recoil away from the blow
     c.save();
+    if (p.liftZ) c.translate(0, -p.liftZ); // held aloft (the Drowned Queen's vine)
     if (fh) { c.translate(px + fh.ox, py + 10 + fh.oy); c.rotate(fh.rot); c.translate(-px, -(py + 10)); }
     c.translate(px, py + 10); c.scale(st / sq, sq * (2 - st)); c.translate(-px, -(py + 10));
     drawHero(c, p, px, py);
@@ -1487,7 +1496,7 @@
   // Repaint combat art after opaque pond fog, without duplicate actors or logic.
   function drawPondCombat(c,cam){
     for(var i=0;i<projs.length;i++)drawProj(c,projs[i],cam);
-    for(var j=0;j<fxs.length;j++)if(['arc','beam','critSlash','critSoul','critOrb'].indexOf(fxs[j].kind)>=0)drawFx(c,fxs[j],cam);
+    for(var j=0;j<fxs.length;j++)if(['arc','beam','critSlash','critSoul','critOrb','critBall'].indexOf(fxs[j].kind)>=0)drawFx(c,fxs[j],cam);
   }
   function draw(c, cam) {
     var p = hero();
@@ -1506,7 +1515,7 @@
       }
     }
     for (i = 0; i < projs.length; i++) drawProj(c, projs[i], cam);
-    for (i = 0; i < fxs.length; i++) if (['arc','beam','critSlash','critSoul','critOrb'].indexOf(fxs[i].kind)>=0) drawFx(c, fxs[i], cam);
+    for (i = 0; i < fxs.length; i++) if (['arc','beam','critSlash','critSoul','critOrb','critBall'].indexOf(fxs[i].kind)>=0) drawFx(c, fxs[i], cam);
   } // the level-up perk panel is drawn last of all by CC.Classes.drawPerkOverlay (above the HUD, trees and every other layer)
 
   /* ---------- perk picking input (taps / keys 1-3) ---------- */

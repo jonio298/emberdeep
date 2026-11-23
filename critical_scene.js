@@ -57,9 +57,9 @@ function trigger(hit){
  if(!enabled())return false;
  if(!hit||!isFinite(hit.x)||!isFinite(hit.y)||['slash','projectile'].indexOf(hit.kind)<0)return false;
  if(!(CC.state&&CC.state.mode==='dungeon'))return false;
- var id=heroKind(hit),fatal=hit.finisher!=null;
- // Necromancer's Soul Reaper cinematic is reserved for critical kills, even
- // when the optional all-hits mode is selected.
+ var id=heroKind(hit),perfect=hit.finisher!=null,lethal=!!hit.lethal||perfect,fatal=lethal;
+ // A critical that KILLS always plays its hero's critical-kill cutscene; a PERFECT hit that kills plays the perfect-kill cutscene. Surviving criticals only
+ // get one in the optional all-hits mode (the necromancer's cinematic is reserved for kills).
  if(!fatal&&(mode()!=='all'||id==='necromancer'||cooldown>0||active))return false;
  if(fatal&&active&&queue.length>=3)return false;
  var o={
@@ -73,19 +73,11 @@ function trigger(hit){
  appendTargets(o,hit.targets);
  if(!o.targets.length)appendTargets(o,[{id:-1,x:o.x,y:o.y,r:o.r,anim:0,dead:false,face:1,
    type:'ghoul',color:'#917578',hp:1,maxHp:1}]);
- if(fatal&&id==='necromancer'){
-   // The original 3-beat soul-reaping cutscene: only a critical KILL plays it.
-   // Reuse necromancer(), necroHits(), Soul Reaper sounds and monster snapshot.
-   o.duration=reduced?.48:.88;
+ if(perfect&&CC.Finisher){
+   o.fin={id:hit.finisher,sx:0,sy:0};o.duration=CC.Finisher.LEN[id]; // the perfect kill: slice, cross slash, rupture...
+ }else if(lethal&&id==='necromancer'){
+   o.duration=reduced?.48:.88; // the 3-beat soul-reaping crit
    o.soulReaper=true;
- }else if(mode()!=='all'){
-   // Brief in-world kill impact for sword, thief and wizard.
-   o.impact=true;o.impactType=hit.boss?'boss':hit.elite?'elite':'normal';
-   o.freeze=reduced?0:IMPACT_FREEZE[o.impactType];
-   o.duration=o.freeze+.17;
-   o.fin={id:hit.finisher,sx:0,sy:0};
- }else if(fatal&&CC.Finisher){
-   o.fin={id:hit.finisher,sx:0,sy:0};o.duration=CC.Finisher.LEN[id];
  }
  if(fatal&&active){queue.push(o);return true;}
  if(!fatal)cooldown=COOLDOWN;
@@ -713,6 +705,7 @@ function drawProjectile(c,s,cam){
  var necro=s.critHero==='necromancer',glowColor=necro?'#ad70ff':'#5bcaff',
    highlight=necro?'#94f0aa':'#e9fdff';
  c.save();
+ if(!necro){c.translate(x,y);c.scale(1.1,1.1);c.translate(-x,-y);} // the wizard's critical orb is 10% bigger
  // Light pools below the shot, tightly following its shadow on the terrain.
  var floorY=y+10;
  var gr=c.createRadialGradient(x,floorY,0,x,floorY,29);

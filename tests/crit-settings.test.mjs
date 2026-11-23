@@ -26,48 +26,44 @@ function boot(saved) {
 const hit = { kind: 'slash', x: 30, y: 40, heroClass: 'swordsman',
   targets: [{ id: 1, x: 30, y: 40, r: 8, hp: 0, dead: true }] };
 
-test('surviving criticals do not freeze; critical kills freeze for 100ms', () => {
-  const { CC, stops } = boot();
+test('surviving criticals get no cutscene; a critical that kills plays the hero kill cutscene', () => {
+  const { CC } = boot();
   assert.equal(CC.Settings.get('critMode'), 'kills');
-  assert.equal(CC.CriticalScene.trigger(hit), false, 'no critical cinematic for surviving enemy');
-  assert.equal(CC.CriticalScene.trigger({ ...hit, finisher: 1 }), true);
-  assert.equal(CC.CriticalScene.status().impactType, 'normal');
-  assert.equal(stops[0], .10);
-  assert.equal(CC.CriticalScene.rate(), 1, 'no additional world slowdown');
-  for (let i = 0; i < 4; i++) CC.CriticalScene.update(.1);
-  assert.equal(CC.CriticalScene.isActive(), false, 'impact expires promptly');
-  assert.equal(CC.CriticalScene.trigger({ ...hit, finisher: 2 }), true, 'critical kills are not suppressed by the old 3s cooldown');
-  assert.equal(CC.CriticalScene.status().impact, true);
+  assert.equal(CC.CriticalScene.trigger(hit), false, 'no critical cinematic for a surviving enemy');
+  assert.equal(CC.CriticalScene.trigger({ ...hit, lethal: true }), true);
+  const st = CC.CriticalScene.status();
+  assert.equal(st.impact, false, 'the full critical cutscene, not a brief freeze');
+  assert.equal(st.duration, 1.18, 'the swordsman crit-kill scene');
+  for (let i = 0; i < 14; i++) CC.CriticalScene.update(.1);
+  assert.equal(CC.CriticalScene.isActive(), false, 'the scene ends');
+  assert.equal(CC.CriticalScene.trigger({ ...hit, lethal: true }), true, 'critical kills are not suppressed by any cooldown');
 });
 
 test('back-to-back lethal criticals queue instead of being lost', () => {
-  const { CC, stops } = boot();
-  assert.equal(CC.CriticalScene.trigger({ ...hit, finisher: 1 }), true);
-  assert.equal(CC.CriticalScene.trigger({ ...hit, finisher: 2 }), true);
+  const { CC } = boot();
+  assert.equal(CC.CriticalScene.trigger({ ...hit, lethal: true }), true);
+  assert.equal(CC.CriticalScene.trigger({ ...hit, lethal: true }), true);
   assert.equal(CC.CriticalScene.status().queued, 1);
-  for (let i = 0; i < 4; i++) CC.CriticalScene.update(.1);
+  for (let i = 0; i < 14; i++) CC.CriticalScene.update(.1);
   assert.equal(CC.CriticalScene.isActive(), true, 'second kill becomes active');
-  for (let i = 0; i < 4; i++) CC.CriticalScene.update(.1);
+  for (let i = 0; i < 14; i++) CC.CriticalScene.update(.1);
   assert.equal(CC.CriticalScene.isActive(), false);
-  assert.equal(stops.length, 2, 'each visible kill gets its own impact freeze');
 });
 
-test('Necromancer Soul Reaper cinematic starts only on a critical kill', () => {
+test('Necromancer soul-reaping crit cinematic starts only on a critical kill', () => {
   const { CC } = boot();
-  const necro={ ...hit, heroClass:'necromancer' };
-  CC.Settings.set('critMode','all');
+  const necro = { ...hit, heroClass: 'necromancer' };
+  CC.Settings.set('critMode', 'all');
   assert.equal(CC.CriticalScene.trigger(necro), false, 'surviving necro crits never start a cutscene');
-  assert.equal(CC.CriticalScene.trigger({ ...necro, finisher:1 }), true);
-  assert.equal(CC.CriticalScene.status().impact, false, 'Soul Reaper is the original cinematic');
+  assert.equal(CC.CriticalScene.trigger({ ...necro, lethal: true }), true);
+  assert.equal(CC.CriticalScene.status().impact, false);
   assert.equal(CC.CriticalScene.status().duration, .88);
 });
 
-test('elite and boss critical kills have 150ms and 200ms freezes', () => {
-  for (const [attrs, delay] of [[{ elite: true }, .15], [{ boss: true }, .20]]) {
-    const { CC, stops } = boot();
-    assert.equal(CC.CriticalScene.trigger({ ...hit, ...attrs, finisher: 1 }), true);
-    assert.equal(stops[0], delay);
-  }
+test('a perfect hit that kills plays the perfect-kill cutscene (the long finisher)', () => {
+  const { CC } = boot();
+  assert.equal(CC.CriticalScene.trigger({ ...hit, finisher: 1, lethal: true }), true);
+  assert.equal(CC.CriticalScene.status().duration, 3.3, 'the swordsman perfect slice runs its full length');
 });
 
 test('off mode stops the current scene, and all-hits mode remains opt-in', () => {

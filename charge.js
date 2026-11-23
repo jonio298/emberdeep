@@ -122,16 +122,15 @@
         if (CC.Vfx) [-0.5, 0, 0.5].forEach(function (off) { CC.Vfx.spawn('earthSpikes', p.x, p.y, 240 + 80 * pow, { a: Math.atan2(a.y, a.x) + off }); });
       }
     } else if (cls === 'wizard') {
-      if (idx === 1) { // Chain Lightning
-        var cur = { x: p.x, y: p.y }, left = foes().filter(function (f) { return alive(f) && Math.hypot(f.x - p.x, f.y - p.y) <= 190; }), n = 0;
-        var chainPts = [{ x: p.x, y: p.y }];
-        while (left.length && n < 6) {
-          left.sort(function (u, v) { return Math.hypot(u.x - cur.x, u.y - cur.y) - Math.hypot(v.x - cur.x, v.y - cur.y); });
-          e = left.shift(); chainPts.push({ x: e.x, y: e.y }); if (!CC.Vfx) beam(cur.x, cur.y, e.x, e.y, '#bfe9ff', 0.35); hit(e, dmg * (3.2 - n * 0.3) * scale, 'arcane'); status(e, 'stun', 0.5);
-          burst(e.x, e.y, '#bfe9ff', 10, 110); cur = { x: e.x, y: e.y }; n++;
-        }
-        if (CC.Vfx && chainPts.length > 1) CC.Vfx.chain(chainPts); // forked yellow lightning, and the sky flashes
-        shake(4);
+      if (idx === 1) { // Lightning Spear: a bolt shaped into a spear. It drives INTO the first foe in line and stays there, shocking and wounding for 4 s (a pulse every second);
+        // the part of the shaft that sticks out the far side also skewers any foe standing along its length, and every pulse splashes the foes around the spear.
+        var SL = 96 + 24 * pow, hitE = null, hd = 1e9, list = foes();
+        for (i = 0; i < list.length; i++) { var f0 = list[i]; if (!alive(f0)) continue; var rx = f0.x - p.x, ry = f0.y - p.y, along = rx * a.x + ry * a.y, perp = Math.abs(rx * a.y - ry * a.x); if (along > 0 && along < 330 && perp <= (f0.r || 8) + 8 && along < hd) { hd = along; hitE = f0; } }
+        if (hitE) {
+          if (!CC.Vfx) beam(p.x, p.y, hitE.x, hitE.y, '#e9fbff', 0.12);
+          effects.push({ kind: 'lspear', x: hitE.x, y: hitE.y, a: Math.atan2(a.y, a.x), len: SL, ref: hitE, t: 4, max: 4, pulse: 0, dmg: dmg * 1.1 * scale, flash: 1, seed: Math.random() * 100 });
+          shake(5);
+        } else { beam(p.x, p.y, p.x + a.x * 200, p.y + a.y * 200, '#bfe9ff', 0.25); burst(p.x + a.x * 200, p.y + a.y * 200, '#bfe9ff', 8, 90); }
       } else if (idx === 2) { // Blizzard
         var rad = 96 + 20 * pow; if (CC.Vfx) CC.Vfx.spawn('blizzard', p.x, p.y, rad, { life: 0.9 }); else ring(p.x, p.y, rad, '#9fe3ff', 0.7);
         for (i = 0; i < 4; i++) (function (k) {
@@ -269,6 +268,21 @@
     return skillIndex(p) === 0 ? flurryTargets(p).length > 0 : within(p, 150).length > 0;
   }
 
+  function spearSeg(f) { return { x0: f.x, y0: f.y, x1: f.x + Math.cos(f.a) * f.len, y1: f.y + Math.sin(f.a) * f.len }; }
+  function distSeg(px, py, g) { var dx = g.x1 - g.x0, dy = g.y1 - g.y0, l2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((px - g.x0) * dx + (py - g.y0) * dy) / l2)); return Math.hypot(px - (g.x0 + dx * t), py - (g.y0 + dy * t)); }
+  function spearPulse(f) { // damage and wound everything the spear runs through; splash the rest nearby
+    var g = spearSeg(f), l = foes(), i, e, pierced = [];
+    for (i = 0; i < l.length; i++) {
+      e = l[i]; if (!alive(e)) continue; var along = (e.x - g.x0) * Math.cos(f.a) + (e.y - g.y0) * Math.sin(f.a), perp = Math.abs((e.x - g.x0) * Math.sin(f.a) - (e.y - g.y0) * Math.cos(f.a));
+      if (e === f.ref || (along > -(e.r || 8) && along < f.len + (e.r || 8) && perp <= (e.r || 8) + 8)) pierced.push(e);
+    }
+    for (i = 0; i < pierced.length; i++) {
+      e = pierced[i]; hit(e, f.dmg, 'arcane'); if (alive(e) && CC.Wounds && CC.Wounds.apply) CC.Wounds.apply(e, { dur: 2.2, dps: Math.max(1, f.dmg * 0.12), src: f }); burst(e.x, e.y, '#bfe9ff', 9, 110);
+    }
+    for (i = 0; i < l.length; i++) { e = l[i]; if (!alive(e) || pierced.indexOf(e) >= 0) continue; if (distSeg(e.x, e.y, g) <= 56 + (e.r || 8)) { hit(e, f.dmg * 0.45, 'arcane'); burst(e.x, e.y, '#8fd0ff', 5, 80); } }
+    f.flash = 1; shake(3); if (CC.Audio) { CC.Audio.fx('zap', { x: f.x, y: f.y, vol: 0.9, gap: 0 }); CC.Audio.fx('plasma' + (1 + Math.floor(Math.random() * 3)), { x: f.x, y: f.y, vol: 0.6, gap: 0 }); }
+  }
+
   /* ---------- update ---------- */
   function updateEffects(dt) {
     for (var k = effects.length - 1; k >= 0; k--) {
@@ -293,6 +307,10 @@
           burst(e.x, e.y, '#ffb070', 8, 100);
         }
         if (f.run >= f.range) effects.splice(k, 1);
+      } else if (f.kind === 'lspear') {
+        f.t -= dt; f.flash = Math.max(0, f.flash - dt * 3.2); if (alive(f.ref)) { f.x = f.ref.x; f.y = f.ref.y; }
+        var el = f.max - f.t; while (f.pulse < 4 && el >= f.pulse) { spearPulse(f); f.pulse++; }
+        if (f.t <= 0) effects.splice(k, 1);
       } else if (f.kind === 'later') {
         f.t -= dt;
         if (f.t <= 0) { effects.splice(k, 1); try { f.fn(); } catch (err) { /* a skill step never breaks the loop */ } }
@@ -448,7 +466,19 @@
     for (k = 0; k < effects.length; k++) {
       f = effects[k];
       var sx = f.x - cam.x, sy = f.y - cam.y;
-      if (f.kind === 'wave') {
+      if (f.kind === 'lspear') {
+        var g2 = spearSeg(f), hx = g2.x0 - cam.x, hy = g2.y0 - cam.y, tx2 = g2.x1 - cam.x, ty2 = g2.y1 - cam.y, ca = Math.cos(f.a), sa = Math.sin(f.a), nx = -sa, ny = ca, fade = Math.min(1, f.t / 0.5), tt = Date.now() / 1000, pw = 1 + 1.3 * f.flash, seg = 12, jj;
+        var bx = hx - ca * 22, by = hy - sa * 22; // the tail sticks out of the first foe on the near side
+        ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        var ph = Math.floor(tt * 24); // the bolt crackles: its jags change many times a second
+        function shaft(width, col, al, jag) { ctx.strokeStyle = col; ctx.lineWidth = width; ctx.globalAlpha = al * fade; ctx.beginPath(); ctx.moveTo(bx, by); for (jj = 1; jj < seg; jj++) { var u = jj / seg, hs = Math.sin((ph + jj * 7 + f.seed) * 12.9898) * 43758.5453; hs -= Math.floor(hs); var off = (hs - 0.5) * jag * (1 - Math.abs(u - 0.5) * 0.6); ctx.lineTo(bx + (tx2 - bx - ca * 18) * u + nx * off, by + (ty2 - by - sa * 18) * u + ny * off); } ctx.lineTo(tx2 - ca * 18, ty2 - sa * 18); ctx.stroke(); }
+        shaft(11 * pw, '#2a7fff', 0.28, 5); shaft(6 * pw, '#58b4ff', 0.6, 4); shaft(2.6 * pw, '#f2fdff', 0.95, 3);
+        ctx.globalAlpha = fade; ctx.fillStyle = '#e9fbff'; ctx.beginPath(); ctx.moveTo(tx2 + ca * 6, ty2 + sa * 6); ctx.lineTo(tx2 - ca * 18 + nx * 6 * pw, ty2 - sa * 18 + ny * 6 * pw); ctx.lineTo(tx2 - ca * 18 - nx * 6 * pw, ty2 - sa * 18 - ny * 6 * pw); ctx.closePath(); ctx.fill(); // the sharp head
+        ctx.strokeStyle = '#58b4ff'; ctx.lineWidth = 1.2; for (jj = 0; jj < 3; jj++) { var sp = ((tt * 2.2 + jj / 3) % 1), px2 = bx + (tx2 - bx) * sp, py2 = by + (ty2 - by) * sp, an = tt * 9 + jj * 2.1; ctx.globalAlpha = 0.7 * fade; ctx.beginPath(); ctx.moveTo(px2, py2); ctx.lineTo(px2 + Math.cos(an) * 10, py2 + Math.sin(an) * 10); ctx.lineTo(px2 + Math.cos(an + 0.7) * 15, py2 + Math.sin(an + 0.7) * 13); ctx.stroke(); } // forks spitting off the shaft
+        var gg = ctx.createRadialGradient(hx, hy, 0, hx, hy, 26 + 14 * f.flash); gg.addColorStop(0, 'rgba(210,245,255,' + (0.6 + 0.4 * f.flash) + ')'); gg.addColorStop(1, 'rgba(60,150,255,0)'); ctx.globalAlpha = fade; ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(hx, hy, 26 + 14 * f.flash, 0, 6.2832); ctx.fill(); // where it is buried in the first foe
+        if (f.flash > 0.05) { ctx.globalAlpha = f.flash * 0.7; ctx.strokeStyle = '#c8f6ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(hx, hy, 8 + (1 - f.flash) * 46, 0, 6.2832); ctx.stroke(); } // a ring with each pulse
+        ctx.restore();
+      } else if (f.kind === 'wave') {
         for (i = 0; i < f.trail.length; i++) {
           var tp = f.trail[i];
           ctx.globalAlpha = 0.5 * (i + 1) / f.trail.length;

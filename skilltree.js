@@ -84,7 +84,7 @@
       { id: 'skycleaver', name: 'Sky Cleaver', desc: 'Three huge shockwaves fan out from a mighty overhead strike.', lvl: 30 }],
     wizard: [
       { id: 'meteor', name: 'Meteor Call', desc: 'A meteor drops on the nearest foe.', lvl: 1 },
-      { id: 'chain', name: 'Chain Lightning', desc: 'Lightning leaps between up to six foes.', lvl: 10 },
+      { id: 'lspear', name: 'Lightning Spear', desc: 'A spear of lightning that drives into the first foe and stays for 4 s, shocking and wounding every second, and skewering any foe along its length.', lvl: 10 },
       { id: 'blizzard', name: 'Blizzard', desc: 'A freezing storm around you slows and wounds every foe nearby.', lvl: 20 },
       { id: 'meteorstorm', name: 'Meteor Storm', desc: 'Five meteors rain down one after another.', lvl: 30 }],
     necromancer: [
