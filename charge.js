@@ -263,7 +263,11 @@
     text(p.x, p.y - 26, NAMES[cls] + (pow >= 0.99 ? '!' : ''), COLORS[cls] || '#fff', pow >= 0.99 ? 13 : 10);
   }
 
-  function spearAim(p) { // the spear goes exactly where the aim points (rotate the aim while holding the charge to turn the arrow)
+  function aimDrag(x, y) { st.aimDrag = { x: x, y: y }; } // touch: the thumb on the ATK button is dragged to turn the arrow (independent of the movement stick)
+  function aimWorld(x, y) { st.aimW = { x: x, y: y, t: Date.now() }; } // PC: the mouse cursor in the world
+  function spearAim(p) { // the spear goes where YOU aim, never where you walk: the ATK thumb drag, else the mouse, else the last aim
+    if (st.aimDrag) return st.aimDrag;
+    if (st.aimW && Date.now() - st.aimW.t < 8000) { var mx = st.aimW.x - p.x, my = st.aimW.y - p.y, ml = Math.sqrt(mx * mx + my * my); if (ml > 8) return { x: mx / ml, y: my / ml }; }
     var dx = Number.isFinite(p.aimX) ? p.aimX : (CC.input && CC.input.aimX) || p.face || 1, dy = Number.isFinite(p.aimY) ? p.aimY : (CC.input && CC.input.aimY) || 0, l = Math.sqrt(dx * dx + dy * dy) || 1;
     return { x: dx / l, y: dy / l };
   }
@@ -381,7 +385,7 @@
     }
   }
 
-  function cancel() { if (st.on && CC.Audio) CC.Audio.chargeEnd(false); st.hold = 0; st.on = false; st.t = 0; st.targets = []; st.warned = false; st.flashed = false; }
+  function cancel() { if (st.on && CC.Audio) CC.Audio.chargeEnd(false); st.aimDrag = null; st.hold = 0; st.on = false; st.t = 0; st.targets = []; st.warned = false; st.flashed = false; }
 
   /* ---------- drawing ---------- */
   function arc(ctx, x, y, r, a0, a1, col, w, alpha) {
@@ -401,12 +405,33 @@
         ctx.beginPath(); ctx.moveTo(px + Math.cos(a) * 8, py + 6 + Math.sin(a) * 4);
         ctx.lineTo(px + Math.cos(a) * (10 + 26 * f), py + 6 + Math.sin(a) * (5 + 13 * f)); ctx.stroke();
       }
-    } else if (p.classId === 'wizard' && isSpear(p)) { // Lightning Spear: an aim ring round the wizard with an arrow you turn by turning your aim
-      var ad = spearAim(p), aa = Math.atan2(ad.y, ad.x), len = 64 + 180 * f;
-      ctx.globalAlpha = 0.45 + 0.3 * pulse; ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(px, py + 6, 24, 11, 0, 0, 6.3); ctx.stroke();
-      ctx.setLineDash([6, 5]); ctx.globalAlpha = 0.5 + 0.3 * pulse; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(px + ad.x * 14, py - 4 + ad.y * 14); ctx.lineTo(px + ad.x * len, py - 4 + ad.y * len); ctx.stroke(); ctx.setLineDash([]);
-      ctx.globalAlpha = 0.95; ctx.fillStyle = '#ffe27a'; ctx.strokeStyle = '#6a4a00'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(px + ad.x * (len + 12), py - 4 + ad.y * (len + 12)); ctx.lineTo(px + Math.cos(aa + 2.5) * 9 + ad.x * len, py - 4 + Math.sin(aa + 2.5) * 9 + ad.y * len); ctx.lineTo(px + Math.cos(aa - 2.5) * 9 + ad.x * len, py - 4 + Math.sin(aa - 2.5) * 9 + ad.y * len); ctx.closePath(); ctx.fill(); ctx.stroke(); // the arrowhead
-      ctx.fillStyle = '#fff6c0'; ctx.beginPath(); ctx.arc(px + Math.cos(aa) * 24, py + 6 + Math.sin(aa) * 11, 3.2 + 2 * f, 0, 6.3); ctx.fill(); // a bead on the ring, showing which way you face
+    } else if (p.classId === 'wizard' && isSpear(p)) { // Lightning Spear: a ring of turning runes round the wizard and a rune-lined arrow you aim with the thumb or mouse
+      var ad = spearAim(p), aa = Math.atan2(ad.y, ad.x), len = 70 + 170 * f, ox0 = px, oy0 = py - 2, ca2 = ad.x, sa2 = ad.y, nx2 = -sa2, ny2 = ca2, BL = '#58b4ff', BH = '#d6efff', BD = '#1d5fd0';
+      var rune = function (x, y, sz, k, al) { // a small angular mystic glyph: a few strokes picked by k
+        ctx.save(); ctx.translate(x, y); ctx.globalAlpha = al; ctx.strokeStyle = BH; ctx.lineWidth = 1.1; ctx.beginPath();
+        switch (k % 6) { case 0: ctx.moveTo(-sz, sz); ctx.lineTo(0, -sz); ctx.lineTo(sz, sz); ctx.moveTo(-sz * 0.5, 0); ctx.lineTo(sz * 0.5, 0); break;
+          case 1: ctx.moveTo(0, -sz); ctx.lineTo(0, sz); ctx.moveTo(-sz, -sz * 0.3); ctx.lineTo(0, sz * 0.2); ctx.lineTo(sz, -sz * 0.3); break;
+          case 2: ctx.moveTo(-sz, -sz); ctx.lineTo(sz, sz); ctx.moveTo(sz, -sz); ctx.lineTo(-sz, sz); ctx.moveTo(0, -sz); ctx.lineTo(0, sz); break;
+          case 3: ctx.moveTo(-sz, 0); ctx.lineTo(0, -sz); ctx.lineTo(sz, 0); ctx.lineTo(0, sz); ctx.closePath(); ctx.moveTo(0, -sz * 0.4); ctx.lineTo(0, sz * 0.4); break;
+          case 4: ctx.moveTo(-sz, sz); ctx.lineTo(-sz, -sz); ctx.lineTo(sz, 0); ctx.lineTo(-sz, 0); break;
+          default: ctx.arc(0, 0, sz * 0.8, 0.4, 5.9); ctx.moveTo(sz * 0.2, -sz * 1.1); ctx.lineTo(sz * 0.2, sz * 1.1); }
+        ctx.stroke(); ctx.restore();
+      };
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      // the ring: two thin circles with runes turning between them, brightening as the charge fills
+      for (i = 0; i < 2; i++) { ctx.globalAlpha = 0.45 + 0.3 * pulse; ctx.strokeStyle = i ? BD : BL; ctx.lineWidth = i ? 2.6 : 1.2; ctx.beginPath(); ctx.ellipse(ox0, oy0 + 8, 25 - i * 5, 11.5 - i * 2.2, 0, 0, 6.3); ctx.stroke(); }
+      for (i = 0; i < 8; i++) { var ra = T * (0.9 + f) + i * 0.7854; rune(ox0 + Math.cos(ra) * 21.5, oy0 + 8 + Math.sin(ra) * 9.5, 2.6, i, 0.55 + 0.4 * pulse); }
+      // the arrow: a glowing blue path with runes set along it, ending in a spearhead with a sigil
+      var gA = ctx.createLinearGradient(ox0, oy0, ox0 + ca2 * len, oy0 + sa2 * len); gA.addColorStop(0, 'rgba(88,180,255,.55)'); gA.addColorStop(1, 'rgba(160,220,255,.95)');
+      ctx.strokeStyle = gA; ctx.lineWidth = 3; ctx.globalAlpha = 0.85; ctx.beginPath(); ctx.moveTo(ox0 + ca2 * 16, oy0 + sa2 * 16); ctx.lineTo(ox0 + ca2 * len, oy0 + sa2 * len); ctx.stroke();
+      ctx.strokeStyle = BH; ctx.lineWidth = 0.8; ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.moveTo(ox0 + ca2 * 16, oy0 + sa2 * 16); ctx.lineTo(ox0 + ca2 * len, oy0 + sa2 * len); ctx.stroke();
+      var nr = Math.max(2, Math.floor((len - 24) / 17));
+      for (i = 0; i < nr; i++) { var d0 = 28 + i * 17 + ((T * 14) % 17) * 0.0, px3 = ox0 + ca2 * d0, py3 = oy0 + sa2 * d0, tw = 0.5 + 0.5 * Math.sin(T * 6 - i * 0.9); ctx.strokeStyle = BL; ctx.globalAlpha = 0.5 * tw; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(px3 + nx2 * 6, py3 + ny2 * 6); ctx.lineTo(px3 - nx2 * 6, py3 - ny2 * 6); ctx.stroke(); rune(px3 + nx2 * 10, py3 + ny2 * 10, 2.6, i + 2, 0.6 + 0.4 * tw); rune(px3 - nx2 * 10, py3 - ny2 * 10, 2.6, i + 5, 0.6 + 0.4 * tw); }
+      var hx3 = ox0 + ca2 * len, hy3 = oy0 + sa2 * len, hs = 1 + 0.18 * pulse;
+      ctx.globalAlpha = 0.95; ctx.fillStyle = BL; ctx.strokeStyle = BH; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(hx3 + ca2 * 22 * hs, hy3 + sa2 * 22 * hs); ctx.lineTo(hx3 + nx2 * 9 * hs, hy3 + ny2 * 9 * hs); ctx.lineTo(hx3 - ca2 * 5, hy3 - sa2 * 5); ctx.lineTo(hx3 - nx2 * 9 * hs, hy3 - ny2 * 9 * hs); ctx.closePath(); ctx.fill(); ctx.stroke(); // the spearhead
+      ctx.globalAlpha = 0.9; ctx.strokeStyle = BD; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(hx3 + ca2 * 12, hy3 + sa2 * 12); ctx.lineTo(hx3 - ca2 * 2, hy3 - sa2 * 2); ctx.stroke(); rune(hx3 + ca2 * 3, hy3 + sa2 * 3, 3.2, 3, 0.95); // a sigil cut into it
+      var gl = ctx.createRadialGradient(hx3, hy3, 0, hx3, hy3, 20); gl.addColorStop(0, 'rgba(120,200,255,' + (0.4 + 0.25 * pulse) + ')'); gl.addColorStop(1, 'rgba(60,140,255,0)'); ctx.globalAlpha = 1; ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(hx3, hy3, 20, 0, 6.3); ctx.fill();
+      ctx.restore();
     } else if (p.classId === 'wizard') { // rune orbs orbit faster and tighter as the spell builds
       for (i = 0; i < 3; i++) {
         a = T * (3 + 6 * f) + i * 2.094;
@@ -553,5 +578,5 @@
     ctx.restore();
   }
 
-  CC.Charge = { update: update, draw: draw, cancel: cancel, state: st, names: NAMES };
+  CC.Charge = { update: update, draw: draw, cancel: cancel, state: st, names: NAMES, aimDrag: aimDrag, aimWorld: aimWorld };
 })();

@@ -800,7 +800,7 @@
           // Never fire another instant spell while one is being aimed.
           return;
         }
-        ptrs[e.pointerId] = { kind: 'btn', name: action };
+        ptrs[e.pointerId] = { kind: 'btn', name: action, ax: b.x, ay: b.y };
         if (!held[action]) pressAction(action);
         held[action]++;
         return;
@@ -845,6 +845,10 @@
     }
     var pressed=ptrs[e.pointerId];
     if(pressed&&pressed.kind==='ui'&&pressed.drag){e.preventDefault();var dp=pos(e);pressed.drag(dp.x,dp.y);return;}
+    if(pressed&&pressed.kind==='btn'&&pressed.name==='attack'){ // dragging the thumb held on ATK aims a charged attack, independent of walking
+      var ath=pos(e),adx=ath.x-pressed.ax,ady=ath.y-pressed.ay,adl=Math.sqrt(adx*adx+ady*ady);
+      if(adl>16)call('Charge','aimDrag',adx/adl,ady/adl);
+    }
     if(pressed&&pressed.kind==='charge'){
       e.preventDefault();
       var thumb=pos(e);
@@ -856,6 +860,7 @@
     if(e.pointerType==='mouse'){
       var cursor=pos(e);
       lastMouseWorld={x:cam.x+cursor.x/(curZoom||zoom),y:cam.y+cursor.y/(curZoom||zoom)};
+      call('Charge','aimWorld',lastMouseWorld.x,lastMouseWorld.y); // a charged attack follows the mouse
       if(CC.SpellCharge&&CC.SpellCharge.isActive&&CC.SpellCharge.isActive())
         call('SpellCharge','worldAim',lastMouseWorld.x,lastMouseWorld.y);
     }
