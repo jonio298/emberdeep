@@ -11,13 +11,13 @@
   var KEY = 'emberdeep-settings', v = { autoEquip: true, autoLevel: false, critAnimations: true, critMode: 'kills', stick: 'floating' }, clock = 0;
   try { var raw = localStorage.getItem(KEY); if (raw) { var o = JSON.parse(raw); for (var k in v) if (o && o[k] !== undefined) v[k] = o[k]; } } catch (_) { /* storage may be blocked */ }
   if(v.critAnimations===false)v.critMode='off'; // Existing saves migrate cleanly.
-  if(['kills','all','off'].indexOf(v.critMode)<0)v.critMode='kills';
+  if(['kills','all','short','off'].indexOf(v.critMode)<0)v.critMode='kills';
   function save() { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch (_) { /* optional */ } }
   function apply() { if (CC.state) CC.state.autoEquip = !!v.autoEquip; }
   function changed(key) {
     if(key==='critAnimations')v.critMode=v.critAnimations?'kills':'off';
     if(key==='critMode'){
-      if(['kills','all','off'].indexOf(v.critMode)<0)v.critMode='kills';
+      if(['kills','all','short','off'].indexOf(v.critMode)<0)v.critMode='kills';
       v.critAnimations=v.critMode!=='off';
     }
     save();apply();

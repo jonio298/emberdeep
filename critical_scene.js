@@ -43,7 +43,9 @@ function appendTargets(scene,list){
 }
 function addTargets(list){if(active)appendTargets(active,list);}
 function mode(){return CC.Settings&&CC.Settings.get&&CC.Settings.get('critMode')||'kills';}
-function enabled(){return !(CC.Settings&&CC.Settings.get&&CC.Settings.get('critAnimations')===false)&&mode()!=='off';}
+function enabled(){return !(CC.Settings&&CC.Settings.get&&CC.Settings.get('critAnimations')===false)&&mode()!=='off'&&mode()!=='short';}
+// The freeze-frame is a rare treat: only a Perfect Kill or a boss / mini-boss kill gets the full cutscene. An ordinary killing crit gets a brief hit-stop instead.
+function skip(){if(!active||now<.3)return false;active=null;queue.length=0;now=0;held=false;return true;}
 function startScene(o){
  active=o;now=0;
  if(o.impact&&o.freeze&&CC.fx&&CC.fx.hitStop)CC.fx.hitStop(o.freeze);
@@ -61,6 +63,7 @@ function trigger(hit){
  // A critical that KILLS always plays its hero's critical-kill cutscene; a PERFECT hit that kills plays the perfect-kill cutscene. Surviving criticals only
  // get one in the optional all-hits mode (the necromancer's cinematic is reserved for kills).
  if(!fatal&&(mode()!=='all'||id==='necromancer'||cooldown>0||active))return false;
+ if(fatal&&!perfect&&!hit.boss&&!hit.miniBoss){if(CC.fx&&CC.fx.hitStop)CC.fx.hitStop(.14);return false;} // an ordinary kill: a quick beat, no cutscene
  if(fatal&&active&&queue.length>=3)return false;
  var o={
    kind:hit.kind,heroClass:id,
@@ -738,7 +741,7 @@ function drawProjectile(c,s,cam){
  c.restore();
 }
 CC.CriticalScene={
- trigger:trigger,enabled:enabled,mode:mode,canFinish:canFinish,finish:finish,addTargets:addTargets,update:update,reset:reset,view:view,rate:rate,
+ trigger:trigger,skip:skip,enabled:enabled,mode:mode,canFinish:canFinish,finish:finish,addTargets:addTargets,update:update,reset:reset,view:view,rate:rate,
  isActive:function(){return !!active;},
  debugSeek:function(t,hold){now=t;held=!!hold;},
  drawWorld:drawWorld,drawScreen:drawScreen,drawProjectile:drawProjectile,

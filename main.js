@@ -773,7 +773,7 @@
   var JOY_R = 58;
   function joyHome() { return { x: 84, y: H - 96 }; }
   canvas.addEventListener('pointerdown', function (e) {
-    e.preventDefault();
+    e.preventDefault(); call('CriticalScene', 'skip'); // a tap cuts a kill cutscene short
     try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* not fatal */ }
     var p = pos(e);
     if (CC.HauntedPond && CC.HauntedPond.isTalking && CC.HauntedPond.isTalking()) {
@@ -921,6 +921,7 @@
   window.addEventListener('keydown', function (e) {
     if (actionKeys[e.code] || e.code === 'Escape' || e.code === 'KeyP' || e.code.indexOf('Arrow') === 0) e.preventDefault();
     if (e.repeat || keys[e.code]) return;
+    call('CriticalScene', 'skip');
     keys[e.code] = true;
     if (CC.Waypoints && CC.Waypoints.isOpen && CC.Waypoints.isOpen() &&
         CC.Waypoints.key(e.code)) { e.preventDefault(); return; }
@@ -1679,6 +1680,7 @@
     drawWorld();
     if (m === 'town' || m === 'dungeon' || m === 'dead') drawScreenFx();
     if (m === 'dungeon') call('Vfx', 'drawScreen', ctx, W, H); // the sky flashes yellow for chain lightning
+    if (m === 'dungeon') call('PerfectWarp', 'drawScreen', ctx, W, H, cam.x, cam.y, curZoom || zoom); // a perfect shot warps the world and dims the rest
     if (m === 'dungeon') call('CriticalScene', 'drawScreen', ctx, W, H);
     if (m === 'dungeon') call('Wounds', 'drawScreen', ctx, W, H);
     if ((m === 'dungeon' || m === 'dead') && call('AbandonedVillage', 'drawCinema', ctx, W, H) && m === 'dungeon') return; // the tree's strike covers everything, HUD included

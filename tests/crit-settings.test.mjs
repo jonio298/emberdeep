@@ -30,19 +30,20 @@ test('surviving criticals get no cutscene; a critical that kills plays the hero 
   const { CC } = boot();
   assert.equal(CC.Settings.get('critMode'), 'kills');
   assert.equal(CC.CriticalScene.trigger(hit), false, 'no critical cinematic for a surviving enemy');
-  assert.equal(CC.CriticalScene.trigger({ ...hit, lethal: true }), true);
+  assert.equal(CC.CriticalScene.trigger({ ...hit, lethal: true }), false, 'an ordinary killing crit gets only a brief hit-stop, no cutscene');
+  assert.equal(CC.CriticalScene.trigger({ ...hit, lethal: true, boss: true }), true, 'a boss kill gets the full cutscene');
   const st = CC.CriticalScene.status();
   assert.equal(st.impact, false, 'the full critical cutscene, not a brief freeze');
   assert.equal(st.duration, 1.18, 'the swordsman crit-kill scene');
   for (let i = 0; i < 14; i++) CC.CriticalScene.update(.1);
   assert.equal(CC.CriticalScene.isActive(), false, 'the scene ends');
-  assert.equal(CC.CriticalScene.trigger({ ...hit, lethal: true }), true, 'critical kills are not suppressed by any cooldown');
+  assert.equal(CC.CriticalScene.trigger({ ...hit, lethal: true, boss: true }), true, 'critical kills are not suppressed by any cooldown');
 });
 
 test('back-to-back lethal criticals queue instead of being lost', () => {
   const { CC } = boot();
-  assert.equal(CC.CriticalScene.trigger({ ...hit, lethal: true }), true);
-  assert.equal(CC.CriticalScene.trigger({ ...hit, lethal: true }), true);
+  assert.equal(CC.CriticalScene.trigger({ ...hit, lethal: true, boss: true }), true);
+  assert.equal(CC.CriticalScene.trigger({ ...hit, lethal: true, boss: true }), true);
   assert.equal(CC.CriticalScene.status().queued, 1);
   for (let i = 0; i < 14; i++) CC.CriticalScene.update(.1);
   assert.equal(CC.CriticalScene.isActive(), true, 'second kill becomes active');
@@ -55,7 +56,8 @@ test('Necromancer soul-reaping crit cinematic starts only on a critical kill', (
   const necro = { ...hit, heroClass: 'necromancer' };
   CC.Settings.set('critMode', 'all');
   assert.equal(CC.CriticalScene.trigger(necro), false, 'surviving necro crits never start a cutscene');
-  assert.equal(CC.CriticalScene.trigger({ ...necro, lethal: true }), true);
+  assert.equal(CC.CriticalScene.trigger({ ...necro, lethal: true }), false, 'a normal necro kill is just a hit-stop');
+  assert.equal(CC.CriticalScene.trigger({ ...necro, lethal: true, boss: true }), true);
   assert.equal(CC.CriticalScene.status().impact, false);
   assert.equal(CC.CriticalScene.status().duration, .88);
 });
@@ -87,4 +89,15 @@ test('legacy disabled settings and checkbox toggle migrate to kill-only', () => 
   assert.equal(CC.CriticalScene.trigger({ ...hit, finisher: 1 }), true);
   CC.Settings.toggle('critAnimations');
   assert.equal(CC.CriticalScene.isActive(), false);
+});
+
+test('a tap skips a running kill cutscene after its first beat; short mode never plays one', () => {
+  const { CC } = boot();
+  assert.equal(CC.CriticalScene.trigger({ ...hit, lethal: true, boss: true }), true);
+  assert.equal(CC.CriticalScene.skip(), false, 'too early to skip');
+  for (let i = 0; i < 5; i++) CC.CriticalScene.update(.1);
+  assert.equal(CC.CriticalScene.skip(), true);
+  assert.equal(CC.CriticalScene.isActive(), false);
+  CC.Settings.set('critMode', 'short');
+  assert.equal(CC.CriticalScene.trigger({ ...hit, lethal: true, finisher: 1, boss: true }), false);
 });

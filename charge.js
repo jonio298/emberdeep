@@ -294,16 +294,28 @@
 
   function spearSeg(f) { return { x0: f.x, y0: f.y, x1: f.x + Math.cos(f.a) * f.len, y1: f.y + Math.sin(f.a) * f.len }; }
   function distSeg(px, py, g) { var dx = g.x1 - g.x0, dy = g.y1 - g.y0, l2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((px - g.x0) * dx + (py - g.y0) * dy) / l2)); return Math.hypot(px - (g.x0 + dx * t), py - (g.y0 + dy * t)); }
+  // Everything the spear is stuck in is held fast (it cannot move) until the spell is over. Bosses and the Patchwork Horror shrug it off.
+  function immune(e) { return !!(e.boss || e.miniBoss || e.stitched); }
+  function pin(f, e) { if (immune(e) || e._pinnedBy) return; e._pinnedBy = f; (f.pins = f.pins || []).push({ e: e, x: e.x, y: e.y, spd: e.spd }); e.spd = 0; }
+  function holdPins(f) { if (!f.pins) return; for (var i = 0; i < f.pins.length; i++) { var q = f.pins[i]; if (alive(q.e)) { q.e.x = q.x; q.e.y = q.y; q.e.spd = 0; } } }
+  function unpin(f) { if (!f.pins) return; for (var i = 0; i < f.pins.length; i++) { var q = f.pins[i]; if (q.e._pinnedBy === f) { q.e._pinnedBy = null; if (alive(q.e)) q.e.spd = q.spd; } } f.pins = null; }
+  // death by electrocution: the body flickers to a shaking, X-rayed skeleton in a storm of arcs, then the bones come apart and fall, still crackling
+  function zapDeath(e, x, y, col, r) {
+    if (e.boss) return; e._finisher = true; // the corpse is drawn by this effect instead
+    effects.push({ kind: 'zapdeath', x: x, y: y, col: col, r: r, t: 2.0, max: 2.0, seed: Math.random() * 100 });
+    if (CC.Audio) { CC.Audio.fx('zap', { x: x, y: y, vol: 1, gap: 0 }); CC.Audio.fx('crunch', { x: x, y: y, vol: 0.5, gap: 0, delay: 1.0 }); }
+  }
   function spearPulse(f) { // damage and wound everything the spear runs through; splash the rest nearby
     var g = spearSeg(f), l = foes(), i, e, pierced = [];
     for (i = 0; i < l.length; i++) {
       e = l[i]; if (!alive(e)) continue; var along = (e.x - g.x0) * Math.cos(f.a) + (e.y - g.y0) * Math.sin(f.a), perp = Math.abs((e.x - g.x0) * Math.sin(f.a) - (e.y - g.y0) * Math.cos(f.a));
       if (e === f.ref || (along > -(e.r || 8) && along < f.len + (e.r || 8) && perp <= (e.r || 8) + 8)) pierced.push(e);
     }
+    for (i = 0; i < pierced.length; i++) pin(f, pierced[i]);
     for (i = 0; i < pierced.length; i++) {
-      e = pierced[i]; hit(e, f.dmg, 'arcane'); if (alive(e) && CC.Wounds && CC.Wounds.apply) CC.Wounds.apply(e, { dur: 2.2, dps: Math.max(1, f.dmg * 0.12), src: f }); burst(e.x, e.y, '#ffe27a', 9, 110);
+      e = pierced[i]; var zx = e.x, zy = e.y, zc = e.color || '#7a2a2a', zr = e.r || 9; hit(e, f.dmg, 'arcane'); if (!alive(e)) { zapDeath(e, zx, zy, zc, zr); continue; } if (alive(e) && CC.Wounds && CC.Wounds.apply) CC.Wounds.apply(e, { dur: 2.2, dps: Math.max(1, f.dmg * 0.12), src: f }); burst(e.x, e.y, '#ffe27a', 9, 110);
     }
-    for (i = 0; i < l.length; i++) { e = l[i]; if (!alive(e) || pierced.indexOf(e) >= 0) continue; if (distSeg(e.x, e.y, g) <= 56 + (e.r || 8)) { hit(e, f.dmg * 0.5, 'arcane'); burst(e.x, e.y, '#ffe27a', 5, 80); } }
+    for (i = 0; i < l.length; i++) { e = l[i]; if (!alive(e) || pierced.indexOf(e) >= 0) continue; if (distSeg(e.x, e.y, g) <= 56 + (e.r || 8)) { var sx0 = e.x, sy0 = e.y, sc0 = e.color || '#7a2a2a', sr0 = e.r || 9; hit(e, f.dmg * 0.5, 'arcane'); if (!alive(e)) zapDeath(e, sx0, sy0, sc0, sr0); else burst(e.x, e.y, '#ffe27a', 5, 80); } }
     f.flash = 1; shake(3); if (CC.Audio) { CC.Audio.fx('zap', { x: f.x, y: f.y, vol: 0.9, gap: 0 }); CC.Audio.fx('plasma' + (1 + Math.floor(Math.random() * 3)), { x: f.x, y: f.y, vol: 0.6, gap: 0 }); }
   }
 
@@ -355,12 +367,14 @@
       } else if (f.kind === 'lspear') {
         if (f.fly > 0) { f.fly -= dt; f.born += dt; if (alive(f.ref)) { f.x = f.ref.x; f.y = f.ref.y; } } // the bolt streaks out from the wizard
         else {
-          f.t -= dt; f.flash = Math.max(0, f.flash - dt * 3.2); if (alive(f.ref)) { f.x = f.ref.x; f.y = f.ref.y; }
+          f.t -= dt; f.flash = Math.max(0, f.flash - dt * 3.2); holdPins(f); if (alive(f.ref)) { f.x = f.ref.x; f.y = f.ref.y; }
           var el = f.max - f.t; while (f.pulse < 4 && el >= f.pulse) { spearPulse(f); f.pulse++; }
         }
         if (f.miss) { if (f.t <= 0 && !(f.fly > 0)) effects.splice(k, 1); }
         else if (f.t <= 0 && !f.exploded) { f.exploded = true; f.ex = 0.65; spearExplode(f); } // the blast after the last pulse
-        else if (f.exploded) { f.ex -= dt; if (f.ex <= 0) effects.splice(k, 1); }
+        else if (f.exploded) { f.ex -= dt; holdPins(f); if (f.ex <= 0) { unpin(f); effects.splice(k, 1); } }
+      } else if (f.kind === 'zapdeath') {
+        f.t -= dt; if (f.t <= 0) effects.splice(k, 1);
       } else if (f.kind === 'gib') {
         f.t -= dt; f.x += f.vx * dt; f.y += f.vy * dt; f.vx *= Math.pow(0.5, dt * 1.6); f.vy *= Math.pow(0.5, dt * 1.6); f.rot += f.vr * dt; if (f.t <= 0) effects.splice(k, 1);
       } else if (f.kind === 'later') {
@@ -545,7 +559,38 @@
     for (k = 0; k < effects.length; k++) {
       f = effects[k];
       var sx = f.x - cam.x, sy = f.y - cam.y;
-      if (f.kind === 'gib') {
+      if (f.kind === 'lspear' && f.pins && !f.miss) { // shocked foes are visibly pinned: arcs crawl round their feet
+        for (i = 0; i < f.pins.length; i++) { var pq = f.pins[i]; if (!alive(pq.e)) continue; var pxx = pq.x - cam.x, pyy = pq.y - cam.y + (pq.e.r || 9) * 0.5, prr = (pq.e.r || 9) + 6, pt = Date.now() / 1000;
+          ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = '#ffe66a'; ctx.lineWidth = 1.3; ctx.globalAlpha = 0.75; ctx.beginPath();
+          for (var ak = 0; ak <= 14; ak++) { var aa2 = ak / 14 * 6.2832, jr = prr * (1 + (((Math.floor(pt * 30) + ak * 7) % 5) - 2) * 0.09); ak ? ctx.lineTo(pxx + Math.cos(aa2) * jr, pyy + Math.sin(aa2) * jr * 0.45) : ctx.moveTo(pxx + jr, pyy); } ctx.stroke(); ctx.restore(); }
+      }
+      if (f.kind === 'zapdeath') {
+        var age = f.max - f.t, zx = f.x - cam.x, zy = f.y - cam.y - f.r * 0.4, SC = Math.max(0.7, f.r / 9), fa = Math.min(1, f.t / 0.5), tb = Math.floor(age * 34), zk;
+        var rnd = function (i) { var h = Math.sin((f.seed + i * 12.9898 + tb * 78.233)) * 43758.5453; return h - Math.floor(h); };
+        // the skeleton's bones as segments (x0,y0,x1,y1) around the pelvis, in figure units
+        var bones = [[0, -12, 0, 1], [-4, -10, 4, -10], [-3.4, -7.5, 3.4, -7.5], [-2.8, -5, 2.8, -5], [-5, -11, -8, -5], [-8, -5, -9, 1], [5, -11, 8, -5], [8, -5, 9, 1], [-2, 2, -3, 9], [-3, 9, -3, 16], [2, 2, 3, 9], [3, 9, 3, 16], [-3, 1, 3, 1]];
+        ctx.save(); ctx.translate(zx, zy); ctx.scale(SC, SC); ctx.lineCap = 'round';
+        if (age < 1.0) { // being shocked: a violent shake and a flicker between body, bones and negative
+          var mode = tb % 3, jx = (rnd(1) - 0.5) * 3, jy = (rnd(2) - 0.5) * 2; ctx.translate(jx, jy); ctx.globalAlpha = fa;
+          if (mode === 1) { ctx.fillStyle = f.col; ctx.globalAlpha = 0.55 * fa; ctx.beginPath(); ctx.ellipse(0, -5, 8, 12, 0, 0, 6.3); ctx.fill(); ctx.globalAlpha = fa; }
+          for (zk = 0; zk < bones.length; zk++) { var b0 = bones[zk]; ctx.strokeStyle = mode === 2 ? '#3a3320' : '#f0e8cc'; ctx.lineWidth = zk === 0 ? 2.2 : 1.6; ctx.beginPath(); ctx.moveTo(b0[0], b0[1]); ctx.lineTo(b0[2], b0[3]); ctx.stroke(); if (mode === 2) { ctx.strokeStyle = '#ffe66a'; ctx.lineWidth = 0.7; ctx.stroke(); } }
+          ctx.fillStyle = mode === 2 ? '#3a3320' : '#f0e8cc'; ctx.beginPath(); ctx.arc(0, -17, 4.3, 0, 6.3); ctx.fill(); ctx.fillStyle = '#1a1208'; ctx.fillRect(-2.3, -18, 1.8, 2); ctx.fillRect(0.6, -18, 1.8, 2); ctx.fillRect(-1, -14.7, 2, 1.2);
+        } else { // the bones come apart and fall
+          var u = age - 1.0, G = 70, floor = 17 + 1;
+          for (zk = 0; zk < bones.length + 1; zk++) {
+            var h1 = Math.sin(f.seed + zk * 17.3) * 43758.5453; h1 -= Math.floor(h1); var h2 = Math.sin(f.seed + zk * 91.7) * 43758.5453; h2 -= Math.floor(h2);
+            var bb = zk < bones.length ? bones[zk] : null, cx = bb ? (bb[0] + bb[2]) / 2 : 0, cy = bb ? (bb[1] + bb[3]) / 2 : -17, hl = bb ? Math.hypot(bb[2] - bb[0], bb[3] - bb[1]) / 2 : 4.3, ang0 = bb ? Math.atan2(bb[3] - bb[1], bb[2] - bb[0]) : 0;
+            var vx = (cx * 1.6 + (h1 - 0.5) * 18), vy = -(6 + h2 * 20) + (cy * 0.4), px = cx + vx * u, py = Math.min(floor + (cy > 0 ? 0 : -1), cy + vy * u + 0.5 * G * u * u), ang = ang0 + (h1 - 0.5) * 9 * u;
+            ctx.save(); ctx.translate(px, py); ctx.rotate(ang); ctx.globalAlpha = fa;
+            if (bb) { ctx.strokeStyle = '#f0e8cc'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(-hl, 0); ctx.lineTo(hl, 0); ctx.stroke(); } else { ctx.fillStyle = '#f0e8cc'; ctx.beginPath(); ctx.arc(0, 0, 4.3, 0, 6.3); ctx.fill(); ctx.fillStyle = '#1a1208'; ctx.fillRect(-2.3, -1, 1.8, 2); ctx.fillRect(0.6, -1, 1.8, 2); }
+            ctx.restore();
+            if (u < 0.85) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = '#ffe66a'; ctx.lineWidth = 0.8; ctx.globalAlpha = fa * (1 - u / 0.85) * (0.5 + 0.5 * rnd(zk + 20)); ctx.beginPath(); ctx.moveTo(px - Math.cos(ang) * hl, py - Math.sin(ang) * hl); ctx.lineTo(px + (rnd(zk + 40) - 0.5) * 8, py + (rnd(zk + 60) - 0.5) * 8); ctx.lineTo(px + Math.cos(ang) * hl, py + Math.sin(ang) * hl); ctx.stroke(); ctx.restore(); } // arcs still jumping between the pieces
+          }
+        }
+        // the storm of electricity round the whole body while it is shocked
+        if (age < 1.2) { ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = '#ffe66a'; ctx.lineWidth = 1; for (zk = 0; zk < 6; zk++) { var a4 = rnd(zk + 3) * 6.28, rr1 = 5 + rnd(zk + 9) * 9; ctx.globalAlpha = fa * (1 - age / 1.2) * 0.9; ctx.beginPath(); ctx.moveTo(Math.cos(a4) * rr1, -6 + Math.sin(a4) * rr1 * 1.3); ctx.lineTo(Math.cos(a4 + 0.5) * (rr1 + 6), -6 + Math.sin(a4 + 0.5) * (rr1 + 6) * 1.3); ctx.lineTo(Math.cos(a4 - 0.2) * (rr1 + 12), -6 + Math.sin(a4 - 0.2) * (rr1 + 12) * 1.3); ctx.stroke(); } var zg = ctx.createRadialGradient(0, -6, 0, 0, -6, 22); zg.addColorStop(0, 'rgba(255,240,150,' + (0.5 * (1 - age / 1.2)) + ')'); zg.addColorStop(1, 'rgba(255,200,40,0)'); ctx.globalAlpha = 1; ctx.fillStyle = zg; ctx.beginPath(); ctx.arc(0, -6, 22, 0, 6.3); ctx.fill(); }
+        ctx.restore();
+      } else if (f.kind === 'gib') {
         var ga = Math.min(1, f.t / 0.35), gx = f.x - cam.x, gy = f.y - cam.y, gt = Date.now() / 1000, gq;
         ctx.save(); ctx.translate(gx, gy); ctx.rotate(f.rot); ctx.globalAlpha = ga; ctx.fillStyle = f.col; ctx.strokeStyle = '#3a1010'; ctx.lineWidth = 0.8; ctx.beginPath();
         if (f.gk === 'limb') ctx.ellipse(0, 0, f.size * 1.5, f.size * 0.55, 0, 0, 6.3); else if (f.gk === 'bone') { ctx.rect(-f.size, -f.size * 0.25, f.size * 2, f.size * 0.5); } else { ctx.moveTo(-f.size, -f.size * 0.4); ctx.lineTo(-f.size * 0.2, -f.size); ctx.lineTo(f.size, -f.size * 0.3); ctx.lineTo(f.size * 0.6, f.size * 0.8); ctx.lineTo(-f.size * 0.7, f.size * 0.6); ctx.closePath(); }

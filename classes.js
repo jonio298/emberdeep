@@ -354,7 +354,7 @@
       back = behind || p.ambushT > 0 || e.stunT > 0 || e.slowT > 0;
       if (back) { dmg *= p.flags.cutthroat ? 2.2 : 1.5; if (p.ambushT > 0) { p.ambushT = 0; crit = true; } }
     }
-    var baseDmg = dmg, perfect = !!(!opts.minion && !opts.splash && opts.basicAttack && p && !(p.pw && p.pw.rapid > 0) && Math.random() < PERFECT_CHANCE);
+    var baseDmg = dmg, perfect = !!(!opts.minion && !opts.splash && opts.basicAttack && p && !(p.pw && p.pw.rapid > 0) && (typeof opts.preRolledPerfect === 'boolean' ? opts.preRolledPerfect : Math.random() < PERFECT_CHANCE)); // a basic projectile rolls its perfect when it is FIRED (the warp), a slash rolls on the hit
     if (perfect) crit = true;
     if (crit) dmg *= p.stats.critDmg;
     if (perfect) dmg = baseDmg * 4; // a perfect hit is exactly four times a normal hit
@@ -365,7 +365,7 @@
     else e.hp -= dmg;
     // Only an actual post-damage death (not a skeleton collapse) earns hit-stop.
     var lethalCrit = !!(crit && !alive(e) && !e.collapsed), perfectKill = !!(perfect && lethalCrit); // a critical that kills plays its hero's kill cutscene; a perfect hit that kills plays the perfect-kill one
-    var necroCinema = crit && lethalCrit && p && p.classId === 'necromancer' && opts.basicAttack && !opts.minion && !opts.splash && !perfectKill && CC.state.mode === 'dungeon' && CC.CriticalScene && CC.CriticalScene.enabled && CC.CriticalScene.enabled() && !(opts.attackGroup && opts.attackGroup.cinematicStarted) && !(p.pw && p.pw.rapid > 0);
+    var necroCinema = crit && lethalCrit && p && p.classId === 'necromancer' && opts.basicAttack && !opts.minion && !opts.splash && !perfectKill && (e.boss || e.miniBoss) && CC.state.mode === 'dungeon' && CC.CriticalScene && CC.CriticalScene.enabled && CC.CriticalScene.enabled() && !(opts.attackGroup && opts.attackGroup.cinematicStarted) && !(p.pw && p.pw.rapid > 0);
     if (perfect) fxText(e.x, e.y - (e.r || 8) - 22, 'Perfect Hit!', '#ffd700', 14); // gold
     else if (crit && !(opts.critSequence && opts.pulseIndex > 0)) fxText(e.x, e.y - (e.r || 8) - 20, 'Critical!', '#ffd24a', 11); // every critical says so (a wizard's three-hit crit says it once)
     if (!necroCinema) fxText(e.x, e.y - (e.r || 8) - 4, crit ? dmg + '!' : String(dmg), perfect ? '#ffd700' : crit ? '#f04c57' : back ? '#7de0b8' : '#fff', crit ? 16 : 10); // a necromancer crit shows its damage as three counters in the cinematic instead
@@ -403,8 +403,9 @@
             heroClass: p.classId, x: e.x, y: e.y, r: e.r || 9, angle: opts.angle || 0,
             color: opts.color || '#e5c5b3', damage: dmg, sourceX: p.x, sourceY: p.y,
             targets:participants, radius:critRadius(p.classId),
-            finisher: perfectKill ? e.id : null, lethal: lethalCrit, elite: !!e.elite, boss: !!e.boss });
+            finisher: perfectKill ? e.id : null, lethal: lethalCrit, elite: !!e.elite, boss: !!e.boss, miniBoss: !!e.miniBoss });
           if (cinematicStarted && perfectKill) e._finisher = true;
+          if (!cinematicStarted && lethalCrit && CC.Settings && CC.Settings.get('critMode') === 'short') fxStop(0.12); // short mode: just the beat
           if (cinematicStarted && attackGroup) attackGroup.cinematicStarted = true;
         }
       }
@@ -611,6 +612,11 @@
         pr.col = p.classId === 'wizard' ? '#52ceff' : '#b67bff';
         pr.critAge = 0;
         if (p.classId === 'wizard') pr.r = (pr.r || 4) * 1.1; // the wizard's critical orb is 10% bigger
+      }
+      pr.perfect = !(p.pw && p.pw.rapid > 0) && Math.random() < PERFECT_CHANCE; // a PERFECT shot: known the moment it leaves the staff
+      if (pr.perfect) {
+        pr.preRolledCrit = true; pr.col = '#ffd34a'; pr.r = (pr.r || 4) * 1.5;
+        if (CC.PerfectWarp) CC.PerfectWarp.fire(pr); // the world warps round the golden orb, the rest fades dark and back
       }
     }
     if (p.pw && p.pw.rapid > 0 && !pr.aoe) pr.pierce = true; // rapid fire power-up: shots pass through monsters
@@ -902,10 +908,10 @@
           if (s.pierce && !s.aoe) { // pass through, hitting each monster once
             if (!s.visual && s.hit.indexOf(e) < 0) {
               s.hit.push(e);
-              if(s.kind==='bolt' && s.critHero==='wizard' && s.preRolledCrit && s.hit.length===1)
+              if(s.kind==='bolt' && s.critHero==='wizard' && s.preRolledCrit && !s.perfect && s.hit.length===1)
                 wizardCriticalImpact(s,e);
               else hitEnemy(e, s.dmg, s.type, { basicAttack: s.kind === 'bolt' || s.kind === 'shard', pw: s.kind === 'wave', attackKind: 'projectile',
-                angle: s.a, color: s.col, ability: s.ability, preRolledCrit: s.hit.length === 1 ? s.preRolledCrit : false });
+                angle: s.a, color: s.col, ability: s.ability, preRolledCrit: s.hit.length === 1 ? s.preRolledCrit : false, preRolledPerfect: s.hit.length === 1 && !!s.perfect });
               fxBurst(s.x, s.y, s.col, 4, 60);
             }
           } else { target = e; end = true; }
@@ -929,12 +935,12 @@
         else { addFx({ kind: 'ring', x: s.x, y: s.y, r: s.aoe, t: 0.35, max: 0.35, col: '#ff8a3c' }); fxBurst(s.x, s.y, '#ff8a3c', 18, 120); }
         fxShake(4);
       } else if (target) {
-        if(s.kind==='bolt' && s.critHero==='wizard' && s.preRolledCrit)
+        if(s.kind==='bolt' && s.critHero==='wizard' && s.preRolledCrit && !s.perfect)
           wizardCriticalImpact(s,target);
         else hitEnemy(target, s.dmg, s.type, {
           basicAttack: s.kind === 'bolt' || s.kind === 'shard',
           attackKind: 'projectile', angle: s.a, color: s.col,
-          preRolledCrit: s.preRolledCrit
+          preRolledCrit: s.preRolledCrit, preRolledPerfect: !!s.perfect
         });
         fxBurst(s.x, s.y, s.col, 5, 60);
       }

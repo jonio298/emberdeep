@@ -575,13 +575,13 @@
     row('Auto level', 'Spend skill points and pick level-up perks for you.', S.get('autoLevel') ? 'ON  -  tap to turn off' : 'OFF  -  tap to turn on', S.get('autoLevel'), function () { S.toggle('autoLevel'); });
     // Killing blows get the freeze by default; long-form crits are optional.
     (function(){
-      var selected=S.get('critMode')||'kills',labels=['KILLS ONLY','ALL HITS','OFF'],values=['kills','all','off'];
+      var selected=S.get('critMode')||'kills',labels=['BIG KILLS','ALL HITS','SHORT','OFF'],values=['kills','all','short','off'];
       rr(c,x+6,yy,w-12,76,8);c.fillStyle='rgba(255,255,255,0.05)';c.fill();
       c.lineWidth=1.5;c.strokeStyle=COL.line;c.stroke();
       tx(c,'Crit cinematics',x+18,yy+15,14,'#fff','left');
-      tx(c,'Freeze-frame only on killing critical hits by default.',x+18,yy+31,10,COL.dim,'left');
-      var pad=15,gap=5,bw=(w-pad*2-gap*2)/3,by=yy+40;
-      for(var ci=0;ci<3;ci++){
+      tx(c,'Full cutscene on Perfect and boss kills. SHORT = no freeze. Tap to skip.',x+18,yy+31,10,COL.dim,'left');
+      var pad=15,gap=5,bw=(w-pad*2-gap*3)/4,by=yy+40;
+      for(var ci=0;ci<4;ci++){
         (function(i){
           var bx=x+pad+i*(bw+gap),on=selected===values[i];
           rr(c,bx,by,bw,27,5);c.fillStyle=on?'#2a604f':'#1e1a2b';c.fill();
