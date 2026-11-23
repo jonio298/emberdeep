@@ -903,6 +903,99 @@
     c.moveTo(r, -r * 0.25); c.lineTo(r + 5 + sway, r * 0.6); c.stroke();
     c.restore();
   };
+  /* ---------- The Drowned Queen (the Mere Horror's body): detailed pixel art, redrawn every frame on a tiny 80x100 canvas and scaled up without smoothing ---------- */
+  var QW = 80, QH = 100, QC = null;
+  function qHash(a, b) { var s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return s - Math.floor(s); }
+  function qCanvas() {
+    if (QC || typeof document === 'undefined') return QC;
+    function mk() { var cv = document.createElement('canvas'); cv.width = QW; cv.height = QH; return { cv: cv, g: cv.getContext('2d') }; }
+    QC = { main: mk(), edge: mk(), hair: mk() }; return QC;
+  }
+  function drawQueen(g, an, o) {
+    var i, k, x, y, s, rage = o.rage, breathe = Math.sin(an * 1.7), pulse = 0.5 + 0.5 * Math.sin(an * 4.2), reach = o.reach;
+    var hp = false; // hair and drips are painted on their own layer (no pink rim), so the strands read as hair and not as scribbles
+    function R(px, py, w, h, col) { if (hp !== !!o.hairOnly) return; g.fillStyle = col; g.fillRect(Math.round(px), Math.round(py), w, h); }
+    function line(x0, y0, x1, y1, col, th) { var n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)) | 0, q; for (q = 0; q <= n; q++) { var f = n ? q / n : 0; R(x0 + (x1 - x0) * f, y0 + (y1 - y0) * f, th || 1, th || 1, col); } }
+    g.clearRect(0, 0, QW, QH);
+    // ---- the pool: black water with slow ripples ----
+    for (y = 86; y < 97; y++) { var hw = 30 * Math.sqrt(1 - Math.pow((y - 91) / 6, 2)); if (isNaN(hw)) continue; R(40 - hw, y, hw * 2, 1, y % 2 ? '#05030a' : '#0a0612'); }
+    for (k = 0; k < 3; k++) { var rp = ((an * 0.5 + k / 3) % 1), rw = 6 + rp * 24; g.globalAlpha = 1 - rp; R(40 - rw, 91 + Math.sin(k * 3) * 2, 1, 1, '#4a2a5a'); R(40 + rw, 91 + Math.sin(k * 3) * 2, 1, 1, '#4a2a5a'); g.globalAlpha = 1; }
+    // ---- hair behind the head and shoulders: long wet black strands that writhe on their own ----
+    function strand(i, front) {
+      var side = i % 2 ? 1 : -1, x0 = 40 + side * (12 + (i % 5) * 1.4), y0 = 10 + (i % 4) * 3, L = 32 + (i * 7 % 9) + rage * 4, ph = i * 1.37, amp = 2.4 + rage * 1.8; hp = true;
+      for (var q = 0; q < L; q++) { var f = q / L, sx = x0 + side * (f * 5 + Math.pow(f, 2) * 4) + Math.sin(an * 2.1 + ph + f * 6) * amp * (0.4 + f) + Math.cos(an * 1.3 + ph * 2) * f * 2, sy = y0 + q * 1.05 + Math.sin(an * 1.7 + ph) * f * 1.5;
+        R(sx, sy, f < 0.3 ? 3 : f < 0.7 ? 2 : 1, 1, (q + i) % 9 === 0 ? '#4a4478' : (q + i) % 4 === 0 ? '#241f3c' : '#0e0b18'); }
+      hp = false;
+    }
+    for (i = 0; i < 6; i++) strand(i, false); // (drawn on the hair layer)
+    // ---- the lower body: a tangled mass of submerged roots and tentacles, each moving alone ----
+    for (i = 0; i < 9; i++) {
+      var dir = (i % 2 ? 1 : -1) * (0.4 + (i % 5) * 0.28), ph2 = i * 2.1, len = 30 + (i % 4) * 3, th = i % 3 === 0 ? 3 : 2;
+      for (s = 0; s < len; s++) { var f2 = s / len, tx = 40 + dir * (f2 * 22) + Math.sin(an * 1.6 + ph2 + f2 * 5) * (2 + f2 * 5) + (i - 4) * 1.2 * (1 - f2), ty = 62 + f2 * 28 + Math.abs(Math.sin(an * 1.1 + ph2)) * 2 * f2;
+        var w2 = f2 < 0.4 ? th + 1 : f2 < 0.75 ? th : th - 1; R(tx - w2 / 2, ty, w2, 2, i % 2 ? '#1a1024' : '#120a1c'); if (s % 4 === 0) R(tx - w2 / 2, ty, 1, 1, '#3c2650'); if (s % 7 === 3) R(tx, ty, 1, 1, '#241632'); // knots and a wet highlight
+        if (f2 > 0.92 && i % 3 === 1) R(tx + dir * 1.5, ty - 1, 1, 2, '#1a1024'); } // a curled tip
+    }
+    // ---- the torn ceremonial gown: dark violet with tarnished gold trim, ragged strips swaying ----
+    for (y = 48; y < 72; y++) {
+      var f3 = (y - 48) / 24, hw2 = 9 + f3 * 14 + Math.sin(an * 1.2 + y * 0.4) * 0.6, gl = 40 - hw2, gr = 40 + hw2;
+      for (x = Math.floor(gl); x <= gr; x++) { var n3 = qHash(x, y), col = n3 < 0.12 ? '#0d0614' : n3 < 0.4 ? '#321646' : '#27103a'; R(x, y, 1, 1, col); }
+      R(gl, y, 1, 1, '#9a7a30'); R(gr, y, 1, 1, '#9a7a30'); if (y % 6 === 2) { R(gl + 1, y, 3, 1, '#6a5020'); R(gr - 3, y, 3, 1, '#6a5020'); }
+    }
+    for (i = 0; i < 9; i++) { var sx2 = 17 + i * 5.7, sl = 5 + qHash(i, 4) * 7, sway = Math.sin(an * 1.8 + i * 1.4) * 1.5; for (k = 0; k < sl; k++) R(sx2 + sway * (k / sl), 70 + k, i % 2 ? 2 : 3, 1, k === sl - 1 ? '#9a7a30' : k % 3 === 0 ? '#1c0a28' : '#2c1240'); } // torn hem strips
+    for (i = 0; i < 6; i++) R(24 + i * 6 + qHash(i, 9) * 3, 54 + qHash(i, 2) * 12, 3, 2, '#08030c'); // rotted holes
+    // ---- the torso: emaciated, ribs showing, breathing ----
+    for (y = 34; y < 50; y++) { var f4 = (y - 34) / 16, hw3 = 11 - f4 * 4.5 + (y < 40 ? 1 : 0) + breathe * 0.5 * (1 - f4); for (x = Math.floor(40 - hw3); x <= 40 + hw3; x++) { var n4 = qHash(x, y + 20); R(x, y, 1, 1, n4 < 0.18 ? '#26352c' : n4 < 0.3 ? '#241218' : '#4a3038'); } }
+    line(29, 36, 40, 35, '#d6c9a6', 1); line(40, 35, 51, 36, '#d6c9a6', 1); // collarbones
+    R(40, 35, 1, 15, '#e4d8b6', 1); for (y = 37; y < 49; y += 2) R(40, y, 1, 1, '#9a8f70'); // the spine, knuckled
+    for (k = 0; k < 6; k++) { var ry = 38 + k * 2.4, rw = 7.5 - k * 0.55 + breathe * 0.7 * (1 - k * 0.12); for (s = 1; s <= rw; s++) { var yy = ry + Math.pow(s / rw, 2) * 2.2; R(40 - s, yy, 1, 1, k % 2 ? '#c4b794' : '#d6c9a6'); R(40 + s, yy, 1, 1, k % 2 ? '#c4b794' : '#d6c9a6'); } R(40 - rw - 1, ry + 2.2, 1, 1, '#8a7e62'); R(40 + rw + 1, ry + 2.2, 1, 1, '#8a7e62'); }
+    // ---- the arms: uneven, skeletal, ending in oversized hooked claws ----
+    function arm(sx, sy, ex, ey, hx, hy, ext) {
+      var bx = hx + (hx - ex) * ext, by = hy + (hy - ey) * ext; line(sx, sy, ex, ey, '#cfc3a0', 2); line(ex, ey, bx, by, '#c4b794', 2);
+      R(sx - 1, sy - 1, 3, 3, '#e4d8b6'); R(ex - 1, ey - 1, 3, 3, '#e4d8b6'); for (var m = 1; m < 6; m++) { var f = m / 6; if (m % 2) R(sx + (ex - sx) * f, sy + (ey - sy) * f + 1, 1, 1, '#4a3038'); } // rot clinging to the bone
+      for (var cl = 0; cl < 4; cl++) { var a0 = Math.atan2(by - ey, bx - ex) + (cl - 1.5) * 0.42 + Math.sin(an * 3 + cl) * 0.12, cx0 = bx, cy0 = by, len2 = 8 + (cl % 2) * 2.5 + rage * 1.5; // each claw curls in on itself
+        for (var u = 0; u < len2; u++) { var ang = a0 + Math.pow(u / len2, 1.4) * 1.5, px = cx0 + Math.cos(ang) * u * 0.9, py2 = cy0 + Math.sin(ang) * u * 0.9; R(px, py2, u < len2 * 0.7 ? 2 : 1, u < len2 * 0.7 ? 2 : 1, u > len2 - 3 ? '#3a2a2a' : '#eee4c8'); } }
+    }
+    arm(29, 38, 21 - reach * 4, 52 + reach * 2, 13 - reach * 6, 68 - reach * 3, 0.25); // the long left arm, dragging low
+    arm(51, 38, 62, 46, 64 + reach * 5, 34 - reach * 6, 0.2); // the shorter right arm, raised
+    for (i = 0; i < 4; i++) { R(30 - i * 2 - Math.sin(an + i) * 0.5, 38 + i * 2, 2, 3, i % 2 ? '#1c0a28' : '#321646'); R(50 + i * 2 + Math.sin(an + i) * 0.5, 38 + i * 2, 2, 3, i % 2 ? '#1c0a28' : '#321646'); } // sleeve rags
+    // ---- the head: a rotting, half-exposed skull with a torn, impossibly wide grin ----
+    var hcx = 40, hcy = 22, jawOpen = 1.5 + Math.max(0, Math.sin(an * 5.3)) * (2 + rage * 2) + (Math.sin(an * 23) > 0.93 ? 2 : 0); // the jaw twitches
+    for (y = -12; y <= 12; y++) { var hw4 = 11 * Math.sqrt(1 - Math.pow(y / 12.5, 2)); for (x = -Math.floor(hw4); x <= hw4; x++) { var n5 = qHash(x + 7, y + 3), edge = x > hw4 - 1.6 ? 1 : 0; var col2 = n5 < 0.16 ? '#5a4038' : n5 < 0.26 ? '#3c5040' : (y < -2 && x > 2 && n5 < 0.5) ? '#6a5446' : '#cfc6aa'; if (edge) col2 = '#8a806a'; R(hcx + x, hcy + y, 1, 1, col2); } }
+    R(hcx - 1, hcy + 3, 3, 3, '#14060c'); R(hcx, hcy + 2, 1, 1, '#14060c'); // the nose hole
+    for (i = -1; i <= 1; i += 2) { line(hcx + i * 11, hcy + 6, hcx + i * 15, hcy + 1, '#14060c', 1); line(hcx + i * 11, hcy + 7, hcx + i * 14, hcy + 4, '#8a2a3a', 1); R(hcx + i * 15, hcy, 1, 1, '#14060c'); } // torn cheeks, split back toward the ears
+    for (i = -1; i <= 1; i += 2) { R(hcx + i * 5 - 2, hcy - 5, 5, 5, '#06020a'); var gl2 = Math.floor(2 + pulse * 1 + rage); g.globalAlpha = 0.35 + 0.3 * pulse; R(hcx + i * 5 - 3, hcy - 6, 7, 7, '#7a0c1a'); g.globalAlpha = 1; R(hcx + i * 5 - 1, hcy - 4, 3, 3, o.flash ? '#ffffff' : pulse > 0.5 ? '#ff3a4a' : '#d4182c'); R(hcx + i * 5, hcy - 3, 1, 1, '#ffd0d0'); } // the red eyes, pulsing
+    var my = hcy + 8, mw = 13; // the mouth
+    R(hcx - mw, my, mw * 2 + 1, jawOpen + 3, '#0a0208'); // the black opening, wider than any face should allow
+    for (x = -mw; x <= mw; x++) { if (x % 2) continue; var th2 = 2 + (qHash(x, 1) * 3 | 0); R(hcx + x, my - 1, 2, th2, qHash(x, 5) < 0.3 ? '#b8ae88' : '#ece3c0'); R(hcx + x, my - 2, 2, 1, '#8a806a'); } // crooked upper teeth
+    var jy = my + 3 + jawOpen; for (x = -9; x <= 9; x++) R(hcx + x, jy, 1, 3, x % 4 === 0 ? '#8a806a' : '#cfc6aa'); // the lower jaw
+    for (x = -8; x <= 8; x += 2) R(hcx + x, jy - (1 + (qHash(x, 8) * 3 | 0)), 1, 2 + (qHash(x, 8) * 3 | 0), '#ece3c0'); // lower teeth, uneven
+    if (jawOpen > 3) R(hcx - 1, my + 2, 3, 2, '#5a1626'); // a glimpse of tongue
+    // ---- the crown: crooked and tarnished, one spike broken, a red stone in the tallest ----
+    for (x = -10; x <= 10; x++) { var cy = hcy - 12 + Math.floor(x * 0.18) + 1; R(hcx + x, cy, 1, 3, Math.abs(x) % 4 === 0 ? '#6a5018' : '#c8a040'); R(hcx + x, cy, 1, 1, '#f0d070'); }
+    var spk = [-9, -5, 0, 5, 9], sh = [6, 8, 11, 5, 7];
+    for (i = 0; i < 5; i++) { var bx2 = hcx + spk[i], by2 = hcy - 13 + Math.floor(spk[i] * 0.18); for (k = 0; k < sh[i] - (i === 3 ? 0 : 0); k++) { var wv = Math.max(1, 3 - (k * 3 / sh[i] | 0)); R(bx2 - (wv >> 1), by2 - k, wv, 1, k > sh[i] - 3 ? '#f0d070' : '#c8a040'); } if (i === 3) R(bx2 - 1, by2 - 5, 3, 1, '#0a0615'); } // spike 4 is snapped off
+    R(hcx - 1, hcy - 22, 3, 3, '#d02030'); R(hcx, hcy - 21, 1, 1, '#ff8a9a'); for (i = 0; i < 6; i++) R(hcx - 9 + i * 3.5, hcy - 11, 1, 1, '#4a6a40'); // the stone, and green tarnish
+    // ---- the hair in front, over the shoulders ----
+    for (i = 6; i < 10; i++) strand(i, true);
+    // ---- dripping black water ----
+    hp = true;
+    for (i = 0; i < 12; i++) { var pd = (an * 0.9 + i * 0.173) % 1, dx = i < 4 ? 14 + i * 3 : i < 8 ? 24 + (i - 4) * 9 : 56 + (i - 8) * 3, dy0 = i < 4 ? 70 : i < 8 ? 74 : 40 + (i - 8) * 6, dyy = dy0 + pd * pd * (88 - dy0); g.globalAlpha = 1 - pd * 0.5; R(dx, dyy, 1, 2, '#2a1c3c'); R(dx, dyy, 1, 1, '#7a64a0'); g.globalAlpha = 1; }
+    hp = false;
+  }
+  function drawQueenSprite(c, e, r, an, frac, rage, strike) {
+    var Q = qCanvas(); if (!Q) return false;
+    drawQueen(Q.main.g, an, { rage: rage, reach: strike, flash: e.flash > 0 }); drawQueen(Q.hair.g, an, { rage: rage, reach: strike, flash: e.flash > 0, hairOnly: true });
+    if (e.flash > 0) { var hg = Q.hair.g; hg.globalCompositeOperation = 'source-atop'; hg.globalAlpha = 0.75; hg.fillStyle = '#fff'; hg.fillRect(0, 0, QW, QH); hg.globalAlpha = 1; hg.globalCompositeOperation = 'source-over'; }
+    if (e.flash > 0) { var g = Q.main.g; g.globalCompositeOperation = 'source-atop'; g.globalAlpha = 0.75; g.fillStyle = '#fff'; g.fillRect(0, 0, QW, QH); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; }
+    // a 1-pixel pink rim so she stays readable in the pond's fog
+    var eg = Q.edge.g, off = [[1, 0], [-1, 0], [0, 1], [0, -1]], i; eg.clearRect(0, 0, QW, QH); eg.globalCompositeOperation = 'source-over';
+    for (i = 0; i < 4; i++) eg.drawImage(Q.main.cv, off[i][0], off[i][1]);
+    eg.globalCompositeOperation = 'source-in'; eg.fillStyle = '#f0a8c4'; eg.fillRect(0, 0, QW, QH); eg.globalCompositeOperation = 'source-over';
+    var S = (r / 24) * 1.25; c.save(); c.imageSmoothingEnabled = false;
+    c.drawImage(Q.edge.cv, -QW / 2 * S, r * 0.84 - 92 * S, QW * S, QH * S); c.drawImage(Q.main.cv, -QW / 2 * S, r * 0.84 - 92 * S, QW * S, QH * S); c.drawImage(Q.hair.cv, -QW / 2 * S, r * 0.84 - 92 * S, QW * S, QH * S);
+    c.restore(); return true;
+  }
+
   // Persistent demon is the same horned, red-eyed shadow/skull that forms
   // during the transformation. Stylized canvas sprite; no large texture upload.
   DRAWB.merehorror = function (c, e, r, col, dark, t) {
@@ -914,6 +1007,8 @@
     var rising = e.state === 'rise' ? sm(1 - e.t / 1.4) : 1;
     c.save(); c.globalAlpha *= alpha;
     c.translate(0, (1 - rising) * r * 2.7);
+    var strk = (e.atk === 'mistLunge' || e.atk === 'rake') ? (e.state === 'telegraph' ? 1 : 0.4) : 0;
+    if (drawQueenSprite(c, e, r, an, frac, rage, strk)) { c.restore(); return; } // the Drowned Queen (pixel art); the older vector body below is only a fallback
     // Murky pool at its feet.
     c.fillStyle = 'rgba(12,8,22,0.85)'; c.beginPath();
     c.ellipse(0, r * 0.79, r * 1.8, r * 0.44, 0, 0, TAU); c.fill();
