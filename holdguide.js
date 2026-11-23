@@ -112,9 +112,29 @@
   var frameStamp = -1;
   function stepClockOncePerFrame() { var t = now(); if (t - frameStamp > 0.0001) { frameStamp = t; stepClock(); if (CC.state && (CC.state.mode === 'dungeon' || CC.state.mode === 'town') && !ov) playSecs += dtF; } }
   // called after the button's labels are drawn: the held effect and the HOLD hint sit on top
+  // the outer ring: the CHARGED version's own cooldown (the tap spell keeps its pie sweep inside the button)
+  function chargedRing(c, name, b, rgb, p) {
+    var cd = p && p.cdC ? p.cdC[name] || 0 : 0, mx = p && p.cdCMax ? p.cdCMax[name] || 0 : 0, f = mx > 0 ? clamp(1 - cd / mx, 0, 1) : 1, ready = cd <= 0.01, x = b.x, y = b.y, R = b.r + 8, i;
+    c.save(); c.lineCap = 'round';
+    c.strokeStyle = 'rgba(6,14,34,0.7)'; c.lineWidth = 5; c.beginPath(); c.arc(x, y, R, 0, TAU); c.stroke(); // the glass groove
+    c.strokeStyle = 'rgba(' + rgb + ',0.28)'; c.lineWidth = 1; c.beginPath(); c.arc(x, y, R + 2.6, 0, TAU); c.stroke(); c.beginPath(); c.arc(x, y, R - 2.6, 0, TAU); c.stroke();
+    c.globalCompositeOperation = 'lighter';
+    var a0 = -Math.PI / 2, a1 = a0 + TAU * Math.max(0.004, f), al = ready ? 0.7 + 0.25 * Math.sin(clock * 5) : 0.85;
+    c.shadowColor = 'rgba(' + rgb + ',1)'; c.shadowBlur = ready ? 11 : 6; c.strokeStyle = 'rgba(' + rgb + ',' + al + ')'; c.lineWidth = 3.4; c.beginPath(); c.arc(x, y, R, a0, a1); c.stroke(); c.shadowBlur = 0;
+    c.lineWidth = 1; c.strokeStyle = 'rgba(255,255,255,' + (ready ? 0.7 : 0.45) + ')'; c.beginPath(); c.arc(x, y, R, a0, a1); c.stroke();
+    for (i = 0; i < 12; i++) { var ta = a0 + i * TAU / 12, on = i * TAU / 12 <= TAU * f + 0.01; c.strokeStyle = 'rgba(' + (on ? '255,255,255' : rgb) + ',' + (on ? 0.55 : 0.22) + ')'; c.lineWidth = i % 3 === 0 ? 1.6 : 1; c.beginPath(); c.moveTo(x + Math.cos(ta) * (R + 3.4), y + Math.sin(ta) * (R + 3.4)); c.lineTo(x + Math.cos(ta) * (R + (i % 3 === 0 ? 7 : 5.4)), y + Math.sin(ta) * (R + (i % 3 === 0 ? 7 : 5.4))); c.stroke(); }
+    if (!ready) { // a bright spark rides the leading edge while it recharges
+      var sx = x + Math.cos(a1) * R, sy = y + Math.sin(a1) * R, sg = c.createRadialGradient(sx, sy, 0, sx, sy, 7); sg.addColorStop(0, 'rgba(255,255,255,0.95)'); sg.addColorStop(0.4, 'rgba(' + rgb + ',0.6)'); sg.addColorStop(1, 'rgba(' + rgb + ',0)'); c.fillStyle = sg; c.beginPath(); c.arc(sx, sy, 7, 0, TAU); c.fill();
+    } else { // ready: a few motes circle the ring
+      for (i = 0; i < 3; i++) { var ma = clock * 1.4 + i * TAU / 3; c.fillStyle = 'rgba(255,255,255,' + (0.5 + 0.4 * Math.sin(clock * 6 + i)) + ')'; c.beginPath(); c.arc(x + Math.cos(ma) * R, y + Math.sin(ma) * R, 1.5, 0, TAU); c.fill(); }
+    }
+    c.restore();
+    if (!ready) { c.save(); c.font = 'bold 9px Georgia, serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineWidth = 3; c.strokeStyle = 'rgba(4,10,26,0.9)'; var tx = x - R * 0.72, ty = y - R * 0.86 - 5, tl = cd.toFixed(cd < 10 ? 1 : 0); c.strokeText(tl, tx, ty); c.fillStyle = 'rgba(' + rgb + ',1)'; c.fillText(tl, tx, ty); c.restore(); }
+  }
   function decorate(c, name, b, o) {
     if (!CHARGEABLE[name] || o.contextual || o.locked) { if (!o.on) since[name] = 0; return; }
     var p = CC.state && CC.state.player, rgb = colorFor(name, p, o.sInfo);
+    if ((name === 'spell1' || name === 'spell2' || name === 'dash') && p && (name === 'dash' || !CC.Skills || !CC.Skills.chargeOk || CC.Skills.chargeOk(name))) chargedRing(c, name, b, rgb, p);
     if (o.on) {
       if (!since[name]) since[name] = clock;
       var secs = clock - since[name], prog = holdProgress(name, secs), ready = prog >= 1 && secs > 0.3;

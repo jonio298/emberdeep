@@ -74,11 +74,11 @@ function cost(p,slot){
  if(slot==='dash')return Math.max(10,Math.ceil((p.maxMana||60)*.16));
  return Math.ceil(((p.cost&&p.cost[slot])||12)*(def.mult||1.8));
 }
-function unlocked(p,slot){
- if(!p||!p.cd||p.cd[slot]>.01)return false;
- if(slot==='spell2'&&p.level<4)return false;
- return true;
-}
+function levelOk(p,slot){return !!(p&&p.cd&&!(slot==='spell2'&&p.level<4));}
+// The tap spell and its charged version have SEPARATE cooldowns: p.cd[slot] is the tap, p.cdC[slot] the charged one (p.cdCMax holds its length).
+function chargedReady(p,slot){p.cdC=p.cdC||{};return (p.cdC[slot]||0)<=.01;}
+function unlocked(p,slot){return levelOk(p,slot)&&(p.cd[slot]<=.01||chargedReady(p,slot));}
+var CHARGED_CD_MUL={spell1:2,spell2:2,dash:1.6}; // a charged cast recharges for longer than the tap (tap: 1x its cooldown)
 function standable(p,x,y){
  var D=CC.Dungeon,r=Math.max(3,(p.r||8)*.78);
  if(!D||!D.isSolid)return true;
@@ -272,6 +272,7 @@ function tickTeleport(p,dt){
  }
  if(t.t>=t.duration){p.teleportPhase=null;p.chargedDash=false;}
 }
+function setChargedCd(p,slot){p.cdC=p.cdC||{};p.cdCMax=p.cdCMax||{};var m=(p.cdMax[slot]||4)*(CHARGED_CD_MUL[slot]||2);p.cdC[slot]=Math.max(p.cdC[slot]||0,m);p.cdCMax[slot]=m;}
 function cast(p,slot,where,power){
  var d=slotDefinition(p,slot),col=d.color,sc=1+power*.52,
      dmg=p.stats.dmg,angle=Math.atan2(where.dy,where.dx),
@@ -282,7 +283,7 @@ function cast(p,slot,where,power){
        speed=590+power*85,transporter=p.classId==='wizard'||p.classId==='necromancer';
    p.chargedLanding={power:power,fromX:p.x,fromY:p.y,
      targetX:where.x,targetY:where.y};
-   p.cd.dash=Math.max(p.cd.dash||0,p.cdMax.dash*1.50);
+   setChargedCd(p,'dash');
    p.swingAng=angle;p.face=direction.x>=0?1:-1;
    if(transporter){
      // Wizard shatters into arcane blue runes. Necromancer dissolves into
@@ -334,9 +335,10 @@ function cast(p,slot,where,power){
    effect('razor',{x:x,y:y,r:where.rad,color:col,life:1.45,
      interval:.16,damage:dmg*(.55+.16*power),hits:0});
  }else if(p.classId==='thief'&&slot==='spell2'){
-   effect('smoke',{x:x,y:y,r:where.rad,color:col,life:2.65,
+   if(CC.SmokeBomb)CC.SmokeBomb.deploy(p,{x:x,y:y,charged:true}); // 20% bigger, lasts 7 s, bursts in the middle and throws three knives
+   else{effect('smoke',{x:x,y:y,r:where.rad,color:col,life:2.65,
      interval:.30,damage:dmg*(.17+.06*power)});
-   p.iframes=Math.max(p.iframes||0,.62);p.ambushT=Math.max(p.ambushT||0,2.8);
+   p.iframes=Math.max(p.iframes||0,.62);p.ambushT=Math.max(p.ambushT||0,2.8);}
  }else if(p.classId==='necromancer'&&slot==='spell1'){
    if(CC.Classes&&CC.Classes.summonCharged)
      CC.Classes.summonCharged(x,y,3,p);
@@ -346,7 +348,7 @@ function cast(p,slot,where,power){
    effect('soul',{owner:p,x:x,y:y,r:where.rad,color:col,
      life:2.15,interval:.28,damage:dmg*(.48+.06*power)});
  }
- p.cd[slot]=Math.max(p.cd[slot]||0,p.cdMax[slot]*1.34);
+ setChargedCd(p,slot);
  p.castFlash=.28;
  fxText(p.x,p.y-30,d.name,col);
  burst(x,y,col,17);shake(3);
@@ -360,7 +362,7 @@ cast=function(p,slot,where,power){ // test mode: a spell borrowed from another c
 function release(slot){
  if(!active||active.slot!==slot)return false;
  var p=hero(),a=active;active=null;
- if(!p||p!==a.hero||!unlocked(p,slot))return false;
+ if(!p||p!==a.hero||!levelOk(p,slot))return false;
  if(a.time<ARM){
    var tapped=!!(CC.Classes&&CC.Classes.tapAction&&CC.Classes.tapAction(slot));
    if(tapped)fxText(p.x,p.y-29,slot==='dash'?'DASH':
@@ -368,6 +370,7 @@ function release(slot){
      slotDefinition(p,slot).color);
    return tapped;
  }
+ if(!chargedReady(p,slot)){fxText(p.x,p.y-20,'CHARGE RECHARGING','#7bbddd');if(a.snd&&CC.Audio)CC.Audio.chargeEnd(false);return false;}
  var mana=cost(p,slot);
  if(p.mana<mana){fxText(p.x,p.y-20,'NEED '+mana+' MANA','#7bbddd');if(a.snd&&CC.Audio)CC.Audio.chargeEnd(false);return false;}
  if(a.snd&&CC.Audio)CC.Audio.chargeEnd(true);
@@ -380,6 +383,7 @@ function combatTick(dt){
  var p=hero();
  if(!p){cancel();effects.length=0;return;}
  tickTeleport(p,dt);
+ if(p.cdC){for(var ck in p.cdC)if(p.cdC[ck]>0)p.cdC[ck]=Math.max(0,p.cdC[ck]-dt);}
  if(active){
    active.time+=dt;
    if(active.time>=ARM&&!active.charged){active.charged=true;var p=active.hero,d=slotDefinition(p,active.slot);

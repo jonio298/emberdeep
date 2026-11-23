@@ -19,7 +19,7 @@
   function ease(t) { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); }
   var DEATH_LEN = 2.7, SCALE = 0.84;
 
-  E.TYPES.grinmask = { name: 'The Grinning Mask', hp: 190, spd: 46, dmg: 11, r: 16, xp: 150, color: '#d8cdc4', w: 0, blood: '#8a0f1c' };
+  E.TYPES.grinmask = { name: 'The Grinning Mask', hp: 380, spd: 46, dmg: 11, r: 16, xp: 150, color: '#d8cdc4', w: 0, blood: '#8a0f1c' };
 
   /* ---------- atlas ---------- */
   var atlas = new Image(), ready = false;

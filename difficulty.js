@@ -1,10 +1,10 @@
 /* difficulty.js - the game's difficulty modes: EASY, NORMAL, HARD, and a DEV mode for the developer.
  *
  *   mode     enemy health  enemy damage  aiming
- *   EASY     0.70x         0.60x         smart auto-aim
- *   NORMAL   1.00x         1.00x         smart auto-aim (the baseline every other number in the game is tuned against)
- *   HARD     1.25x         1.35x         NO auto-aim: every attack and spell goes exactly where you aim (mouse / dragging the ATK button / your move direction)
- *   DEV      the HARDEST, the one the developer plays on: no auto-aim, 1.60x health, 1.80x damage at the slider's 100% mark; the slider at the top middle scales that
+ *   EASY     0.84x         0.72x         smart auto-aim
+ *   NORMAL   1.20x         1.20x         smart auto-aim (the baseline: +20% health and +20% damage over the base stats; Easy/Hard/Dev keep their old ratios to it)
+ *   HARD     1.50x         1.62x         NO auto-aim: every attack and spell goes exactly where you aim (mouse / dragging the ATK button / your move direction)
+ *   DEV      the HARDEST, the one the developer plays on: no auto-aim, 1.92x health, 2.16x damage at the slider's 100% mark; the slider at the top middle scales that
  *            from 25% to 200% of it. Only offered when the page is opened with ?dev=1
  *
  * HARD gives enemies more health and damage because you lose the auto-aim: a player who has to aim every shot lands fewer hits, so the creatures get a little tougher
@@ -15,10 +15,10 @@
   'use strict';
   var CC = root.CC = root.CC || {}, KEY = 'emberdeep-difficulty', MKEY = 'emberdeep-difficulty-mode', DKEY = 'emberdeep-dev';
   var PRESETS = {
-    easy:   { name: 'EASY',   hp: 0.70, dmg: 0.60, aim: true,  desc: 'Enemies have 30% less health and hit 40% softer.' },
-    normal: { name: 'NORMAL', hp: 1.00, dmg: 1.00, aim: true,  desc: 'The intended game.' },
-    hard:   { name: 'HARD',   hp: 1.25, dmg: 1.35, aim: false, desc: 'No auto-aim: aim every shot yourself. Enemies have 25% more health and hit 35% harder.' },
-    dev:    { name: 'DEV',    hp: 1.60, dmg: 1.80, aim: false, desc: 'The hardest: no auto-aim, 60% more health, 80% more damage. Slider tunes it.' }
+    easy:   { name: 'EASY',   hp: 0.84, dmg: 0.72, aim: true,  desc: 'Enemies have 30% less health and hit 40% softer than Normal.' },
+    normal: { name: 'NORMAL', hp: 1.20, dmg: 1.20, aim: true,  desc: 'The intended game.' },
+    hard:   { name: 'HARD',   hp: 1.50, dmg: 1.62, aim: false, desc: 'No auto-aim: aim every shot yourself. Enemies have 25% more health and hit 35% harder than Normal.' },
+    dev:    { name: 'DEV',    hp: 1.92, dmg: 2.16, aim: false, desc: 'The hardest: no auto-aim, 60% more health, 80% more damage than Normal. Slider tunes it.' }
   };
   var level = 1, md = 'normal', dev = false;
   try { if (/[?&]dev=1/.test(root.location.search)) root.localStorage.setItem(DKEY, '1'); dev = root.localStorage.getItem(DKEY) === '1'; } catch (_) { dev = /[?&]dev=1/.test((root.location && root.location.search) || ''); }

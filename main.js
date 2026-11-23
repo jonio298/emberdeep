@@ -1116,7 +1116,7 @@
         var isGuestNow = !!(CC.Multiplayer && CC.Multiplayer.isGuest && CC.Multiplayer.isGuest());
         if (s.area === 'tree-tunnel' && !isGuestNow) call('TreeTunnel', 'update', dt);
         if (s.area === 'tree-ascent') call('TreeAscent','update',dt);
-        call('Wounds','update',dt);call('LevelBurst','update',dt);call('HeroBlood','update',dt);call('DrainChain','update',dt);
+        call('Wounds','update',dt);call('SmokeBomb','update',dt);call('LevelBurst','update',dt);call('HeroBlood','update',dt);call('DrainChain','update',dt);
         // Walk through the living tunnel and defeat its miniboss before entering the plains.
         var ex = s.map && s.map.stairs;
         if (ex && p && !p.stub && !isGuestNow && (
@@ -1302,6 +1302,7 @@
       drawDecals();
       call('Wounds','drawGround',ctx,cam);
       call('Breakables','draw',ctx,cam);
+      call('SmokeBomb','drawBack',ctx,cam); // the dark body of the thief's smoke, on the ground under everyone
       call('Waypoints','draw',ctx,cam);
       call('Camp', 'drawWorldMarker', ctx, cam); // grounded below the hero, not painted over them
       call('Portal', 'drawWorld', ctx, cam);
@@ -1315,7 +1316,9 @@
       if(!s.coop)call('EggQuest','drawCompanion',ctx,cam);
       if(s.area==='tree-ascent')call('TreeAscent','drawEggs',ctx,cam);
       call('Charge', 'draw', ctx, cam);
+      call('SmokeBomb', 'drawFront', ctx, cam); // pale billows, wisps and glints over the top
       call('QuestNav', 'draw', ctx, cam); // the faint arrow toward the next quest step
+      call('BossArrows', 'draw', ctx, cam); // purple arrows to activated bosses and special monsters that are off screen
       if (CC.Dungeon && typeof CC.Dungeon.drawFront === 'function') CC.Dungeon.drawFront(ctx, dcam); // trees and props in front of the hero redraw over the entities
       if (CC.Dungeon && CC.Dungeon.realm) CC.Dungeon.drawLighting(ctx, dcam); // open-air maps light the whole scene after the entities
       if (s.area === 'plains') {

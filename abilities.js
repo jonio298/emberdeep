@@ -50,7 +50,7 @@
   def('necromancer', 'curse', 'Hex of Weakness', 26, 30, 14, 'curse', '#b06aff', 'A curse over a wide area: foes take extra damage and slow.', { id: 'vuln', name: 'Withering', desc: 'Foes take more damage' }, 'spell2');
   // thief
   def('thief', 'spell1', 'Throwing Knives', 1, 12, 2.2, 'orig', '#cfd8e6', 'Throw a fan of knives.', { id: 'poison', name: 'Venom Tips', desc: 'Knives poison' }, 'fan');
-  def('thief', 'spell2', 'Smoke Bomb', 4, 20, 8, 'orig', '#8a90a8', 'Blind and slow foes; vanish for a moment.', { id: 'slow', name: 'Choking Smoke', desc: 'Slows longer, harder' }, 'step');
+  def('thief', 'spell2', 'Smoke Bomb', 4, 20, 8, 'orig', '#8a90a8', 'A smoke cloud for 5s: foes are blinded and confused, you cannot be hit by melee or shots, +7% crit, every hit is a backstab.', { id: 'slow', name: 'Choking Smoke', desc: 'Smoke lasts 0.8s longer and +1% crit per rank' }, 'step');
   def('thief', 'step', 'Shadow Step', 8, 18, 6, 'step', '#a078ff', 'Vanish and reappear behind a foe with a vicious backstab.', { id: 'bleed', name: 'Gutter', desc: 'The stab leaves a bleeding wound' }, 'spell2');
   def('thief', 'fan', 'Blade Fan', 16, 24, 7, 'fan', '#e6edf7', 'Hurl a ring of blades in every direction.', { id: 'bleed', name: 'Serrated', desc: 'Blades open bleeding wounds' }, 'spell1');
   def('thief', 'venom', 'Venom Flask', 26, 28, 12, 'venom', '#9aff3a', 'Shatter a flask: a toxic cloud that sickens foes.', { id: 'vuln', name: 'Weakening Toxin', desc: 'Poisoned foes take more damage' }, 'step');

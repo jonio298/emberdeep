@@ -246,6 +246,7 @@
       p.invuln=.35;CC.Multiplayer.onGuestDamage(amount);return amount;
     }
     if (!p || p.hp <= 0 || p.invuln > 0 || p.iframes > 0 || !(amount > 0)) return 0;
+    if (p.smokeT > 0 && src && typeof src === 'object' && !src.boss && !src.miniBoss && (src.type || src.vx !== undefined)) return 0; // in the smoke, melee blows and shots pass through (area damage and bosses still hurt)
     if (CC.Difficulty && src !== 'self') amount = Math.max(1, Math.round(amount * CC.Difficulty.dmgMul())); // the difficulty slider (top middle)
     if (p.pw && p.pw.shield > 0) return 0; // Town Defense shield power-up
     if (p.flags && p.flags.evade && Math.random() < 0.15) {
@@ -348,11 +349,11 @@
     opts = opts || {};
     var meleeT = type === 'slash' || type === 'melee' || type === 'physical';
     if (e.airborne && meleeT && !opts.splash) { fxText(e.x, e.y - (e.r || 8) - 18, 'OUT OF REACH', '#cfc8d8', 9); return 0; } // a leaping scarecrow can only be hit by projectiles and spells
-    var crit = !opts.noCrit && p && (typeof opts.preRolledCrit === 'boolean' ? opts.preRolledCrit : Math.random() < p.stats.crit);
+    var crit = !opts.noCrit && p && (typeof opts.preRolledCrit === 'boolean' ? opts.preRolledCrit : Math.random() < p.stats.crit + (p.smokeT > 0 ? p.smokeCrit || 0 : 0));
     var back = false;
     if (p && p.classId === 'thief' && !opts.minion && type !== 'poison' && type !== 'fire') {
       var behind = typeof e.face === 'number' && e.face !== 0 && Math.abs(p.x - e.x) > 2 && (p.x - e.x) * e.face < 0;
-      back = behind || p.ambushT > 0 || e.stunT > 0 || e.slowT > 0;
+      back = behind || p.ambushT > 0 || e.stunT > 0 || e.slowT > 0 || !!(CC.SmokeBomb && CC.SmokeBomb.inSmoke(e)); // every hit on a foe standing in your smoke is a backstab
       if (back) { dmg *= p.flags.cutthroat ? 2.2 : 1.5; if (p.ambushT > 0) { p.ambushT = 0; crit = true; } }
     }
     var baseDmg = dmg, perfect = !!(!opts.minion && !opts.splash && opts.basicAttack && p && !(p.pw && p.pw.rapid > 0) && (typeof opts.preRolledPerfect === 'boolean' ? opts.preRolledPerfect : Math.random() < PERFECT_CHANCE)); // a basic projectile rolls its perfect when it is FIRED (the warp), a slash rolls on the hit
@@ -629,7 +630,7 @@
     // Pre-roll only basic projectiles, so crit visuals are present at launch and
     // this exact result is reused on hit. Spells/AOE retain the old hit-time rule.
     if (((kind === 'bolt' && p.classId === 'wizard') || (kind === 'shard' && p.classId === 'necromancer')) && p.stats) {
-      pr.preRolledCrit = Math.random() < p.stats.crit;
+      pr.preRolledCrit = Math.random() < p.stats.crit + (p.smokeT > 0 ? p.smokeCrit || 0 : 0);
       pr.critHero = p.classId;
       if (pr.preRolledCrit) {
         pr.col = p.classId === 'wizard' ? '#52ceff' : '#b67bff';
@@ -800,9 +801,8 @@
       fxShake(3); p.castFlash = 0.3;
     } else if (cls === 'thief') { // smoke bomb: slows nearby foes, brief invulnerability, primes an ambush
       if (!spend(p, 'spell2')) return;
-      radial(p, p.x, p.y, 56 * (CC.Skills ? CC.Skills.radMul(p, 'spell2') : 1), 0.4 * sm(p, 2), 'smoke', 2.5, 0.5);
-      p.iframes = Math.max(p.iframes, 0.5); p.ambushT = 2;
-      if (CC.Vfx) CC.Vfx.spawn('smokeBomb', p.x, p.y, 56, {});
+      if (CC.SmokeBomb) CC.SmokeBomb.deploy(p, { x: p.x, y: p.y, charged: false }); // the animated cloud: blinds and confuses foes, you cannot be hit by melee or shots inside
+      else if (CC.Vfx) { radial(p, p.x, p.y, 56, 0.4 * sm(p, 2), 'smoke', 2.5, 0.5); p.iframes = Math.max(p.iframes, 0.5); CC.Vfx.spawn('smokeBomb', p.x, p.y, 56, {}); }
       else { addFx({ kind: 'ring', x: p.x, y: p.y, r: 56, t: 0.5, max: 0.5, col: '#8a90a8' }); addFx({ kind: 'puff', x: p.x, y: p.y, r: 22, t: 0.5, max: 0.5, col: '#5a5f78' }); fxBurst(p.x, p.y, '#8a90a8', 16, 90); }
       p.castFlash = 0.3;
     } else { // life drain

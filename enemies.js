@@ -121,6 +121,7 @@
       return 1;
     }
     if (!p || p.hp <= 0 || (p.invuln > 0)) return 0;
+    if (p.smokeT > 0 && (p._shot || (e && !e.boss && !e.miniBoss))) { if (CC.fx && CC.fx.text && Math.random() < 0.2) CC.fx.text(p.x, p.y - 16, 'MISS', '#cbb8ff', 10); return 1; } // the thief's smoke: melee and projectiles cannot touch them, only splash
     if(CC.Multiplayer&&CC.Multiplayer.isHost&&CC.Multiplayer.isHost()&&
        p===CC.Multiplayer.remote){
       p.invuln=.45;
@@ -794,7 +795,7 @@
             q.life = 0;
             if (CC.fx && CC.fx.burst) CC.fx.burst(q.x, q.y, q.color, 3, 40);
           }
-          else if (p && q.hostile && Math.hypot(p.x - q.x, p.y - q.y) < q.r + (p.r || 10)) { hurtPlayer(p, q.dmg, null, PROJ_KIND[q.kind] || null); q.life = 0; }
+          else if (p && q.hostile && Math.hypot(p.x - q.x, p.y - q.y) < q.r + (p.r || 10)) { { p._shot = true; hurtPlayer(p, q.dmg, null, PROJ_KIND[q.kind] || null); p._shot = false; } q.life = 0; }
           else if (CC.Defense && CC.Defense.active && CC.Defense.active() && CC.Defense.projHitsBox(q)) q.life = 0;
           else {
             var gp=CC.Multiplayer&&CC.Multiplayer.remotePlayerForAI&&CC.Multiplayer.remotePlayerForAI();
