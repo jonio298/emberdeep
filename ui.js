@@ -592,6 +592,25 @@
       }
       yy+=80;
     })();
+    (function(){ // difficulty: EASY / NORMAL / HARD (no auto-aim), plus DEV when the page was opened with ?dev=1
+      var D=CC.Difficulty;if(!D)return;
+      var modes=D.modes(),selected=D.mode(),n=modes.length;
+      rr(c,x+6,yy,w-12,76,8);c.fillStyle='rgba(255,255,255,0.05)';c.fill();
+      c.lineWidth=1.5;c.strokeStyle=COL.line;c.stroke();
+      tx(c,'Difficulty',x+18,yy+15,14,'#fff','left');
+      tx(c,D.PRESETS[selected].desc.length>62?D.PRESETS[selected].desc.slice(0,60)+'..':D.PRESETS[selected].desc,x+18,yy+31,10,COL.dim,'left');
+      var pad=15,gap=5,bw=(w-pad*2-gap*(n-1))/n,by=yy+40;
+      for(var di=0;di<n;di++){
+        (function(i){
+          var bx=x+pad+i*(bw+gap),on=selected===modes[i];
+          rr(c,bx,by,bw,27,5);c.fillStyle=on?'#2a604f':'#1e1a2b';c.fill();
+          c.lineWidth=1.3;c.strokeStyle=on?COL.good:COL.line;c.stroke();
+          tx(c,D.PRESETS[modes[i]].name,bx+bw/2,by+14,10,on?'#e7ffe9':COL.dim,'center');
+          hit(bx,by,bw,27,function(){D.setMode(modes[i]);});
+        })(di);
+      }
+      yy+=80;
+    })();
     var AU = CC.Audio; // sound and music (audio.js)
     if (AU) {
       var au = AU.status();

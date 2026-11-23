@@ -59,8 +59,10 @@
     return best;
   }
   function aim(p) {
-    var t = nearest(p.x, p.y, 170), dx, dy;
-    if (t) { dx = t.x - p.x; dy = t.y - p.y; } else { dx = p.aimX || p.face || 1; dy = p.aimY || 0; }
+    var t = CC.Classes && CC.Classes.autoTarget ? CC.Classes.autoTarget(p, 170) : nearest(p.x, p.y, 170), dx, dy;
+    if (t) { dx = t.x - p.x; dy = t.y - p.y; }
+    else if (CC.Difficulty && !CC.Difficulty.autoAim()) { var ma = spearAim(p); dx = ma.x; dy = ma.y; } // HARD: no auto-aim
+    else { dx = p.aimX || p.face || 1; dy = p.aimY || 0; }
     var l = Math.sqrt(dx * dx + dy * dy) || 1;
     return { x: dx / l, y: dy / l, target: t };
   }
@@ -263,7 +265,7 @@
     text(p.x, p.y - 26, NAMES[cls] + (pow >= 0.99 ? '!' : ''), COLORS[cls] || '#fff', pow >= 0.99 ? 13 : 10);
   }
 
-  function aimDrag(x, y) { st.aimDrag = { x: x, y: y }; } // touch: the thumb on the ATK button is dragged to turn the arrow (independent of the movement stick)
+  function aimDrag(x, y) { st.aimDrag = x === null || x === undefined ? null : { x: x, y: y }; } // touch: the thumb on the ATK button is dragged to turn the arrow (independent of the movement stick)
   function aimWorld(x, y) { st.aimW = { x: x, y: y, t: Date.now() }; } // PC: the mouse cursor in the world
   function spearAim(p) { // the spear goes where YOU aim, never where you walk: the ATK thumb drag, else the mouse, else the last aim
     if (st.aimDrag) return st.aimDrag;
@@ -694,5 +696,5 @@
     ctx.restore();
   }
 
-  CC.Charge = { update: update, draw: draw, cancel: cancel, state: st, names: NAMES, aimDrag: aimDrag, aimWorld: aimWorld };
+  CC.Charge = { update: update, draw: draw, cancel: cancel, state: st, names: NAMES, manualAim: function (p) { return spearAim(p); }, aimDrag: aimDrag, aimWorld: aimWorld };
 })();

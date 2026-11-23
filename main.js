@@ -902,7 +902,7 @@
         call('SpellCharge','release',r.name);
       else call('SpellCharge','cancel');
     }
-    else if (r.kind === 'btn') held[r.name] = Math.max(0, held[r.name] - 1);
+    else if (r.kind === 'btn') { held[r.name] = Math.max(0, held[r.name] - 1); if (r.name === 'attack') setTimeout(function () { call('Charge', 'aimDrag', null); }, 140); } // the dragged aim lapses just after the thumb lifts (a charged shot still reads it on release)
   }
   canvas.addEventListener('pointerup', release);
   canvas.addEventListener('pointercancel', release);
@@ -1689,6 +1689,7 @@
     if (tunnel && m === 'dungeon') drawTunnel();
     if (m === 'town' || m === 'dungeon') {
       drawHud(); drawControls();
+      call('Difficulty', 'draw', ctx, W, H, function (x, y, w, h, cb) { ui.push({ x: x, y: y, w: w, h: h, cb: cb, drag: cb }); }); // the permanent difficulty slider, top middle
       call('EggQuest','drawHud',ctx,W,H);
       call('Defense','drawScreen',ctx,W,H,addButton);
       call('Multiplayer','drawScreen',ctx,W,H);

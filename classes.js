@@ -1,6 +1,6 @@
 /* Emberdeep classes: Swordsman, Wizard, Necromancer, Thief.
  *
- * XP curve (documented): xpToNext(level) = round(40 * level^1.7)
+ * XP curve (documented): xpToNext(level) = round(48 * level^1.7)
  *   -> 40, 130, 259, 422, 617, 841, 1093, 1372, 1676 for levels 1..9. Level 10 needs their sum (6450 xp).
  * Spells: every class starts with spell 1 only; spell 2 (E) unlocks at level 4 (SPELL2_LEVEL). The HUD slot shows
  *   'Lv 4' until then (spellNames is the HUD label list; spells holds the real names).
@@ -111,7 +111,7 @@
   };
 
   /* ---------- stats ---------- */
-  function xpToNext(level) { return Math.round(40 * Math.pow(level, 1.7)); }
+  function xpToNext(level) { return Math.round(48 * Math.pow(level, 1.7)); } // 20% slower levelling
 
   // spell 2 (the E key) is locked until this level; every class starts with spell 1 only
   var SPELL2_LEVEL = 4;
@@ -246,6 +246,7 @@
       p.invuln=.35;CC.Multiplayer.onGuestDamage(amount);return amount;
     }
     if (!p || p.hp <= 0 || p.invuln > 0 || p.iframes > 0 || !(amount > 0)) return 0;
+    if (CC.Difficulty && src !== 'self') amount = Math.max(1, Math.round(amount * CC.Difficulty.dmgMul())); // the difficulty slider (top middle)
     if (p.pw && p.pw.shield > 0) return 0; // Town Defense shield power-up
     if (p.flags && p.flags.evade && Math.random() < 0.15) {
       p.invuln = 0.2;
@@ -358,6 +359,7 @@
     if (perfect) crit = true;
     if (crit) dmg *= p.stats.critDmg;
     if (perfect) dmg = baseDmg * 4; // a perfect hit is exactly four times a normal hit
+    if (p && p.stareT > 0 && !opts.minion) dmg *= 0.6; // a demon's stare: 40% weaker attacks while it lasts
     if (p && CC.Skills && !opts.minion) dmg *= CC.Skills.preHit(p, e, type, opts); // vulnerable foes, war cry, executes...
     dmg = Math.max(1, Math.round(dmg));
     var viaEnemies = CC.Enemies && typeof CC.Enemies.damage === 'function';
@@ -476,10 +478,31 @@
     return best;
   }
 
+  // Smart auto-aim: bosses and mini-bosses outrank their small hangers-on, enemies in the direction you are facing beat ones behind you, and the foe you were
+  // already aiming at is sticky so the aim does not flicker between two near targets. On HARD there is no auto-aim at all: attacks go exactly where you aim.
+  function autoTarget(p, range) {
+    if (CC.Difficulty && !CC.Difficulty.autoAim()) return null;
+    var best = null, bs = 1e18, l = foes(), fa = Math.atan2(p.aimY || 0, p.aimX || p.face || 1);
+    for (var i = 0; i < l.length; i++) {
+      var e = l[i]; if (!alive(e)) continue;
+      var dx = e.x - p.x, dy = e.y - p.y, d = Math.sqrt(dx * dx + dy * dy);
+      if (d - (e.r || 8) * 0.5 > range) continue;
+      var turn = (p.aimX || p.aimY) ? angDiff(Math.atan2(dy, dx), fa) : 0;
+      var sc = (Math.max(0, d - (e.r || 8)) + 6) * (1 + 0.45 * turn / Math.PI) * (e.boss ? 0.25 : e.miniBoss ? 0.45 : 1) * (e === p._aimLock ? 0.72 : 1); // distance to the near edge, so a big boss counts as close
+      if (sc < bs) { bs = sc; best = e; }
+    }
+    p._aimLock = best;
+    return best;
+  }
+  function manualAim(p) { // HARD: the mouse, or the thumb dragged from the ATK button, else the way you are moving
+    var m = CC.Charge && CC.Charge.manualAim ? CC.Charge.manualAim(p) : null;
+    return m || { x: p.aimX || p.face || 1, y: p.aimY || 0 };
+  }
   function aimDir(p, range) {
-    var t = nearest(p.x, p.y, range);
+    var t = autoTarget(p, range);
     var dx, dy;
     if (t) { dx = t.x - p.x; dy = t.y - p.y; }
+    else if (CC.Difficulty && !CC.Difficulty.autoAim()) { var ma = manualAim(p); dx = ma.x; dy = ma.y; }
     else { dx = p.aimX; dy = p.aimY; }
     var l = Math.sqrt(dx * dx + dy * dy);
     if (l < 0.001) { dx = p.face; dy = 0; l = 1; }
@@ -667,7 +690,7 @@
     } else if (cls === 'wizard') {
       dir = aimDir(p, 170);
       var twin = p.flags.twin ? [-0.1, 0.1] : [0];
-      for (i = 0; i < twin.length; i++) shoot(p, dir.a + twin[i], 230, 0.8, p.flags.twin ? 0.75 : 1, 4, 'bolt', 'arcane', '#c9a8ff');
+      for (i = 0; i < twin.length; i++) shoot(p, dir.a + twin[i], 230, 0.8, (p.flags.twin ? 0.75 : 1) * 0.75, 4, 'bolt', 'arcane', '#c9a8ff');
       p.cd.attack = p.cdMax.attack; p.castFlash = 0.15;
     } else if (cls === 'thief') {
       dir = aimDir(p, 40);
@@ -1057,6 +1080,7 @@
     p.atkAnim = Math.max(0, p.atkAnim - dt); p.castFlash = Math.max(0, p.castFlash - dt);
     p.invuln = Math.max(0, p.invuln - dt); p.iframes = Math.max(0, p.iframes - dt);
     if (p.ambushT > 0) p.ambushT = Math.max(0, p.ambushT - dt);
+    if (p.stareT > 0) p.stareT = Math.max(0, p.stareT - dt);
     if (noManaT > 0) noManaT -= dt;
     if (CC.Skills) CC.Skills.update(p, dt);
     if (p.comboT > 0) { p.comboT -= dt; if (p.comboT <= 0) p.combo = 0; }
@@ -1547,7 +1571,7 @@
     DEFS: DEFS, PERKS: PERKS, minions: minions, projectiles: projs,
     create: create, update: update, draw: draw, drawPondCombat: drawPondCombat, drawPlayer: drawPlayer, drawHero: drawHero,
     drawCriticalHero: drawCriticalHero, critRadius: critRadius,
-    gainXp: gainXp, drainTick: drainTick, xpToNext: xpToNext, damage: damage, heal: heal, damageMinion: damageMinion,
+    autoTarget: autoTarget, gainXp: gainXp, drainTick: drainTick, xpToNext: xpToNext, damage: damage, heal: heal, damageMinion: damageMinion,
     applyItemStats: applyItemStats, choosePerk: choosePerk, hitEnemy: hitEnemy, status: status,
     _h: { shoot: shoot, nearest: nearest, aimDir: aimDir, ignite: ignite, addFx: addFx, foes: foes },
     tapAction:tapAction,summonCharged:summonCharged,
