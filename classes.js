@@ -178,6 +178,7 @@
   function gainXp(n, p) {
     p = p || hero();
     if (!p || !(n > 0)) return;
+    if (CC.Hordes?.powerupActive?.('xp', p)) n *= 2;
     p.xp += n * (1 + p.mods.xpPct);
     while (p.xp >= p.xpNext && p.level < 99) {
       p.xp -= p.xpNext;
@@ -238,6 +239,7 @@
 
   function damage(p, amount, src) {
     p = p || hero();
+    if (CC.Hordes?.powerupActive?.('shield', p)) return 0;
     // Some custom miniboss AI calls Classes.damage directly. Forward guest
     // damage to their device rather than altering the host's proxy object.
     if(CC.Multiplayer&&CC.Multiplayer.isHost&&CC.Multiplayer.isHost()&&
@@ -267,13 +269,15 @@
     return dealt;
   }
 
-  function onKill(e) {
+  function onKill(e, quiet) {
     var p = hero();
     if (!p || e._xpGiven) return;
     e._xpGiven = true;
-    fxBlood(e.x, e.y, 16 + Math.min(10, Math.round((e.r || 8) / 2)));
-    fxBurst(e.x, e.y, '#d8d0b8', 5, 90); // bone chips
-    fxShake(1.5);
+    if (!quiet) {
+      fxBlood(e.x, e.y, 16 + Math.min(10, Math.round((e.r || 8) / 2)));
+      fxBurst(e.x, e.y, '#d8d0b8', 5, 90); // bone chips
+      fxShake(1.5);
+    }
     if (!CC.Endless?.active()) {
       gainXp(e.xp || e.xpValue || 5, p);
       if (typeof CC.addKill === 'function') CC.addKill();
@@ -366,7 +370,12 @@
     if (p && CC.Skills && !opts.minion) dmg *= CC.Skills.preHit(p, e, type, opts); // vulnerable foes, war cry, executes...
     dmg = Math.max(1, Math.round(dmg));
     var viaEnemies = CC.Enemies && typeof CC.Enemies.damage === 'function';
-    if (viaEnemies) { try { CC.Enemies.damage(e, dmg, type); } catch (err) { e.hp -= dmg; } }
+    if (viaEnemies) {
+      try {
+        var dealt = CC.Enemies.damage(e, dmg, type);
+        if (dealt > 0 && CC.Hordes?.powerupActive?.('damage', p)) dmg = dealt;
+      } catch (err) { e.hp -= dmg; }
+    }
     else e.hp -= dmg;
     // Only an actual post-damage death (not a skeleton collapse) earns hit-stop.
     var lethalCrit = !!(crit && !alive(e) && !e.collapsed), perfectKill = !!(perfect && lethalCrit); // a critical that kills plays its hero's kill cutscene; a perfect hit that kills plays the perfect-kill one

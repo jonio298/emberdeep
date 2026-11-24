@@ -59,7 +59,8 @@
     ctx.setMap(map, 'plains');
     H.state = {
       map, random: seeded(ctx.run.seed), tick: 0, budget: 0, level: 0, surge: null,
-      regular: [], encounters: [], nightfall: null, crowAngle: 0, crowSide: 1, tracked: new WeakMap()
+      regular: [], encounters: [], nightfall: null, crowAngle: 0, crowSide: 1, tracked: new WeakMap(),
+      powerups: CC.PlainsPowerups.create(ctx.run, map, seeded(ctx.run.seed ^ 0x1F33E0A1), hasOpenApproach)
     };
     if (ctx.run.role !== 'guest') {
       // Keep bone decals. Resurrection would insert an unscaled enemy outside the director's cap.
@@ -300,7 +301,7 @@
     }
   }
 
-  function update(_dt, ctx) {
+  function update(dt, ctx) {
     const state = H.state;
     const heroes = ctx.livingHeroes();
     if (!heroes.length) return;
@@ -331,6 +332,7 @@
       if (second === 0) queueEncounter(state, heroes, time, previousLevel + 1, party);
       drain(state, heroes, time, cap(state.level, party), party);
     }
+    state.powerups.update(dt, heroes);
   }
 
   function depth(ctx) {
@@ -363,6 +365,7 @@
 
   function draw(canvas, cam, ctx) {
     const time = ctx.run.seconds;
+    H.state.powerups.draw(canvas, cam);
     canvas.save();
     canvas.lineWidth = 2;
     for (const request of H.state.encounters) {
@@ -387,6 +390,7 @@
 
   function drawHud(canvas, width, height, _button, ctx) {
     const time = ctx.run.seconds;
+    H.state.powerups.drawHud(canvas, width, CC.state.player);
     const surge = H.state.surge;
     const nightfall = H.state.nightfall;
     const relative = time % TUNING.nightfallEverySeconds;
@@ -425,7 +429,9 @@
   }
 
   function kill(enemy) {
-    if (!enemy.boss || !H.state.tracked.has(enemy)) return;
+    if (!H.state.tracked.has(enemy)) return;
+    H.state.powerups.onKill(enemy);
+    if (!enemy.boss) return;
     H.state.map.chests.push({ x: enemy.x, y: enemy.y, opened: false });
     if (engines().boss !== enemy) return;
     engines().boss = engines().list.find(e => e.boss && alive(e)) || null;
@@ -433,5 +439,6 @@
   }
 
   Object.assign(H, { start, startGuest: start, update, cleanup, depth, lighting, draw, drawHud, kill });
+  H.powerupActive = (kind, hero) => H.state?.powerups.active(kind, hero) ?? false;
   CC.Endless.registerDirector('plains', H);
 })(typeof window !== 'undefined' ? window : globalThis);

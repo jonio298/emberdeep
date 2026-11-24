@@ -303,7 +303,7 @@ test('host death waits for every hero, and the guest displays authoritative prog
 test('the game page loads Endless Survival and its rewards before the browser shell', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   const entryScripts = Array.from(html.matchAll(/<script\s+src="([^"]+)"/g), match => match[1]);
-  const required = ['endless.js', 'endless_rewards.js', 'hordes.js', 'main.js'];
+  const required = ['endless.js', 'endless_rewards.js', 'plains_powerups.js', 'hordes.js', 'main.js'];
   assert.deepEqual(entryScripts.filter(file => required.includes(file)), required);
 });
 
