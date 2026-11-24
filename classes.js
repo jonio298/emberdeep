@@ -274,8 +274,10 @@
     fxBlood(e.x, e.y, 16 + Math.min(10, Math.round((e.r || 8) / 2)));
     fxBurst(e.x, e.y, '#d8d0b8', 5, 90); // bone chips
     fxShake(1.5);
-    gainXp(e.xp || e.xpValue || 5, p);
-    if (typeof CC.addKill === 'function') CC.addKill();
+    if (!CC.Endless?.active()) {
+      gainXp(e.xp || e.xpValue || 5, p);
+      if (typeof CC.addKill === 'function') CC.addKill();
+    }
     if (p.flags.dashreset && p.cd.dash > 0) {
       p.cd.dash = 0;
       addFx({ kind: 'ring', x: p.x, y: p.y, r: 18, t: 0.25, max: 0.25, col: '#7de0b8' });
@@ -445,6 +447,7 @@
       }
     }
     if (!alive(e)) onKill(e);
+    CC.Endless?.onHit(dmg);
     return dmg;
   }
 
@@ -1569,6 +1572,7 @@
 
   CC.Classes = {
     DEFS: DEFS, PERKS: PERKS, minions: minions, projectiles: projs,
+    clear: function () { minions.length = projs.length = fxs.length = 0; cur = lastMap = null; noManaT = 0; },
     create: create, update: update, draw: draw, drawPondCombat: drawPondCombat, drawPlayer: drawPlayer, drawHero: drawHero,
     drawCriticalHero: drawCriticalHero, critRadius: critRadius,
     autoTarget: autoTarget, gainXp: gainXp, drainTick: drainTick, xpToNext: xpToNext, damage: damage, heal: heal, damageMinion: damageMinion,

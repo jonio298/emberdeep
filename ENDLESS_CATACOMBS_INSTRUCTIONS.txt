@@ -1,0 +1,112 @@
+EMBERDEEP - ENDLESS CATACOMBS (EXPLORATION): DEVELOPMENT INSTRUCTIONS
+=======================================================================
+Read ENDLESS_MODES_COMMON_INSTRUCTIONS.txt first (mode select, character choice, timer, run end, reward tiers, co-op). This file defines
+what is specific to the Catacombs mode.
+
+THE FEEL: an endless descent. Each floor is a fresh, bigger, nastier maze. You explore, find the stairs, loot, take risks, and go deeper. The depth
+counter and the clock at the top are your score. Where Plains is "survive the swarm", Catacombs is "read the room, plan, and push on".
+It is solo or co-op, with your leveled hero or a new one. Progress value for rewards: P = floors reached * 2.
+
+
+1. RUN STRUCTURE
+----------------
+- The run starts on FLOOR 1 at 00:00. Reaching the stairs takes you to the next floor (use the existing CC.nextFloor / loadFloor flow, but stay
+  in the Endless run: never return to town, never write campaign progress).
+- The depth label under the clock reads "FLOOR N". A floor is "reached" the moment you arrive on it.
+- There is no final floor. Floors keep generating with a seed derived from the run seed and the floor number (so a retry can be seeded for a
+  daily-challenge feature later).
+- Every 5th floor is a BOSS FLOOR (5, 10, 15 ...). Boss floors have a smaller arena, one boss, add waves, and the stairs appear when the boss
+  falls. Between boss floors the descent gets steadily harder.
+- Every 5 floors the BIOME changes (see section 4), the lighting gets darker, and the creatures get scarier.
+
+
+2. FLOOR GENERATION (reuse dungeon.js)
+--------------------------------------
+- Use the existing Catacombs generator (CC.Dungeon, the same one the campaign floors use) with these depth-driven parameters:
+    size:        grows slowly with depth, capped (a late floor is a big maze but never so big that finding the stairs is tedious)
+    rooms:       more rooms and more branches with depth, a few dead ends that hold rewards
+    stairs:      placed far from the spawn (the "explore" part), usually behind at least one choke point or guarded room
+    enemy packs: count and size grow with depth; some packs are asleep until you enter their room (stealth lets you avoid them)
+    chests:      1-3 per floor, deeper floors add a "vault" with a mini-guardian
+    props/hazards: spike traps, collapsing floors, poison pools and fire vents appear from floor 4, with clear telegraphs
+- Fog of war and the minimap: the minimap reveals only explored areas. Picking up a "map fragment" reveals more of the floor. Keep the
+  existing minimap and quest-arrow logic working; the stairs get an arrow ONLY after the player has seen them or used a fragment.
+- Add a "floor goal ring" at the stairs that opens only when the floor's guardian condition is met on boss floors.
+
+
+3. EXPLORATION AND RISK/REWARD (what makes it an exploration mode)
+-------------------------------------------------------------------
+- SHRINES: optional altars on some floors. The player may pay (health, gold, or a curse) for a boon (damage, speed, loot luck). A shrine is
+  a choice, never forced. Curses make later enemies tougher but raise reward luck. Keep a small, readable list of active shrines in the HUD.
+- SECRET ROOMS: cracked walls (existing Breakables) hide treasure rooms with an elite or a trapped chest.
+- KEYS and LOCKED DOORS: a key on the floor opens a vault door; the vault has a guaranteed good item for the run (run-only, see common file).
+- ELITE ROOMS: a marked door with a stronger pack and a better chest. Skippable.
+- LANTERN: the player has a light radius; oil pickups extend it. Darkness is part of the danger (see section 4).
+- THE HUNT (pressure so the player keeps moving): after 90 seconds on a floor a WARDEN starts hunting the player, a tough roaming enemy that
+  is slower than the player but never stops, shown as a purple off-screen arrow (the existing boss-arrow system works for this). A second
+  Warden is added every further 60 seconds. Taking the stairs removes them. This keeps a "go or fight" tension without a hard timer.
+- LOOT inside a run is run-only (see the common file). It exists to make the hero stronger for the descent, not to replace the reward.
+
+
+4. BIOMES, DARKNESS AND SCARINESS (every 5 floors)
+--------------------------------------------------
+  Floors 1-4    "Upper Crypts"     torches, stone, skeletons, bats, rats, slimes (the familiar enemies).
+  Floors 5-9    "Ossuary"          bone piles, ghouls, necromancer casters, bone golems; boss at 5 (a Bone Colossus).
+  Floors 10-14  "Flooded Vaults"   water hazards, drowned things, eels, spectral shots; boss at 10 (the Drowned Queen family).
+  Floors 15-19  "Hollow Halls"     eyes in the dark, teleporting horrors (Veyr-class), mirrors, scarecrow flocks; boss at 15.
+  Floors 20-24  "Flesh Warrens"    patchwork shamblers, grinning masks, living walls; boss at 20 (a Patchwork Horror).
+  Floors 25+    "The Deep"         everything above, nightmare variants (red eyes, +size, new telegraphs), darker than dark.
+Darkness per biome (ambient light): 100%, 80%, 62%, 48%, 38%, 30%. The hero's lantern always lights a radius of at least 110 px.
+Fire, spell glows, the Smoke Bomb and lightning stay bright and look better in the dark. Telegraphs, pickups, the hero and the minimap must
+stay readable at every depth (additive glow, outlines, shape and motion, not colour alone). Add a "reduce darkness" accessibility option
+that caps the darkness at biome 3.
+Each biome shift gets a small banner ("THE OSSUARY") and a music change, then returns to normal play.
+
+
+5. ENEMY SCALING (depth, not hero level)
+----------------------------------------
+- Base from CC.Enemies.TYPES; multiply by a depth curve: health x(1 + 0.18*floor), damage x(1 + 0.10*floor), speed x(1 + 0.02*floor, capped +35%).
+  Put the numbers in CC.Endless.TUNING.catacombs. They apply together with the difficulty-mode multipliers (CC.Difficulty), so never apply
+  those again inside the director.
+- Elites: from floor 3, one pack per floor includes an elite (glowing outline, +100% health, a better drop). From floor 10, two.
+- Boss floors: reuse the campaign bosses and mini-bosses (Bone Colossus, Drowned Queen, Veyr, Patchwork Horror, Grinning Mask). Their health
+  and damage take the same depth multipliers. Bosses stay immune to confusion, and their off-screen arrow shows.
+- Co-op: x1.7 enemy count per pack and x1.25 health; the same floor layout for both players.
+
+
+6. BUILD PLAN (after the shared endless.js exists)
+--------------------------------------------------
+ 1. CatacombsDirector: starts a run on floor 1, advances floors, calls the existing generator with the depth parameters, applies the
+    enemy depth multipliers, shows the floor label, never touches campaign progress.
+ 2. Floor flow: stairs -> next floor -> floor label banner -> continue. The clock keeps running during the transition animation only if the world updates.
+ 3. Boss floors: pick the boss for the biome, add the arena rules, open the stairs on its death.
+ 4. Exploration features in this order: chests and vaults -> map fragments and fog -> shrines -> keys and locked doors -> secret rooms -> the Warden hunt.
+ 5. Biomes: darkness levels, palettes, enemy tables, props, music.
+ 6. Co-op: host generates each floor from the shared seed, both players arrive together (wait for both at the stairs or a timed regroup of 8 seconds),
+    revive rules from the common file.
+ 7. Balance log (floors per minute, damage taken per floor, deaths by enemy type, time per floor) printed to the console and stored in the run
+    summary. Tune TUNING from real runs.
+
+
+7. TESTS AND ACCEPTANCE
+-----------------------
+Automated:
+ - Floor generation: for floors 1, 5, 10, 25 and 60 and several seeds, the map is connected from spawn to stairs, has the expected chests, and the
+   stairs are reachable without solid tiles in the way; enemy counts follow the depth table.
+ - Depth scaling: enemy stats at floor N equal base x the formulas above (within rounding), once (not doubled by difficulty).
+ - Boss floors: the stairs only open after the boss dies; the right boss spawns for the biome.
+ - Run end/retry: all floor, enemy, shrine, key and Warden state is cleared; campaign dungeon state is untouched.
+Manual / browser:
+ - Descend to floor 6 and floor 11; screenshot each biome. Light level must visibly drop and stay readable.
+ - A shrine, a key door, a secret room and the Warden arrow all work, and hold-to-charge spells, Smoke Bomb and the boss arrows work in the maze.
+ - A 20-minute run keeps the frame rate steady (cleanup of old floors, no leaked fx or enemies).
+Definition of done: starting Endless Catacombs gives an endless chain of different floors with rising danger and darkness, a top-centre clock and floor
+number, boss floors every 5, optional risk/reward rooms, a Warden that keeps the player moving, a run summary on death, and a reward whose
+rarity rises with floors reached (see the common file), in solo and in co-op.
+
+
+8. NOTES
+--------
+- Work on a git branch. Run npm run validate before every commit.
+- Reuse existing art and sounds, palette-swap for new biomes, and keep each new feature small and testable.
+- Treat Documents\ChatGPT\cave-crawler\endless.js (Codex's older Endless) as reference for ideas only; it is from a different copy of the game.

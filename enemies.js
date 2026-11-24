@@ -397,10 +397,11 @@
       if (CC.fx && CC.fx.burst) CC.fx.burst(e.x, e.y, (TYPES[e.type] && TYPES[e.type].blood) || BLOOD, e.boss ? 30 : 8, e.boss ? 180 : 80);
       if (CC.fx && CC.fx.burst) CC.fx.burst(e.x, e.y, e.color, e.boss ? 40 : 10, e.boss ? 200 : 100);
       if (CC.addKill) CC.addKill(e);
-      if(CC.Multiplayer&&CC.Multiplayer.isHost&&CC.Multiplayer.isHost())
-        CC.Multiplayer.broadcastKill(Math.round(e.xp*(1+.1*(e.floor-1))));
+      var xp = CC.Endless && !CC.Endless.usesInstantXp() ? 0 : Math.round(e.xp * (1 + 0.1 * (e.floor - 1)));
+      if (xp && CC.Multiplayer && CC.Multiplayer.isHost && CC.Multiplayer.isHost())
+        CC.Multiplayer.broadcastKill(xp);
       var p = playerOf();
-      if (p && CC.Classes && CC.Classes.gainXp) CC.Classes.gainXp(Math.round(e.xp * (1 + 0.1 * (e.floor - 1))));
+      if (xp && p && CC.Classes && CC.Classes.gainXp) CC.Classes.gainXp(xp);
       if (p && CC.Classes && CC.Classes.onKill) CC.Classes.onKill(e);
       if (e.boss) this._bossDeath(e);
       else if (CC.Loot && CC.Loot.roll) CC.Loot.roll(e, e.floor, 0);

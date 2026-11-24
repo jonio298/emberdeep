@@ -27,13 +27,13 @@
   function ctr(tx, ty) { return { tx: tx, ty: ty, x: tx * T + T / 2, y: ty * T + T / 2 }; }
 
   /* ---------- terrain art ---------- */
-  var shade = null, tall = null;                     // per-tile hill shading (0..80) and tall-grass mask, built with each map
+  var shade = null, tall = null, shW = W, shH = H;   // per-tile hill shading (0..80) and tall-grass mask, built with each map (shW x shH = their size)
   function hgt(x, y) { return 0.5 + 0.28 * Math.sin(x * 0.075 + Math.sin(y * 0.05) * 1.6) + 0.2 * Math.sin(y * 0.062 - x * 0.03 + 1.3) + 0.12 * Math.sin((x + y) * 0.16); }
   function ground(kind, hv, tx, ty) { var c0 = groundBase(kind, hv, tx, ty), HP = CC.HauntedPond; return HP && HP.ground ? HP.ground(c0, kind, hv, tx, ty) : c0; }
   function groundBase(kind, hv, tx, ty) {
     if (kind === 5) return hv < 0.5 ? '#1c3a4a' : '#1e3e50';
     if (kind === 2) return hv < 0.5 ? '#6b5a3c' : '#625236';
-    var v = shade && tx >= 0 && ty >= 0 && tx < W && ty < H ? shade[ty * W + tx] : 30;
+    var v = shade && tx >= 0 && ty >= 0 && tx < shW && ty < shH ? shade[ty * shW + tx] : 30;
     return 'rgb(' + Math.floor(40 + v * 0.62 + hv * 6) + ',' + Math.floor(70 + v * 1.05 + hv * 8) + ',' + Math.floor(34 + v * 0.3) + ')';
   }
   function detail(ctx, kind, sx, sy, hv, t, tx, ty) { var HP = CC.HauntedPond; if (HP && HP.detail && HP.detail(ctx, kind, sx, sy, hv, t, tx, ty)) return; detailBase(ctx, kind, sx, sy, hv, t, tx, ty); }
@@ -52,7 +52,7 @@
       return;
     }
     if (kind !== 0) return;
-    var isTall = tall && tall[ty * W + tx], n = isTall ? 5 : hv > 0.45 ? 2 : 0;
+    var isTall = tall && tall[ty * shW + tx], n = isTall ? 5 : hv > 0.45 ? 2 : 0;
     if (n) { // grass blades lean downwind (east) and ripple with the gusts
       ctx.lineWidth = 1.1; ctx.beginPath();
       for (i = 0; i < n; i++) {
@@ -65,13 +65,14 @@
     }
     if (hv > 0.94) { ctx.fillStyle = hv > 0.97 ? '#e8e4d0' : hv > 0.955 ? '#e8c84a' : '#a87ad8'; ctx.fillRect(sx + 10 + (hv * 71 % 1) * 8, sy + 10, 2.2, 2.2); } // wildflowers
   }
-  function afterLight(ctx, cam) { // clouds' shadows drift over the hills and seed-streaks race downwind (cheap)
+  function afterLight(ctx, cam) { afterLightIn(ctx, cam, W, H, true); }
+  function afterLightIn(ctx, cam, mw, mh, pond) { // clouds' shadows drift over the hills and seed-streaks race downwind (cheap)
     var t = Date.now() / 1000, i, w = cam.w, h = cam.h;
-    if (CC.HauntedPond && CC.HauntedPond.after) CC.HauntedPond.after(ctx, cam); // the haunted pond's darkness, fog and eyes
+    if (pond && CC.HauntedPond && CC.HauntedPond.after) CC.HauntedPond.after(ctx, cam); // the haunted pond's darkness, fog and eyes
     ctx.save();
     ctx.fillStyle = 'rgba(8,16,26,0.1)';
     for (i = 0; i < 3; i++) {
-      var sx = (t * 16 + i * 760) % (W * T) - cam.x, sy = (i * 950 + 300 + Math.sin(t * 0.1 + i) * 60) % (H * T) - cam.y;
+      var sx = (t * 16 + i * 760) % (mw * T) - cam.x, sy = (i * 950 + 300 + Math.sin(t * 0.1 + i) * 60) % (mh * T) - cam.y;
       if (sx < -220 || sx > w + 220 || sy < -120 || sy > h + 120) continue;
       ctx.beginPath(); ctx.ellipse(sx, sy, 170, 70, 0.1, 0, PI2); ctx.ellipse(sx + 90, sy + 24, 120, 52, 0, 0, PI2); ctx.ellipse(sx - 80, sy + 20, 100, 44, 0, 0, PI2); ctx.fill();
     }
@@ -117,7 +118,7 @@
   function drawSolid(ctx, kind, sx, sy, hv, t, tx, ty, D) {
     if (kind === 3) { var HPt = CC.HauntedPond; if (!(HPt && HPt.tree && HPt.tree(ctx, sx, sy, hv, t, tx, ty))) drawTree(ctx, sx, sy, hv, t); }
     else if (kind === 8) drawStone(ctx, sx, sy, hv, t);
-    else if (kind === 9) { var a = D && D.art ? D.art[ty * W + tx] : 0; if (a) drawRock(ctx, sx, sy, hv, a === 2); } // the barrow's block has no art here: its prop draws the mound
+    else if (kind === 9) { var a = D && D.art ? D.art[ty * (D.w || W) + tx] : 0; if (a) drawRock(ctx, sx, sy, hv, a === 2); } // the barrow's block has no art here: its prop draws the mound
   }
 
   function drawFire(ctx, sx, sy, t) {
@@ -359,6 +360,115 @@
     if (CC.RockPass && CC.RockPass.isOpen()) P.openGate(map);
     return map;
   };
+  /* ---------- the survival arena (Endless Plains) ----------
+   * A compact, self-contained Rolling Plains map: 96 x 64 tiles, a standing-stone ring and clearing at the centre (the spawn), two
+   * crossing lanes plus an oval ring road (alternate routes, drawn as dirt so they read in low light), braziers at the lane crossings,
+   * rocky outcrops and ponds to kite around, and scattered boulders and trees clear of the lanes. No exits, NPCs, chests or quest
+   * state. Pure in its seed: it never touches P.map, CC.Dungeon, CC.state or the campaign's shading arrays. */
+  var SW = 96, SH = 64;
+  function buildSurvival(rng, seed) {
+    var N = SW * SH, kind = new Uint8Array(N), tiles = new Uint8Array(N), art = new Uint8Array(N), res = new Uint8Array(N), i, x, y, k;
+    var sh = new Uint8Array(N), ta = new Uint8Array(N), off = seed % 64;
+    function at(tx, ty) { return ty * SW + tx; }
+    function disc(cx, cy, r, fn) { for (var yy = Math.floor(cy - r); yy <= cy + r; yy++) for (var xx = Math.floor(cx - r); xx <= cx + r; xx++) if (xx >= 0 && yy >= 0 && xx < SW && yy < SH && (xx - cx) * (xx - cx) + (yy - cy) * (yy - cy) <= r * r) fn(xx, yy); }
+    function reserve(cx, cy, r) { disc(cx, cy, r, function (xx, yy) { res[at(xx, yy)] = 1; }); }
+    function solid(tx, ty, kd, ar) { kind[at(tx, ty)] = kd; tiles[at(tx, ty)] = 1; art[at(tx, ty)] = ar; }
+    for (y = 0; y < SH; y++) for (x = 0; x < SW; x++) {
+      i = at(x, y);
+      sh[i] = clamp(Math.round(hgt(x + off, y) * 36 + (hgt(x + off - 1, y - 1) - hgt(x + off + 1, y + 1)) * 2.2 * 60 + 14), 0, 80);
+      ta[i] = Math.sin((x + off) * 0.21 + 1.3) * Math.sin(y * 0.17 + 0.7) + 0.5 * Math.sin((x - y + off) * 0.11) > 0.38 ? 1 : 0;
+    }
+    var cx = SW >> 1, cy = SH >> 1, spawn = ctr(cx, cy), RX = 30, RY = 19, ring = [];
+    // lanes: a cross through the centre and an oval ring road, marked as dirt and kept clear of obstacles
+    for (x = 4; x < SW - 4; x++) { disc(x, cy, 1.7, function (xx, yy) { kind[at(xx, yy)] = 2; }); reserve(x, cy, 2.8); }
+    for (y = 4; y < SH - 4; y++) { disc(cx, y, 1.7, function (xx, yy) { kind[at(xx, yy)] = 2; }); reserve(cx, y, 2.8); }
+    for (k = 0; k < 160; k++) {
+      var a = k / 160 * PI2, rx = cx + Math.cos(a) * RX, ry = cy + Math.sin(a) * RY;
+      ring.push({ x: rx, y: ry });
+      disc(rx, ry, 1.6, function (xx, yy) { kind[at(xx, yy)] = 2; }); reserve(rx, ry, 2.8);
+    }
+    reserve(cx, cy, 9);
+    var props = [], lights = [], landmarks = [];
+    // landmark 1: a ring of eight standing stones round the spawn, set between the lane mouths so the lanes stay open
+    for (k = 0; k < 8; k++) { var sa = k / 8 * PI2 + PI2 / 16; solid(Math.round(cx + Math.cos(sa) * 6), Math.round(cy + Math.sin(sa) * 6), 8, 0); }
+    landmarks.push({ name: 'standing stones', x: spawn.x, y: spawn.y });
+    props.push({ x: spawn.x, y: spawn.y, sortY: 0, reveal: false, draw: drawFire });
+    lights.push({ x: spawn.x, y: spawn.y - 10, r: 230, color: '255,170,80', inten: 0.9, flicker: 0.08 });
+    // landmark 2: braziers where the lanes meet the ring road, each a lit waypoint
+    [[RX, 0], [-RX, 0], [0, RY], [0, -RY]].forEach(function (b, j) {
+      var bx = cx + b[0] + (b[0] ? 0 : 3), by = cy + b[1] + (b[0] ? -3 : 0), c = ctr(Math.round(bx), Math.round(by));
+      props.push({ x: c.x, y: c.y, sortY: 0, reveal: false, draw: drawFire });
+      lights.push({ x: c.x, y: c.y - 10, r: 200, color: '255,150,60', inten: 0.85, flicker: 0.1 });
+      landmarks.push({ name: 'brazier', x: c.x, y: c.y });
+    });
+    // landmark 3: four crags between centre and ring road: the player picks a side to kite round
+    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (d) {
+      var ox = cx + d[0] * 17, oy = cy + d[1] * 10, wx, wy;
+      for (wy = -2; wy <= 2; wy++) for (wx = -3; wx <= 3; wx++) if ((wx / 3.2) * (wx / 3.2) + (wy / 2.2) * (wy / 2.2) <= 1 && !res[at(ox + wx, oy + wy)]) solid(ox + wx, oy + wy, 9, 2);
+      reserve(ox, oy, 5); landmarks.push({ name: 'crag', x: ox * T + 16, y: oy * T + 16 });
+    });
+    // ponds (solid water) out in the corners
+    [[-38, -21], [38, -21], [-38, 21], [38, 21]].forEach(function (d) {
+      var px = cx + d[0], py = cy + d[1], pr = 2.6 + rng() * 1.2, bad = false;
+      disc(px, py, pr + 2, function (xx, yy) { if (res[at(xx, yy)]) bad = true; });
+      if (bad) return;
+      disc(px, py, pr, function (xx, yy) { solid(xx, yy, 5, 0); }); reserve(px, py, pr + 2);
+    });
+    function isolated(tx, ty) {
+      for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) { var ni = at(tx + dx, ty + dy); if (tiles[ni] && !(tx + dx < 2 || ty + dy < 2 || tx + dx >= SW - 2 || ty + dy >= SH - 2) || kind[ni] === 5) return false; }
+      return true;
+    }
+    function plant(tx, ty, kd, ar) {
+      if (tx < 4 || ty < 4 || tx >= SW - 4 || ty >= SH - 4 || res[at(tx, ty)] || kind[at(tx, ty)] !== 0 || !isolated(tx, ty)) return false;
+      solid(tx, ty, kd, ar); return true;
+    }
+    var tries;
+    for (k = 0, tries = 0; k < 22 && tries++ < 400;) if (plant(4 + Math.floor(rng() * (SW - 8)), 4 + Math.floor(rng() * (SH - 8)), 3, 0)) k++;
+    for (k = 0, tries = 0; k < 60 && tries++ < 900;) if (plant(4 + Math.floor(rng() * (SW - 8)), 4 + Math.floor(rng() * (SH - 8)), 9, 1)) k++;
+    for (y = 0; y < SH; y++) for (x = 0; x < SW; x++) if (x < 2 || y < 2 || x >= SW - 2 || y >= SH - 2) solid(x, y, 9, 2); // the ridge ringing the arena
+
+    // reachability from the centre
+    var seen = new Uint8Array(N), q = [at(cx, cy)], qi = 0, nb = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    if (tiles[q[0]]) return null;
+    seen[q[0]] = 1;
+    while (qi < q.length) {
+      var c0 = q[qi++], x0 = c0 % SW, y0 = (c0 / SW) | 0;
+      for (var m = 0; m < 4; m++) { var nx = x0 + nb[m][0], ny = y0 + nb[m][1]; if (nx < 0 || ny < 0 || nx >= SW || ny >= SH) continue; var n2 = at(nx, ny); if (seen[n2] || tiles[n2]) continue; seen[n2] = 1; q.push(n2); }
+    }
+    // spawn candidates: points on a wide oval near the ridge, snapped to the nearest reachable open tile
+    var spawns = [], used = {}, COUNT = 28;
+    for (k = 0; k < COUNT; k++) {
+      var sa2 = (k + rng() * 0.6) / COUNT * PI2, gx = Math.round(cx + Math.cos(sa2) * 42), gy = Math.round(cy + Math.sin(sa2) * 26), best = null, bd = 1e9;
+      disc(gx, gy, 4, function (xx, yy) { var d2 = (xx - gx) * (xx - gx) + (yy - gy) * (yy - gy); if (seen[at(xx, yy)] && kind[at(xx, yy)] !== 5 && d2 < bd) { bd = d2; best = { x: xx, y: yy }; } });
+      if (!best || used[at(best.x, best.y)]) continue;
+      var sp = ctr(best.x, best.y), rr = rng();
+      if (Math.hypot(sp.x - spawn.x, sp.y - spawn.y) < 20 * T) continue;
+      used[at(best.x, best.y)] = 1;
+      spawns.push({ x: sp.x, y: sp.y, type: rr < 0.34 ? 'direwolf' : rr < 0.6 ? 'crow' : rr < 0.78 ? 'scarecrow' : 'mawworm' });
+    }
+    if (spawns.length < 16) return null;
+    // the art closures swap in this arena's own shading, so building or drawing it never disturbs a campaign map's
+    function withShade(fn) { var s0 = shade, t0 = tall, w0 = shW, h0 = shH; shade = sh; tall = ta; shW = SW; shH = SH; try { return fn(); } finally { shade = s0; tall = t0; shW = w0; shH = h0; } }
+    var map = CC.Realm.create({
+      name: 'Rolling Plains', w: SW, h: SH, kind: kind, tiles: tiles, spawn: spawn, chests: [], enemySpawns: spawns, props: props, lights: lights,
+      ambient: '34,44,66,0.4', playerLight: 190, viewR: 230, fog: 0.08, fogColor: '170,185,175',
+      ground: function (kd, hv, tx, ty) { return withShade(function () { return groundBase(kd, hv, tx, ty); }); },
+      detail: function (ctx, kd, sx, sy, hv, t, tx, ty) { withShade(function () { detailBase(ctx, kd, sx, sy, hv, t, tx, ty); }); },
+      drawSolid: drawSolid,
+      afterLight: function (ctx, cam) { afterLightIn(ctx, cam, SW, SH, false); }
+    });
+    map.art = art; map.npcs = []; map.floor = 1; map.mainPath = ring; map.landmarks = landmarks; map.survival = true;
+    map.center = { x: spawn.x, y: spawn.y };
+    return map;
+  }
+  P.generateSurvival = function (fixedSeed) {
+    var seed = Number.isFinite(fixedSeed) ? (fixedSeed >>> 0) : (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0, map = null, tries = 0;
+    while (!map && tries < 16) { map = buildSurvival(seeded(seed + tries * 7919), seed); tries++; }
+    if (!map) throw new Error('Plains survival generation failed');
+    map.seed = seed;
+    return map;
+  };
+
   P.openPath = function (map, f) { // the eagle reveals the trail: open the path tiles up to fraction f (0..1), in order from the plain's edge into the rocks
     if (!map || !map.passPath) return 0;
     var n = Math.min(map.passPath.length, Math.ceil(map.passPath.length * f)), i, opened = 0;
