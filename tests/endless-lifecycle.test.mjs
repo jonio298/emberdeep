@@ -300,6 +300,13 @@ test('host death waits for every hero, and the guest displays authoritative prog
   assert.equal(E.state.result.kills, 7);
 });
 
+test('the game page loads Endless Survival and its rewards before the browser shell', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const entryScripts = Array.from(html.matchAll(/<script\s+src="([^"]+)"/g), match => match[1]);
+  const required = ['endless.js', 'endless_rewards.js', 'hordes.js', 'main.js'];
+  assert.deepEqual(entryScripts.filter(file => required.includes(file)), required);
+});
+
 test('the browser shell routes title clicks and pauses Endless simulation', () => {
   const { CC, sandbox, load } = fixture();
   const texts = new Map();
