@@ -9,7 +9,7 @@ function fixture(seed, heroLevel = 1, role = 'solo') {
   const load = file => vm.runInContext(
     readFileSync(new URL('../' + file, import.meta.url), 'utf8'), sandbox, { filename: file }
   );
-  for (const file of ['classes.js', 'save_game.js', 'enemies.js', 'plains.js', 'endless.js']) load(file);
+  for (const file of ['classes.js', 'save_game.js', 'enemies.js', 'plains.js', 'wounds.js', 'endless.js']) load(file);
   const { CC } = sandbox;
   const originalState = CC.state = { mode: 'title' };
   const campaignMap = CC.Dungeon = { campaign: true };
@@ -50,7 +50,7 @@ function fixture(seed, heroLevel = 1, role = 'solo') {
       onStep?.(CC.Enemies.list, E.state.seconds);
     }
   };
-  return { CC, E, H, seeds, cues, originalState, campaignMap, originalEnemies, originalPileChance,
+  return { CC, E, H, sandbox, seeds, cues, originalState, campaignMap, originalEnemies, originalPileChance,
     lighting, advance, guest };
 }
 
@@ -72,9 +72,9 @@ function simulate(seed, step) {
 }
 
 test('seeded first-ten-minute counts track the phase curve within two spawns', () => {
-  // Integrated rates rounded per phase, plus eight eruption enemies and one boss
+  // Integrated rates rounded per phase, plus seven eruption enemies and one boss
   // in the second calm. The two-spawn tolerance covers fractional budget carry.
-  const expected = [58, 394, 343, 103, 118, 633, 505, 147];
+  const expected = [49, 335, 292, 88, 101, 538, 429, 125];
   const runs = new Map();
   for (const seed of [17, 42, 9001]) {
     const run = simulate(seed, 0.25);
@@ -88,12 +88,33 @@ test('seeded first-ten-minute counts track the phase curve within two spawns', (
   assert.notDeepEqual(repeat.layout, runs.get(17).layout);
 });
 
+test('crow and raven hits can blind in the campaign but not in Plains Survival', () => {
+  const { CC, E, sandbox } = fixture(73);
+  vm.runInContext('Math.random = () => 0', sandbox);
+  CC.Audio.fx = () => {};
+  const hero = CC.state.player;
+  const birds = [{ type: 'crow', x: 0, y: 0 }, { type: 'raven', x: 0, y: 0 }];
+  for (const bird of birds) {
+    hero.blindT = 0;
+    CC.Wounds.onHit(hero, bird, 5);
+    assert.equal(hero.blindT, 0);
+  }
+  E.end();
+  E.exit();
+  CC.state.player = hero;
+  for (const bird of birds) {
+    hero.blindT = 0;
+    CC.Wounds.onHit(hero, bird, 5);
+    assert.equal(hero.blindT, 1.5);
+  }
+});
+
 test('surge warns three active seconds early and its deferred enemies stay capped at an edge', () => {
   const { CC, E, H, cues, advance } = fixture(19);
   const hero = CC.state.player;
   Object.assign(hero, { x: 55, y: 55 });
   const list = CC.Enemies.list;
-  const cap = H.TUNING.population.base;
+  const cap = 77;
   for (let i = 0; i < cap; i++) list.push({ x: 55, y: 55, r: 6, hp: 10 });
   advance(206.75);
   assert.equal(H.state.surge, null);
@@ -140,9 +161,11 @@ test('both nightfalls stage one encounter and scale surviving and new enemies on
     const enemies = CC.Enemies;
     advance(15);
     const existing = enemies.list.find(e => e.type === 'crow');
+    const baseCrow = enemies.spawn('crow', 365, 360, 1, { awake: true });
+    assert.equal(existing.dmg, baseCrow.dmg * 1.15);
     enemies.list.splice(0, enemies.list.length, existing);
     Object.assign(existing, { x: 365, y: 360 });
-    const baseline = { hp: existing.maxHp, dmg: existing.dmg, spd: existing.spd };
+    const baseline = { hp: existing.maxHp, dmg: baseCrow.dmg, spd: existing.spd };
     existing.hp /= 2;
     const holdExisting = list => { list.splice(1); };
     advance(299.75, holdExisting);
@@ -161,7 +184,7 @@ test('both nightfalls stage one encounter and scale surviving and new enemies on
       assert.equal(lighting().transition.progress, 0);
       assert.equal(existing.maxHp, Math.round(baseline.hp * 1.25 ** level));
       assert.equal(existing.hp, existing.maxHp / 2);
-      assert.equal(existing.dmg, Math.round(baseline.dmg * 1.15 ** level));
+      assert.equal(existing.dmg, Math.round(baseline.dmg * 1.15 ** level) * 1.15);
       assert.ok(Math.abs(existing.spd - baseline.spd * 1.06 ** level) < 1e-9);
       assert.equal(existing.cd, H.TUNING.crowFlocks.diveCooldowns[level - 1]);
       const warned = H.state.encounters.find(request => request.kind === 'boss');
@@ -175,7 +198,7 @@ test('both nightfalls stage one encounter and scale surviving and new enemies on
       const familyBase = enemies.spawn(family, 365, 360, 1);
       enemies.list.pop();
       assert.equal(fresh.maxHp, Math.round(familyBase.maxHp * 1.25 ** level));
-      assert.equal(fresh.dmg, Math.round(familyBase.dmg * 1.15 ** level));
+      assert.equal(fresh.dmg, Math.round(familyBase.dmg * 1.15 ** level) * 1.15);
       assert.ok(Math.abs(fresh.spd - familyBase.spd * 1.06 ** level) < 1e-9);
       advance(time + 1.5);
       assert.equal(lighting().transition.progress, 0.5);
@@ -206,7 +229,7 @@ test('warning markers and announced spawns wait for slots, then cleanup and retr
   const { CC, E, H, originalState, campaignMap, originalEnemies, originalPileChance, advance } = fixture(7);
   const hero = CC.state.player;
   Object.assign(hero, { x: 55, y: 55 });
-  const nextCap = 102;
+  const nextCap = 87;
   for (let i = 0; i < nextCap; i++) CC.Enemies.list.push({ x: 55, y: 55, r: 6, hp: 10 });
   advance(304);
   assert.ok(H.state.regular.length);
@@ -262,7 +285,7 @@ test('a host budgets for both living heroes and rejects placement too close to e
   const baseCrow = CC.Enemies.spawn('crow', 365, 360, 1, { awake: true });
   CC.Enemies.list.length = 0;
   advance(60);
-  assert.ok(CC.Enemies.list.length >= 94 && CC.Enemies.list.length <= 99);
+  assert.ok(CC.Enemies.list.length >= 81 && CC.Enemies.list.length <= 85);
   const crow = CC.Enemies.list.find(e => e.type === 'crow');
   assert.equal(crow.maxHp, Math.round(baseCrow.maxHp * 1.25));
   for (const e of CC.Enemies.list) {

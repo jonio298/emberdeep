@@ -13,13 +13,13 @@
     swell: { end: 210, rate: 1, endRate: 1.6 },
     surge: { end: 270, rate: 2.2, warning: 3, coneCosine: 0.5 },
     dread: { rate: 1.2, warning: 5 },
-    population: { base: 90, perLevel: 12, max: 160 },
-    stats: { health: 1.25, damage: 1.15, speed: 1.06, maxSpeed: 1.4 },
+    population: { base: 90, perLevel: 12, max: 160, multiplier: 0.85 },
+    stats: { health: 1.25, damagePerNightfall: 1.15, damageMultiplier: 1.15, speed: 1.06, maxSpeed: 1.4 },
     elite: { chance: 0.04, laterChance: 0.067, laterLevel: 3, health: 2 },
     darknessByLevel: [1, 0.85, 0.70, 0.55, 0.42, 0.32, 0.25],
     heroLightRadius: 150,
     fadeSeconds: 3,
-    encounter: { eruptionAt: 1, bossAt: 3, bannerSeconds: 6, size: 8, bossHealthPerLevel: 0.4 },
+    encounter: { eruptionAt: 1, bossAt: 3, bannerSeconds: 6, size: 7, bossHealthPerLevel: 0.4 },
     placement: { minDistance: 110, warningDistance: 150, approachDistance: 230, warningRadius: 28,
       bossRadius: 20, gap: 12, rewarn: 0.75, angles: 12, radialFactors: [1, 0.8, 1.2], rayStep: 8 },
     crowFlocks: { flankOffset: Math.PI / 3, diveCooldowns: [1.2, 0.7], prepRange: 220 },
@@ -82,7 +82,7 @@
 
   function cap(level, party) {
     const p = TUNING.population;
-    return Math.floor(Math.min(p.max, p.base + p.perLevel * level) * party.enemyCount);
+    return Math.round(Math.min(p.max, p.base + p.perLevel * level) * party.enemyCount * p.multiplier);
   }
 
   function rateAt(second, level) {
@@ -94,7 +94,7 @@
       phaseRate = swell.rate + (swell.endRate - swell.rate) * progress;
     } else if (second < surge.end) phaseRate = surge.rate;
     const carriedMinutes = level * TUNING.nightfallEverySeconds * TUNING.rateCarryover / 60;
-    return (TUNING.spawnPerSecondBase + TUNING.spawnGrowthPerMinute * (second / 60 + carriedMinutes)) * phaseRate;
+    return (TUNING.spawnPerSecondBase + TUNING.spawnGrowthPerMinute * (second / 60 + carriedMinutes)) * phaseRate * TUNING.population.multiplier;
   }
 
   function rollType(state, level) {
@@ -188,7 +188,7 @@
     const speed = Math.min(s.maxSpeed, s.speed ** level);
     enemy.maxHp = Math.max(1, Math.round(base.hp * s.health ** level * party.enemyHealth * bossHealth));
     enemy.hp = enemy.maxHp * healthFraction;
-    enemy.dmg = Math.round(base.damage * s.damage ** level);
+    enemy.dmg = Math.round(base.damage * s.damagePerNightfall ** level) * s.damageMultiplier;
     enemy.spd *= speed / base.speedMultiplier;
     base.speedMultiplier = speed;
   }

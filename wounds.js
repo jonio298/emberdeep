@@ -56,6 +56,7 @@
       if (e.type === 'direwolf' && p === hero() && R() < 0.2) W.apply(p, { dur: 2.5, dps: Math.max(2, (e.dmg || 8) * 0.28), src: 'bite' });
     } else if ((e.type === 'crow' || e.type === 'raven') && p === hero()) {
       if (CC.fx && CC.fx.burst) CC.fx.burst(p.x + Math.cos(ang + 3.14) * 4, p.y - 9, '#1a1620', 3, 40);
+      if (CC.Endless?.state?.mode === 'plains' && CC.Endless.active()) return;
       if (R() < 0.34) W.blind(p, 1.5);
     }
   };
