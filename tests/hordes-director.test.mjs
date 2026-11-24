@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-function fixture(seed, heroLevel = 1, role = 'solo') {
+function fixture(seed, heroLevel = 1, role = 'solo', powerRoll) {
   const sandbox = vm.createContext({ console });
   sandbox.window = sandbox;
   const load = file => vm.runInContext(
@@ -35,6 +35,11 @@ function fixture(seed, heroLevel = 1, role = 'solo') {
       }
     };
   };
+  load('plains_powerups.js');
+  if (powerRoll !== undefined) {
+    const create = CC.PlainsPowerups.create;
+    CC.PlainsPowerups.create = (run, map, _random, clearPath) => create(run, map, () => powerRoll, clearPath);
+  }
   load('hordes.js');
   const E = CC.Endless;
   const H = CC.Hordes;
@@ -86,6 +91,112 @@ test('seeded first-ten-minute counts track the phase curve within two spawns', (
   const repeat = simulate(42, 0.25);
   assert.deepEqual(repeat, runs.get(42));
   assert.notDeepEqual(repeat.layout, runs.get(17).layout);
+});
+
+function pickupFixture(index) {
+  const run = fixture(42, 1, 'solo', index / 6);
+  const { CC, E, H } = run;
+  const hero = CC.state.player;
+  const drop = () => {
+    for (let i = 0; i < 21; i++) H.state.powerups.onKill(hero);
+    E.update(0.05);
+  };
+  const target = (type = 'direwolf', x = hero.x - 55, y = hero.y) => {
+    const enemy = CC.Enemies.spawn(type, x, y, 1, { awake: true, bossIdx: 0 });
+    enemy.hp = enemy.maxHp = 500;
+    return enemy;
+  };
+  return { ...run, hero, drop, target };
+}
+
+test('Plains pickups double damage and XP and shield incoming hits until their timers expire', () => {
+  const attack = pickupFixture(4);
+  const enemy = attack.target();
+  const before = attack.CC.Enemies.damage(enemy, 10, 'arcane');
+  attack.drop();
+  assert.equal(attack.CC.Enemies.damage(enemy, 10, 'arcane'), before * 2);
+  attack.advance(12.25);
+  assert.equal(attack.CC.Enemies.damage(enemy, 10, 'arcane'), before);
+
+  const level = pickupFixture(3);
+  const startXp = level.hero.xp;
+  level.CC.Classes.gainXp(1);
+  const earned = level.hero.xp - startXp;
+  level.drop();
+  level.CC.Classes.gainXp(1);
+  assert.equal(level.hero.xp - startXp, earned * 3);
+  level.E.end();
+  assert.equal(level.H.powerupActive('xp', level.hero), false);
+
+  const guard = pickupFixture(1);
+  guard.hero._poison = { t: 3 };
+  guard.hero.wound = { t: 3 };
+  guard.drop();
+  assert.equal(guard.hero._poison, null);
+  assert.equal(guard.hero.wound, null);
+  const hp = guard.hero.hp;
+  assert.equal(guard.CC.Classes.damage(guard.hero, 10), 0);
+  guard.CC.Enemies._blast(guard.hero.x, guard.hero.y, 20, 10);
+  assert.equal(guard.hero.hp, hp);
+  guard.advance(8.25);
+  guard.CC.Enemies._blast(guard.hero.x, guard.hero.y, 20, 10);
+  assert.ok(guard.hero.hp < hp);
+});
+
+test('Rapid Shot auto-targets enemies with a clear path and Guardian fires and casts frost', () => {
+  const rapid = pickupFixture(0);
+  const behindWall = rapid.target('direwolf', 600, 360);
+  const nearby = rapid.target('direwolf', 380, 360);
+  rapid.drop();
+  rapid.advance(0.70, undefined, 0.025);
+  assert.ok(500 - nearby.hp >= 3 * Math.round(rapid.hero.stats.dmg * 0.55));
+  assert.equal(behindWall.hp, 500);
+
+  const ally = pickupFixture(5);
+  const primary = ally.target();
+  const secondary = ally.target('direwolf', primary.x - 15, primary.y + 10);
+  ally.drop();
+  assert.equal(primary.slow, 2);
+  assert.equal(secondary.slow, 2);
+  const afterSpell = primary.hp;
+  ally.advance(1.20);
+  assert.ok(primary.hp < afterSpell);
+});
+
+test('director-spawned enemies drop a power-up that can be collected by walking over it', () => {
+  const { CC, E, H, advance } = fixture(42, 1, 'solo', 0.5);
+  const hero = CC.state.player;
+  CC.addKill = enemy => E.onKill(enemy);
+  advance(25, enemies => {
+    for (const enemy of enemies) {
+      enemy.x = hero.x + 36;
+      enemy.y = hero.y;
+      CC.Enemies.damage(enemy, enemy.hp * 2, 'arcane');
+    }
+    enemies.length = 0;
+  });
+  assert.ok(E.state.kills >= 16);
+  assert.equal(H.powerupActive('xp', hero), false);
+  hero.x += 36;
+  E.update(0.05);
+  assert.equal(H.powerupActive('xp', hero), true);
+});
+
+test('Bomb kills every live monster including an invulnerable boss and clears enemy hazards', () => {
+  const { CC, E, drop, target } = pickupFixture(2);
+  const normal = target();
+  const boss = target('boss');
+  boss.invuln = 10;
+  const skeleton = target('skeleton');
+  skeleton.collapsed = true;
+  CC.addKill = enemy => E.onKill(enemy);
+  CC.Enemies.projectiles.push({ hostile: true });
+  CC.Enemies.zones.push({});
+  drop();
+  assert.ok([normal, boss, skeleton].every(enemy => enemy.dead && enemy.hp === 0));
+  assert.equal(E.state.kills, 3);
+  assert.equal(CC.Enemies.projectiles.length, 0);
+  assert.equal(CC.Enemies.zones.length, 0);
 });
 
 test('crow and raven hits can blind in the campaign but not in Plains Survival', () => {

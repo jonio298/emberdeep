@@ -112,10 +112,12 @@
   ];
   var BLOOD = '#7a0f14', BONE = '#d8d4c0';
   var nextId = 1;
+  var clearingForBomb = false;
 
   function playerOf() { return CC.state && CC.state.player; }
   function hurtPlayer(p, amt, e, kind) {
     if (p && p.isDefenseBox) return CC.Defense.damageBox(amt, e, kind); // Town Defense: monsters chew on the supply box
+    if (CC.Hordes?.powerupActive?.('shield', p)) return 1;
     if (p && p.pw && p.pw.shield > 0 && !(CC.Multiplayer && CC.Multiplayer.remote === p)) { // shield power-up: the blow is turned aside
       if (CC.fx && CC.fx.text && Math.random() < 0.25) CC.fx.text(p.x, p.y - 16, 'BLOCKED', '#9fe3ff', 10);
       return 1;
@@ -348,6 +350,7 @@
       }
       if (e.boss && e.invuln > 0) return 0;
       if (e.collapsed) return 0; // a collapsed skeleton is just a pile of bones until it reassembles
+      if (CC.Hordes?.powerupActive?.('damage', playerOf())) amount *= 2;
       type = type || 'melee';
       if (e.fireproof && type === 'fire') amount *= 0.3;
       if (e.ghost && e.eth && type === 'melee') amount *= 0.35; // faded ghosts barely feel steel
@@ -376,6 +379,17 @@
       return dealt;
     },
 
+    clearForPlainsBomb: function () {
+      clearingForBomb = true;
+      try {
+        for (const e of this.list.slice()) if (!e.dead) this._kill(e);
+      } finally {
+        clearingForBomb = false;
+      }
+      this.zones.length = 0;
+      this.projectiles.length = 0;
+    },
+
     _phase2: function (e) {
       e.phase = 2; e.invuln = 1.2; e.state = 'idle'; e.t = 1.2; e.tele = null; e.spd *= 1.3; e.atkIdx = 0; e.enraged = true;
       e.hidden = false; e.chain = 0; this.zones.length = 0; if (e.bar) e.bar.phase = 2;
@@ -385,7 +399,7 @@
 
     _kill: function (e) {
       if (e.dead) return;
-      if (e.type === 'skeleton' && !e.rose) { // first death: collapse into bones, rise again at 40% HP
+      if (!clearingForBomb && e.type === 'skeleton' && !e.rose) { // first death: collapse into bones, rise again at 40% HP
         e.rose = true; e.collapsed = true; e.state = 'collapsed'; e.t = 1.6; e.hp = Math.ceil(e.maxHp * 0.4); e.burn = 0; e.tele = null; e.shield = 0;
         this._remains(e, true); this._goreBurst(e, true);
         if (CC.fx && CC.fx.burst) CC.fx.burst(e.x, e.y, BONE, 12, 90);
@@ -393,27 +407,29 @@
       }
       e.dead = true; e.hp = 0; e.deadT = 0;
       if (CC.Defense && CC.Defense.onKill) CC.Defense.onKill(e); // Town Defense: monsters can drop power-ups
-      this._remains(e); this._goreBurst(e, false);
-      if (CC.fx && CC.fx.burst) CC.fx.burst(e.x, e.y, (TYPES[e.type] && TYPES[e.type].blood) || BLOOD, e.boss ? 30 : 8, e.boss ? 180 : 80);
-      if (CC.fx && CC.fx.burst) CC.fx.burst(e.x, e.y, e.color, e.boss ? 40 : 10, e.boss ? 200 : 100);
+      if (!clearingForBomb) {
+        this._remains(e); this._goreBurst(e, false);
+        if (CC.fx && CC.fx.burst) CC.fx.burst(e.x, e.y, (TYPES[e.type] && TYPES[e.type].blood) || BLOOD, e.boss ? 30 : 8, e.boss ? 180 : 80);
+        if (CC.fx && CC.fx.burst) CC.fx.burst(e.x, e.y, e.color, e.boss ? 40 : 10, e.boss ? 200 : 100);
+      }
       if (CC.addKill) CC.addKill(e);
       var xp = CC.Endless && !CC.Endless.usesInstantXp() ? 0 : Math.round(e.xp * (1 + 0.1 * (e.floor - 1)));
       if (xp && CC.Multiplayer && CC.Multiplayer.isHost && CC.Multiplayer.isHost())
         CC.Multiplayer.broadcastKill(xp);
       var p = playerOf();
       if (xp && p && CC.Classes && CC.Classes.gainXp) CC.Classes.gainXp(xp);
-      if (p && CC.Classes && CC.Classes.onKill) CC.Classes.onKill(e);
+      if (p && CC.Classes && CC.Classes.onKill) CC.Classes.onKill(e, clearingForBomb);
       if (e.boss) this._bossDeath(e);
       else if (CC.Loot && CC.Loot.roll) CC.Loot.roll(e, e.floor, 0);
-      if (e.type === 'slime' && e.size > 0) {
+      if (!clearingForBomb && e.type === 'slime' && e.size > 0) {
         for (var i = 0; i < 2; i++) {
           var s = make('slime', e.x + (i ? 8 : -8), e.y, e.floor, { size: e.size - 1 }); s.asleep = false; s.cd = 0.6; this.list.push(s);
         }
       }
-      if (e.affixes && e.affixes.indexOf('Explosive') >= 0) {
+      if (!clearingForBomb && e.affixes && e.affixes.indexOf('Explosive') >= 0) {
         this._blast(e.x, e.y, 56, e.dmg * 1.5);
       }
-      if (e.boss && CC.fx && CC.fx.shake) CC.fx.shake(12);
+      if (!clearingForBomb && e.boss && CC.fx && CC.fx.shake) CC.fx.shake(12);
     },
     // death remains: blood pool + splatter, bones (skeletal types), ichor (insects/snakes), scorch (fire types), fading wisps (ghosts)
     _remains: function (e, bonesOnly) {
@@ -668,8 +684,8 @@
       var fx = CC.fx, k;
       e.hidden = false; e.tele = null; e.invuln = 0; e.lootDrops = [];
       this.zones.length = 0;
-      for (k = 0; k < 3; k++) this.projectiles.push({ x: e.x, y: e.y, vx: 0, vy: 0, r: 0, life: 0.35 + k * 0.2, ring: 50 + k * 40, color: k % 2 ? '#ffd24a' : e.color, fx: true });
-      if (fx) {
+      if (!clearingForBomb) for (k = 0; k < 3; k++) this.projectiles.push({ x: e.x, y: e.y, vx: 0, vy: 0, r: 0, life: 0.35 + k * 0.2, ring: 50 + k * 40, color: k % 2 ? '#ffd24a' : e.color, fx: true });
+      if (fx && !clearingForBomb) {
         if (fx.burst) { fx.burst(e.x, e.y, '#ffd24a', 36, 240); fx.burst(e.x, e.y, '#ffffff', 20, 120); }
         if (fx.text) fx.text(e.x, e.y - 40, e.name + ' DEFEATED', '#ffd24a', 15);
         // Non-critical boss deaths must not freeze the game; lethal crits own this effect.
