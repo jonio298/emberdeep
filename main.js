@@ -111,7 +111,11 @@
     decals.push({ x: x, y: y, r: r, c: color || '#5a0a0e', rot: Math.random() * 3.14, sq: 0.5 + Math.random() * 0.4 });
   }
 
-  CC.addKill = function () { CC.state.kills++; };
+  CC.addKill = function (enemy) {
+    if (CC.Endless?.active()) {
+      if (enemy) { CC.state.kills++; CC.Endless.onKill(enemy); }
+    } else CC.state.kills++;
+  };
 
   /* ---------- player fallback so the shell runs alone ---------- */
   function stubPlayer(classId) {
@@ -300,6 +304,7 @@
     call('SaveGame', 'save'); return true;
   };
   CC.nextFloor = function () {
+    if (CC.Endless?.active()) return CC.Endless.stairs();
     call('CriticalScene', 'reset');
     if(CC.state.area==='tree-ascent'){
       if(!call('TreeAscent','canAdvance'))return;
@@ -352,7 +357,7 @@
     loadFloor();
   };
 
-  CC.returnToTown = function () { CC.state.fromForest = CC.state.mode === 'dungeon'; CC.setMode('town'); };
+  CC.returnToTown = function () { if (CC.Endless?.inSession()) return; CC.state.fromForest = CC.state.mode === 'dungeon'; CC.setMode('town'); };
 
   function loadFloor() {
     var s=CC.state,p=s.player,map,E=CC.Enemies,L=CC.Loot,
@@ -642,6 +647,7 @@
   function interact() {
     var s = CC.state, p = s.player;
     if (!p) return;
+    if (CC.Endless?.active()) { CC.Endless.interact(); return; }
     if (CC.Multiplayer && CC.Multiplayer.isGuest && CC.Multiplayer.isGuest() && s.map) { // co-op guest: the host owns chests and stairs
       var gch = s.map.chests || [], gi;
       for (gi = 0; gi < gch.length; gi++) if (!gch[gi].opened && Math.hypot(p.x - gch[gi].x, p.y - gch[gi].y) <= 36) { CC.Multiplayer.requestChest(gi); return; }
@@ -923,10 +929,14 @@
     if (e.repeat || keys[e.code]) return;
     call('CriticalScene', 'skip');
     keys[e.code] = true;
-    if (CC.Waypoints && CC.Waypoints.isOpen && CC.Waypoints.isOpen() &&
+    if (CC.Endless?.state?.retiring) {
+      if (e.code === 'Escape') CC.Endless.retire(false);
+      return;
+    }
+    if (!CC.Endless?.active() && CC.Waypoints && CC.Waypoints.isOpen && CC.Waypoints.isOpen() &&
         CC.Waypoints.key(e.code)) { e.preventDefault(); return; }
-    if (CC.Camp && CC.Camp.isOpen && CC.Camp.isOpen() && CC.Camp.key(e.code)) return;
-    if (playing() && CC.HauntedPond && CC.HauntedPond.isTalking && CC.HauntedPond.isTalking()) {
+    if (!CC.Endless?.active() && CC.Camp && CC.Camp.isOpen && CC.Camp.isOpen() && CC.Camp.key(e.code)) return;
+    if (!CC.Endless?.active() && playing() && CC.HauntedPond && CC.HauntedPond.isTalking && CC.HauntedPond.isTalking()) {
       if (e.code === 'KeyF' || e.code === 'Enter' || e.code === 'Space') pressAction('interact');
       return;
     }
@@ -1028,43 +1038,54 @@
   }
 
   function update(dt) {
-    var s = CC.state, p = s.player;
+    var s = CC.state, p = s.player, endless = CC.Endless?.active();
+    if (s.mode === 'endless-summary') return;
     time += dt;
     call('UI', 'update', dt);
     call('Settings', 'tick', dt);
     updatePresentationFx(dt);
-    call('Waypoints','update',dt);
-    call('EggQuest','update',dt);
-    call('RockPass','update',dt);
     call('Audio','update',dt);
-    if(!s.coop)call('SaveGame','auto',dt);
-    else call('SaveGame','autoCharacter',dt);
+    if (!endless) {
+      call('Waypoints','update',dt);
+      call('EggQuest','update',dt);
+      call('RockPass','update',dt);
+      if(!s.coop)call('SaveGame','auto',dt);
+      else call('SaveGame','autoCharacter',dt);
+    }
     if (uiOpen() !== uiWas) { uiWas = uiOpen(); resetInputHeld(); }
-    if (call('Eagle', 'sceneActive')) return; // the egg is hatching: the game waits
+    if (!endless && call('Eagle', 'sceneActive')) return; // the egg is hatching: the game waits
     // In a co-op session the world is shared, so a menu or a level-up perk popup must NOT freeze it: that froze every
     // monster, the crossbow and the partner's view too. The hero just stops responding to the controls meanwhile.
     var campOpen = !!(CC.Camp && CC.Camp.isOpen && CC.Camp.isOpen());
     var coopLive = !!(s.coop && CC.Multiplayer && CC.Multiplayer.active), menuOpen = uiWas || (p && p.perkOpen) || campOpen;
-    if (paused || (menuOpen && !coopLive) ||
+    if (endless) {
+      var endlessFlags = { paused: paused, transition: !!tunnel || !!call('CriticalScene', 'isActive') };
+      if (!CC.Endless.canUpdate(endlessFlags)) {
+        CC.Endless.updateBlocked(dt, endlessFlags);
+        return;
+      }
+      CC.Endless.checkDeath();
+      if (!CC.Endless.active()) return;
+    } else if (paused || (menuOpen && !coopLive) ||
         (CC.Waypoints && CC.Waypoints.isOpen && CC.Waypoints.isOpen())) return;
     // Freeze hero movement and combat until this dialogue/cinematic has finished.
-    if (s.area === 'plains' && CC.HauntedPond && CC.HauntedPond.isTalking && CC.HauntedPond.isTalking()) {
+    if (!endless && s.area === 'plains' && CC.HauntedPond && CC.HauntedPond.isTalking && CC.HauntedPond.isTalking()) {
       pollInput();
       if (CC.input.interact) call('HauntedPond', 'advanceDialogue');
       return;
     }
-    if (s.area === 'plains' && CC.HauntedPond && CC.HauntedPond.isCinematic && CC.HauntedPond.isCinematic()) {
+    if (!endless && s.area === 'plains' && CC.HauntedPond && CC.HauntedPond.isCinematic && CC.HauntedPond.isCinematic()) {
       pollInput();
       if (!(CC.Multiplayer && CC.Multiplayer.isGuest && CC.Multiplayer.isGuest())) call('Enemies', 'update', dt);
       call('Vfx', 'update', dt);
       return;
     }
-    noteWorld();
-    if (coopLive) { // in town or a tent the world is not paused: the host simulates it, and a guest keeps reporting to the party
+    if (!endless) noteWorld();
+    if (coopLive && !endless) { // in town or a tent the world is not paused: the host simulates it, and a guest keeps reporting to the party
       if (coopHostAway()) bgWorld(dt);
       else if (isAwayNow()) call('Multiplayer', 'tick', dt);
     }
-    call('Portal', 'update', dt);
+    if (!endless) call('Portal', 'update', dt);
     if (tunnel) { updateTunnel(dt); return; }
     if (s.mode === 'dead' && s.coop && s.area === 'defense' && CC.Defense) { CC.Defense.deadUpdate(dt); return; } // the town fights on while you are down
     var beforeX=p&&p.x,beforeY=p&&p.y;
@@ -1085,7 +1106,7 @@
     if (s.area === 'defense' && CC.Defense && CC.Defense.rapidActive && CC.Defense.rapidActive()) CC.input.attack = true; // rapid fire: autoshooting
     if (CC.input.potion) CC.usePotion();
     if (CC.input.mpotion) CC.useManaPotion();
-    if (CC.Camp && CC.Camp.isInside && CC.Camp.isInside()) {
+    if (!endless && CC.Camp && CC.Camp.isInside && CC.Camp.isInside()) {
       call('Classes', 'update', dt, { noCombat: true });
       if (p && p.stub) movePlayer(p, CC.input.moveX * p.speed * dt, CC.input.moveY * p.speed * dt);
       call('Camp', 'update', dt);
@@ -1104,13 +1125,18 @@
         call('Town', 'update', dt);
         if (!has('Town', 'update') && p && !p.stub) call('Classes', 'update', dt, { noCombat: true });
       } else {
-        call('Classes', 'update', dt);
-        if(!(CC.Multiplayer&&CC.Multiplayer.isGuest()))call('Enemies', 'update', dt);
-        call('SpellCharge','update',dt);
+        if (endless) {
+          CC.Endless.update(dt);
+          if (!CC.Endless.active()) return;
+        }
+        var endlessGuest = endless && CC.Endless.isGuest();
+        if (!endless || !playerDead()) call('Classes', 'update', dt);
+        if(!endlessGuest && !(CC.Multiplayer&&CC.Multiplayer.isGuest()))call('Enemies', 'update', dt);
+        if (!endless || !playerDead()) call('SpellCharge','update',dt);
         call('Vfx','update',dt);
-        call('Charge', 'update', dt, !!(keys.Space || held.attack > 0) && !(s.area === 'defense' && CC.Defense && CC.Defense.operatingNow && CC.Defense.operatingNow())); // hold attack to charge; a tap is the normal attack
-        if(!(CC.Multiplayer&&CC.Multiplayer.isGuest()))call('Loot', 'update', dt);
-        if(!(CC.Multiplayer&&CC.Multiplayer.isGuest()))call('Breakables','update',dt);
+        if (!endless || !playerDead()) call('Charge', 'update', dt, !!(keys.Space || held.attack > 0) && !(s.area === 'defense' && CC.Defense && CC.Defense.operatingNow && CC.Defense.operatingNow())); // hold attack to charge; a tap is the normal attack
+        if(!endlessGuest && !(CC.Multiplayer&&CC.Multiplayer.isGuest()))call('Loot', 'update', dt);
+        if(!endlessGuest && !(CC.Multiplayer&&CC.Multiplayer.isGuest()))call('Breakables','update',dt);
         call('Multiplayer','tick',dt);
         if (s.area === 'defense') call('Defense','update',dt);
         var isGuestNow = !!(CC.Multiplayer && CC.Multiplayer.isGuest && CC.Multiplayer.isGuest());
@@ -1119,7 +1145,7 @@
         call('Wounds','update',dt);call('SmokeBomb','update',dt);call('LevelBurst','update',dt);call('HeroBlood','update',dt);call('DrainChain','update',dt);
         // Walk through the living tunnel and defeat its miniboss before entering the plains.
         var ex = s.map && s.map.stairs;
-        if (ex && p && !p.stub && !isGuestNow && (
+        if (!endless && ex && p && !p.stub && !isGuestNow && (
             (s.area === 'forest' && ((CC.EggQuest &&
               CC.EggQuest.tunnelUnlocked()) || s.coop)) ||
             s.area === 'plains' ||
@@ -1130,12 +1156,13 @@
             s.area === 'tree-tunnel' ? 'EMERGING INTO THE PLAINS...' : 'DOWN INTO THE BARROW...' };
           resetInputHeld();
         }
-        if (playerDead()) { s.mode = 'dead'; if (s.area === 'defense') call('Defense','onDown'); resetInputHeld(); call('SpellCharge','clear'); CC.fx.shake(10); }
+        if (endless) { CC.Endless.checkDeath(); if (!CC.Endless.active()) return; }
+        else if (playerDead()) { s.mode = 'dead'; if (s.area === 'defense') call('Defense','onDown'); resetInputHeld(); call('SpellCharge','clear'); CC.fx.shake(10); }
       }
       if (s.mode !== 'town' && s.mode !== 'dungeon') return;
     }
 
-    if(p&&s.mode!=='dead')call('EggQuest','onMovement',p.x-beforeX,p.y-beforeY);
+    if(!endless&&p&&s.mode!=='dead')call('EggQuest','onMovement',p.x-beforeX,p.y-beforeY);
     // camera follows with light smoothing
     if (p && (s.mode === 'town' || s.mode === 'dungeon')) {
       var cf = CC.camFocus, fx0 = cf ? p.x + (cf.x - p.x) * cf.k : p.x, fy0 = cf ? p.y + (cf.y - p.y) * cf.k : p.y;
@@ -1263,7 +1290,7 @@
   }
 
   function drawWorld() {
-    var s = CC.state, v = call('CriticalScene', 'view', cam.w, cam.h);
+    var s = CC.state, v = call('CriticalScene', 'view', cam.w, cam.h), endless = CC.Endless?.active();
     var ox = shakeMag ? (Math.random() - 0.5) * shakeMag * 2 : 0;
     var oy = shakeMag ? (Math.random() - 0.5) * shakeMag * 2 : 0;
     var rx = cam.x, ry = cam.y, rw = cam.w, rh = cam.h;
@@ -1286,7 +1313,7 @@
     ctx.save();
     ctx.scale(activeZoom, activeZoom);
     ctx.fillStyle = '#0b0812'; ctx.fillRect(0, 0, cam.w, cam.h);
-    if (CC.Camp && CC.Camp.isInside && CC.Camp.isInside()) {
+    if (!endless && CC.Camp && CC.Camp.isInside && CC.Camp.isInside()) {
       call('Camp', 'drawScene', ctx, cam);
       call('Multiplayer', 'drawWorld', ctx, cam); // a partner in the same camp
       call('Classes', 'drawPlayer', ctx, cam);
@@ -1299,13 +1326,16 @@
       if (s.area === 'tree-tunnel') call('TreeTunnel', 'draw', ctx, dcam);
       else if (has('Dungeon', 'draw')) call('Dungeon', 'draw', ctx, dcam);
       else drawFallbackFloor();
+      if (endless) CC.Endless.drawLighting(ctx, cam);
       drawDecals();
       call('Wounds','drawGround',ctx,cam);
       call('Breakables','draw',ctx,cam);
       call('SmokeBomb','drawBack',ctx,cam); // the dark body of the thief's smoke, on the ground under everyone
-      call('Waypoints','draw',ctx,cam);
-      call('Camp', 'drawWorldMarker', ctx, cam); // grounded below the hero, not painted over them
-      call('Portal', 'drawWorld', ctx, cam);
+      if (!endless) {
+        call('Waypoints','draw',ctx,cam);
+        call('Camp', 'drawWorldMarker', ctx, cam);
+        call('Portal', 'drawWorld', ctx, cam);
+      }
       call('Loot', 'draw', ctx, cam);
       call('Enemies', 'draw', ctx, cam);
       call('Classes', 'draw', ctx, cam);
@@ -1313,21 +1343,22 @@
       call('Wounds','draw',ctx,cam);call('LevelBurst','draw',ctx,cam);call('HeroBlood','draw',ctx,cam);call('DrainChain','draw',ctx,cam);
       call('Multiplayer','drawWorld',ctx,cam);
       call('Defense','drawWorld',ctx,cam);
-      if(!s.coop)call('EggQuest','drawCompanion',ctx,cam);
+      if(!endless && !s.coop)call('EggQuest','drawCompanion',ctx,cam);
       if(s.area==='tree-ascent')call('TreeAscent','drawEggs',ctx,cam);
       call('Charge', 'draw', ctx, cam);
       call('SmokeBomb', 'drawFront', ctx, cam); // pale billows, wisps and glints over the top
-      call('QuestNav', 'draw', ctx, cam); // the faint arrow toward the next quest step
+      if (!endless) call('QuestNav', 'draw', ctx, cam);
       call('BossArrows', 'draw', ctx, cam); // purple arrows to activated bosses and special monsters that are off screen
       if (CC.Dungeon && typeof CC.Dungeon.drawFront === 'function') CC.Dungeon.drawFront(ctx, dcam); // trees and props in front of the hero redraw over the entities
       if (CC.Dungeon && CC.Dungeon.realm) CC.Dungeon.drawLighting(ctx, dcam); // open-air maps light the whole scene after the entities
-      if (s.area === 'plains') {
+      if (!endless && s.area === 'plains') {
         call('HauntedPond', 'drawBossFocus', ctx, dcam); // visible demon and its mist attack warnings above fog
         call('HauntedPond', 'drawCombatFocus', ctx, dcam); // projectiles and slash arcs above opaque mist
         call('HauntedPond', 'drawHeroFocus', ctx, dcam); // player is always on top of pond fog
       }
       call('Vfx','draw',ctx,cam); // spell particles, nova rings, explosions and lightning
       call('Vfx','drawDarkness',ctx,cam); // the Patchwork Horror's dark
+      if (endless) CC.Endless.draw(ctx, cam);
       call('SpellCharge','draw',ctx,cam); // illuminated aiming circle overlays the ground
     } else {
       if (has('Town', 'draw')) call('Town', 'draw', ctx, cam);
@@ -1402,6 +1433,7 @@
     if (s.mode === 'dungeon') {
       label(s.area === 'forest' ? 'Giant Forest' : s.area === 'tree-tunnel' ? 'Hollow Tree' :
         s.area === 'plains' ? 'Rolling Plains' : s.area === 'rocky-pass' ? 'Rocky Pass' : s.area === 'village' ? 'Abandoned Village' : s.area === 'village-cellar' ? 'The Cellar' : 'Floor ' + s.floor, W - 12, top + 28, 13, '#e8dcc4', 'right');
+      if (CC.Endless?.active()) return;
       if (s.area === 'defense') addButton(W - 78, top + 42, 66, 26, 'Retreat', '#5a2a22', function () { CC.returnToTown(); });
       else if (!(CC.Camp && CC.Camp.isInside && CC.Camp.isInside())) addButton(W - 84, top + 42, 72, 26, 'TP-Town', '#4b2a78', function () { call('Portal', 'place'); });
     } else {
@@ -1590,13 +1622,20 @@
     ctx.save(); ctx.translate(W / 2, Math.max(50, H * 0.12)); ctx.scale(pulse, pulse);
     label('EMBERDEEP', 0, 0, Math.min(44, W / 8.5), '#ffb347');
     ctx.restore();
+    if (titlePage === 'endless' && CC.Endless) {
+      CC.Endless.drawSelector(ctx, W, H, addButton, function () { titlePage = 'mode'; });
+      return;
+    }
     if(titlePage==='mode'){
       label('CHOOSE YOUR ADVENTURE', W/2, H*.25, 14, '#cfc5ff');
       addButton(W/2-125,H*.37,250,58,'SINGLE PLAYER','#645035',function(){titlePage='single';});
       addButton(W/2-125,H*.37+72,250,58,'MULTIPLAYER','#47356d',function(){
         if(CC.Multiplayer)CC.Multiplayer.openLobby();
       });
-      label('Co-op dungeon adventures for two',W/2,H*.37+151,11,'#baa7c3');
+      if (CC.Endless) addButton(W/2-125,H*.37+138,250,38,'ENDLESS','#674238',function(){
+        CC.Endless.openSelector(); titlePage = 'endless';
+      });
+      else label('Co-op dungeon adventures for two',W/2,H*.37+151,11,'#baa7c3');
       if(call('SaveGame','exists'))addButton(W/2-125,H*.37+181,250,44,'CONTINUE','#365848',function(){
         CC.state.coop=false;titlePage='continue';
       });
@@ -1682,7 +1721,8 @@
   function draw() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ui = [];
-    var m = CC.state.mode;
+    var m = CC.state.mode, endless = CC.Endless?.active();
+    if (m === 'endless-summary') { CC.Endless.drawSummary(ctx, W, H, addButton); return; }
     if (m === 'title') { drawTitle(); return; }
     drawWorld();
     if (m === 'town' || m === 'dungeon' || m === 'dead') drawScreenFx();
@@ -1690,14 +1730,21 @@
     if (m === 'dungeon') call('PerfectWarp', 'drawScreen', ctx, W, H, cam.x, cam.y, curZoom || zoom); // a perfect shot warps the world and dims the rest
     if (m === 'dungeon') call('CriticalScene', 'drawScreen', ctx, W, H);
     if (m === 'dungeon') call('Wounds', 'drawScreen', ctx, W, H);
-    if ((m === 'dungeon' || m === 'dead') && call('AbandonedVillage', 'drawCinema', ctx, W, H) && m === 'dungeon') return; // the tree's strike covers everything, HUD included
+    if (!endless && (m === 'dungeon' || m === 'dead') && call('AbandonedVillage', 'drawCinema', ctx, W, H) && m === 'dungeon') return; // the tree's strike covers everything, HUD included
     // No floating HUD/buttons/other overlays during the brief critical close-up.
     if(m==='dungeon'&&call('CriticalScene','isActive'))return;
     if (tunnel && m === 'dungeon') drawTunnel();
     if (m === 'town' || m === 'dungeon') {
       drawHud(); drawControls();
-      call('Difficulty', 'draw', ctx, W, H, function (x, y, w, h, cb) { ui.push({ x: x, y: y, w: w, h: h, cb: cb, drag: cb }); }); // the permanent difficulty slider, top middle
-      call('EggQuest','drawHud',ctx,W,H);
+      var difficultyY = endless ? 46 : 0;
+      ctx.save();
+      ctx.translate(0, difficultyY);
+      call('Difficulty', 'draw', ctx, W, H, function (x, y, w, h, cb) {
+        ui.push({ x: x, y: y + difficultyY, w: w, h: h, cb: cb, drag: cb });
+      });
+      ctx.restore();
+      if (endless) CC.Endless.drawHud(ctx, W, H, addButton);
+      else call('EggQuest','drawHud',ctx,W,H);
       call('Defense','drawScreen',ctx,W,H,addButton);
       call('Multiplayer','drawScreen',ctx,W,H);
       if (m === 'town') drawFallbackTownPanel();
@@ -1710,17 +1757,17 @@
       var hudWidth = Math.min(214,Math.max(150,W-8-reservedLeft));
       var hudLeft = W-8-hudWidth;
       var quickWidth = Math.min(188,hudWidth),quickGap = 5;
-      var quickX = Math.max(hudLeft,W-14-quickWidth),quickY = 116 + mpHudShift;
+      var quickX = Math.max(hudLeft,W-14-quickWidth),quickY = 116 + mpHudShift + (endless ? 94 : 0);
       var gearW = 28, strip = quickWidth-gearW-quickGap, stripX = quickX+gearW+quickGap;
       var saveWidth = Math.round((strip-quickGap*2)*.34);
       var tentWidth = Math.round((strip-quickGap*2)*.21);
       var pauseWidth = strip-saveWidth-tentWidth-quickGap*2;
       drawGearButton(quickX, quickY, gearW, 30, function () { call('UI', 'open', 'settings'); });
-      addButton(stripX,quickY,saveWidth,30,'Save','#466b53',function(){
+      if (!endless) addButton(stripX,quickY,saveWidth,30,'Save','#466b53',function(){
         if(!CC.state.coop&&call('SaveGame','save')&&CC.state.player)
           CC.fx.text(CC.state.player.x,CC.state.player.y-18,'GAME SAVED','#b5efb6',12);
       });
-      if(CC.Camp)drawTentButton(stripX+saveWidth+quickGap,quickY,
+      if(!endless && CC.Camp)drawTentButton(stripX+saveWidth+quickGap,quickY,
         tentWidth,30,function(){
         if(CC.Camp.isInside&&CC.Camp.isInside()){
           call('Camp','interact');
@@ -1755,34 +1802,49 @@
         addButton(pmX, pmY + 34, 200, 40, 'Resume', '#4a3a6a', togglePause);
         addButton(pmX, pmY + 82, 200, 40, 'Inventory', '#5a4a2a', function () { call('UI', 'open', 'inv'); });
         addButton(pmX, pmY + 130, 200, 40, 'Settings', '#3a4a6a', function () { call('UI', 'open', 'settings'); });
-        addButton(pmX, pmY + 178, 200, 40, Date.now() < pauseSaved ? 'Saved!' : 'Save', '#466b53', function () {
+        if (endless) addButton(pmX, pmY + 178, 200, 40, 'Retire', '#6a3030', function () { CC.Endless.retire(); });
+        else addButton(pmX, pmY + 178, 200, 40, Date.now() < pauseSaved ? 'Saved!' : 'Save', '#466b53', function () {
           if (!CC.state.coop && call('SaveGame', 'save')) { pauseSaved = Date.now() + 1500; if (CC.state.player) CC.fx.text(CC.state.player.x, CC.state.player.y - 18, 'GAME SAVED', '#b5efb6', 12); }
         });
-        addButton(pmX, pmY + 226, 200, 40, 'Exit game', '#6a3030', exitToTitle);
+        if (!endless) addButton(pmX, pmY + 226, 200, 40, 'Exit game', '#6a3030', exitToTitle);
       }
       var addHit = function (x, y, w, h, cb, drag) { ui.push({ x: x, y: y, w: w, h: h, cb: cb, drag: drag ? cb : null }); }; // drag: a slider that follows the finger
       if (m === 'town') call('Town', 'drawPanel', ctx, W, H, addHit);
       else if (CC.state.area === 'forest') call('Forest', 'drawOverlay', ctx, W, H);
-      else if (CC.state.area === 'plains') call('Plains', 'drawOverlay', ctx, W, H);
-      if (CC.state.area === 'plains' || CC.state.area === 'rocky-pass') call('RockPass', 'drawOverlay', ctx, W, H);
+      else if (!endless && CC.state.area === 'plains') call('Plains', 'drawOverlay', ctx, W, H);
+      if (!endless && (CC.state.area === 'plains' || CC.state.area === 'rocky-pass')) call('RockPass', 'drawOverlay', ctx, W, H);
       if (CC.state.area === 'village' || CC.state.area === 'village-cellar') call('AbandonedVillage', 'drawOverlay', ctx, W, H);
       if (CC.state.area === 'tree-tunnel') call('TreeTunnel', 'drawHud', ctx, W, H);
       if (CC.state.area === 'tree-ascent') call('TreeAscent','drawHud',ctx,W,H);
       call('MonsterMelee', 'drawStatus', ctx, W, H);
       call('UI', 'drawHud', ctx, W, H, addHit);   // CHAR and QUEST open the same tabbed journal
       call('UI', 'draw', ctx, W, H, addHit);
-      call('Camp', 'drawUI', ctx, W, H, addHit);
-      call('Waypoints','drawUI',ctx,W,H,addHit);
-      call('Eagle','drawScene',ctx,W,H,addHit); // hatching scene and naming, above everything
+      if (!endless) {
+        call('Camp', 'drawUI', ctx, W, H, addHit);
+        call('Waypoints','drawUI',ctx,W,H,addHit);
+        call('Eagle','drawScene',ctx,W,H,addHit);
+      }
     } else if (m === 'dead') {
       drawHud(); call('Defense','drawScreen',ctx,W,H,addButton); drawDead();
     }
     if (m === 'town' || m === 'dungeon') call('Classes', 'drawPerkOverlay', ctx); // level-up perk choice: on top of everything
-    if (m === 'town' || m === 'dungeon') call('HoldGuide', 'overlay', ctx, W, H, btns, function (x, y, w, h, cb) { ui.push({ x: x, y: y, w: w, h: h, cb: cb }); }); // the tutorial overlays sit above everything
+    if (endless && !paused && !uiOpen() && !CC.state.player.perkOpen) CC.Endless.drawOverlay(ctx, W, H, addButton);
+    if (endless && CC.Endless.state.retiring) { ui = []; CC.Endless.drawRetire(ctx, W, H, addButton); }
+    if (!endless && (m === 'town' || m === 'dungeon')) call('HoldGuide', 'overlay', ctx, W, H, btns, function (x, y, w, h, cb) { ui.push({ x: x, y: y, w: w, h: h, cb: cb }); }); // the tutorial overlays sit above everything
   }
 
   /* ---------- main loop ---------- */
   var last = 0, acc = 0;
+  CC.closeEndlessOverlays = function () {
+    paused = false; uiWas = false; tunnel = null; hitStopLeft = 0;
+    flashT = hurtT = shakeMag = beat = 0; lastHp = null;
+    particles.length = texts.length = decals.length = 0;
+    resetInputHeld();
+    call('UI', 'reset');
+    call('CriticalScene', 'reset');
+    call('Vfx', 'clear', true);
+    ['Classes', 'Wounds', 'LevelBurst', 'HeroBlood', 'DrainChain', 'SmokeBomb', 'SpellCharge'].forEach(function (name) { call(name, 'clear'); });
+  };
   CC.setPaused = function (v) { paused = !!v; resetInputHeld(); }; // used by the beta notepad (betanotes.js) to hold the game while it is open
   function frame(now) {
     var dt = Math.min(0.1, (now - last) / 1000 || 0), realDt = dt;
@@ -1793,10 +1855,10 @@
       else {
         dt *= call('CriticalScene', 'rate') || 1;
         acc += dt;
-        if (call('AbandonedVillage', 'frozen') || call('HoldGuide', 'frozen')) acc = 0; // the impaling freeze-frame: the world holds still
+        if (!CC.Endless?.active() && (call('AbandonedVillage', 'frozen') || call('HoldGuide', 'frozen'))) acc = 0; // the impaling freeze-frame: the world holds still
         while (acc >= STEP) { update(STEP); acc -= STEP; }
       }
-      call('BetaNotes', 'tick', realDt, (CC.state.mode === 'town' || CC.state.mode === 'dungeon') && !paused && !uiOpen() && !(CC.state.player && CC.state.player.perkOpen)); // 20 minutes of real play opens the notepad
+      if (!CC.Endless?.inSession()) call('BetaNotes', 'tick', realDt, (CC.state.mode === 'town' || CC.state.mode === 'dungeon') && !paused && !uiOpen() && !(CC.state.player && CC.state.player.perkOpen)); // 20 minutes of real play opens the notepad
       draw();
     } catch (e) {
       if (!warned.frame) { warned.frame = 1; console.error('frame error', e); }

@@ -28,6 +28,52 @@ function safePlayer(p){
  o.dashT=0;o.dashHit=null;o.criticalPose=null;
  return o;
 }
+// Copy through the same JSON representation as campaign slots.
+function copy(data){return JSON.parse(JSON.stringify(data));}
+S.characterSnapshot=function(s){
+ return copy({classId:s.classId||s.player.classId,charName:s.charName||s.player.name,
+  player:safePlayer(s.player),gold:s.gold||0,inventory:s.inventory||[],
+  potions:s.potions||0,manaPotions:s.manaPotions||0});
+};
+S.restoreCharacterSnapshot=function(data){
+ var p=CC.Classes.create(data.classId);
+ if(!p)return null;
+ var s=copy(data);
+ Object.assign(p,s.player);
+ var hp=p.hp,mana=p.mana;
+ if(CC.Classes.applyItemStats)CC.Classes.applyItemStats(p);
+ p.hp=Math.max(1,Math.min(p.maxHp,hp));
+ p.mana=Math.max(0,Math.min(p.maxMana,mana));
+ p.grabbedBy=null;p.grabT=0;
+ return {player:p,classId:s.classId,charName:s.charName||p.name,gold:s.gold||0,
+  inventory:s.inventory||[],potions:s.potions||0,manaPotions:s.manaPotions||0};
+};
+// Rewards mutate a copy of the destination character and commit it atomically.
+// Mutator false cancels delivery. Failure leaves slot storage and the restored hero intact.
+S.endlessRewardDestination=function(identity,hero){
+ var slot=identity.slot;
+ function baseline(){return slot?read(slot):S.characterSnapshot(hero);}
+ return {
+  read:function(){var data=baseline();return data?copy(data):null;},
+  deliver:function(mutate){
+   var data=baseline(),n=slot;
+   if(!data)return {ok:false,reason:'missing-character'};
+   if(!n){
+    for(n=1;n<=MAX&&read(n);n++){}
+    if(n>MAX)return {ok:false,reason:'no-empty-slot'};
+   }
+   try{
+    data=copy(data);
+    if(mutate(data)===false)return {ok:false,reason:'cancelled'};
+    if(!slot)data=Object.assign(S.makeCharacterData(identity.classId,identity.name),data);
+    data.savedAt=Date.now();
+    if(!write(n,data))return {ok:false,reason:'storage-unavailable'};
+    slot=n;
+    return {ok:true,slot:n};
+   }catch(e){lastError=String(e);return {ok:false,reason:'storage-unavailable'};}
+  }
+ };
+};
 function valid(d){return !!(d&&d.version===2&&d.player&&d.classId);}
 function read(n){
  if(mem[n]!==undefined)return mem[n];
@@ -79,6 +125,7 @@ S.deleteSlot=function(n,keepCurrent){
  if(!keepCurrent&&current===n)current=0;
 };
 S.save=function(){
+ if(CC.Endless?.inSession())return false;
  var st=storage(),s=CC.state,p=s&&s.player;
  if(!st||!p||s.coop||s.testMode||s.area==='testroom'||p.hp<=0||!(s.mode==='town'||s.mode==='dungeon'))return false;
  try{
@@ -120,19 +167,23 @@ S.auto=function(dt){
 
 /* ---------- characters (shared with multiplayer) ---------- */
 S.getCharacter=function(n){var d=read(n);return d?{slot:n,name:d.charName||(d.player&&d.player.name)||d.classId,hero:d.classId,data:d}:null;};
-// a brand-new character in the first empty slot (0 when all five are taken)
-S.createCharacter=function(classId,name){
- var n,st=storage();
- for(n=1;n<=MAX;n++)if(!read(n))break;
- if(n>MAX||!st||!CC.Classes||!CC.Classes.create)return 0;
- var p=CC.Classes.create(classId);if(!p)return 0;
- var data={version:2,savedAt:Date.now(),classId:classId,charName:String(name||p.name||classId).slice(0,22),player:safePlayer(p),
+S.makeCharacterData=function(classId,name){
+ var p=CC.Classes?.create?.(classId);if(!p)return null;
+ return {version:2,savedAt:Date.now(),classId:classId,charName:String(name||p.name||classId).slice(0,22),player:safePlayer(p),
   area:'town',mode:'town',floor:1,treeFloor:1,x:0,y:0,seed:null,gold:0,kills:0,runGold:0,bestFloor:1,bridgeDown:false,
   potions:2,manaPotions:1,inventory:[],quest:null,waypoints:null,camp:null};
+};
+// A brand-new character in the first empty slot (0 when all five are taken).
+S.createCharacter=function(classId,name){
+ var n;
+ for(n=1;n<=MAX;n++)if(!read(n))break;
+ if(n>MAX||!storage())return 0;
+ var data=S.makeCharacterData(classId,name);if(!data)return 0;
  try{write(n,data);return n;}catch(e){lastError=String(e);return 0;}
 };
 // Co-op progress (level, gear, pack, gold, potions) goes back into the character's slot; where it stood in single player is kept.
 S.saveCharacter=function(){
+ if(CC.Endless?.inSession())return false;
  var s=CC.state,p=s&&s.player,n=s&&s.coopSlot;
  if(!p||!n||p.hp===undefined)return false;
  var d=read(n);if(!d)return false;

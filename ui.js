@@ -573,6 +573,7 @@
     }
     row('Auto equip', 'Wear loot automatically when it is better than your gear.', S.get('autoEquip') ? 'ON  -  tap to turn off' : 'OFF  -  tap to turn on', S.get('autoEquip'), function () { S.toggle('autoEquip'); });
     row('Tutorial hints', 'Hold-to-charge lessons, HOLD tags and the training dummy. Saved for you.', S.get('tutorial') !== false ? 'ON  -  tap to turn off' : 'OFF  -  tap to turn on', S.get('tutorial') !== false, function () { S.set('tutorial', S.get('tutorial') === false); });
+    row('Reduce darkness', 'Keep more of the world visible at deeper Endless levels.', S.get('reduceDarkness') ? 'ON' : 'OFF', S.get('reduceDarkness'), function () { S.toggle('reduceDarkness'); });
     row('Auto level', 'Spend skill points and pick level-up perks for you.', S.get('autoLevel') ? 'ON  -  tap to turn off' : 'OFF  -  tap to turn on', S.get('autoLevel'), function () { S.toggle('autoLevel'); });
     // Killing blows get the freeze by default; long-form crits are optional.
     (function(){
@@ -710,6 +711,9 @@
   function drawBoss(c, W, H) {
     if (bb.alpha < 0.01) return;
     var w = Math.min(W - 102, 320), x = 12, y = (CC.Minimap && CC.Minimap.height ? CC.Minimap.height + 8 : 62), h = 14; // under the minimap when there is one
+    if (CC.Endless?.active()) {
+      w = Math.min(196, W - 24); x = (W - w) / 2; y = 81;
+    }
     c.save(); c.globalAlpha = bb.alpha;
     rr(c, x, y, w, h, 7); c.fillStyle = 'rgba(10,6,14,0.9)'; c.fill();
     if (bb.chip > bb.pct) { rr(c, x + 1, y + 1, Math.max(h - 2, (w - 2) * bb.chip), h - 2, 6); c.fillStyle = 'rgba(255,255,255,0.55)'; c.fill(); }
@@ -749,15 +753,15 @@
   function drawHud(c, W, H, addHit) {
     var p = hero();
     if (!p || p.perkOpen) return;
-    var s = CC.state, mm = CC.Minimap, left = mm ? mm.margin + mm.size + 8 : 12;
-    var pw = Math.min(214, Math.max(150, W - 8 - left)), px = W - 8 - pw, py = 8 + (CC.Multiplayer && CC.Multiplayer.active ? 22 : 0), ph = 104, bw = pw - 20, pts = CC.SkillTree ? CC.SkillTree.points(p) : 0, i;
+    var s = CC.state, endless = CC.Endless?.active(), mm = CC.Minimap, left = mm ? mm.margin + mm.size + 8 : 12;
+    var pw = Math.min(214, Math.max(150, W - 8 - left)), px = W - 8 - pw, py = 8 + (CC.Multiplayer && CC.Multiplayer.active ? 22 : 0) + (endless ? 94 : 0), ph = 104, bw = pw - 20, pts = CC.SkillTree ? CC.SkillTree.points(p) : 0, i;
     frame(c, px, py, pw, ph, false);
     hudBar(c, px + 10, py + 9, bw, 15, p.hp / (p.maxHp || 1), '#ff6b6b', '#b01e3a', Math.ceil(p.hp) + ' / ' + Math.ceil(p.maxHp));
     hudBar(c, px + 10, py + 27, bw, 11, p.mana / (p.maxMana || 1), '#6bb8ff', '#2a56c8', null);
     hudBar(c, px + 10, py + 41, bw, 8, p.xp / (p.xpNext || 1), '#9be36b', '#4a9a2a', null);
     var where = s.mode === 'dungeon' ? (s.area === 'forest' ? 'Giant Forest' : s.area === 'plains' ? 'Rolling Plains' : s.area === 'rocky-pass' ? 'Rocky Pass' : s.area === 'village' ? 'Abandoned Village' : s.area === 'village-cellar' ? 'The Cellar' : s.area === 'defense' ? 'Defense' : s.area === 'tree-ascent' ? 'Tree Bough '+(s.treeFloor||1) : 'Floor ' + s.floor) : 'Town';
     tx(c, 'LV ' + (p.level || 1), px + 12, py + 61, 13, COL.accent);
-    tx(c, where, px + pw / 2, py + 61, 11, COL.text, 'center');
+    if (!endless) tx(c, where, px + pw / 2, py + 61, 11, COL.text, 'center');
     tx(c, Math.floor(s.gold || 0) + ' G', px + pw - 12, py + 61, 13, COL.gold, 'right');
     c.fillStyle = 'rgba(224,168,74,0.25)'; c.fillRect(px + 12, py + 70, pw - 24, 1);
     // Three aligned actions in the HUD, not another floating menu.
@@ -773,19 +777,21 @@
        activeChar?COL.accent:'#f2eadb','center');
     addHit(hx,by,charW,sz,openCharacter);
     var qx=hx+charW+gap;
-    rr(c,qx,by,questW,sz,6);
-    c.fillStyle=activeQuest?'rgba(224,168,74,.32)':'rgba(16,10,20,.87)';
-    c.fill();c.lineWidth=1.5;c.strokeStyle=activeQuest?COL.accent:COL.line;c.stroke();
-    tx(c,questW<49?'QUEST':'QUEST',qx+questW/2,by+sz/2+.5,
-       questW<48?9:10,activeQuest?COL.accent:'#e8d2ac','center');
-    addHit(qx,by,questW,sz,function(){toggle('quests');});
+    if (!endless) {
+      rr(c,qx,by,questW,sz,6);
+      c.fillStyle=activeQuest?'rgba(224,168,74,.32)':'rgba(16,10,20,.87)';
+      c.fill();c.lineWidth=1.5;c.strokeStyle=activeQuest?COL.accent:COL.line;c.stroke();
+      tx(c,'QUEST',qx+questW/2,by+sz/2+.5,
+         questW<48?9:10,activeQuest?COL.accent:'#e8d2ac','center');
+      addHit(qx,by,questW,sz,function(){toggle('quests');});
+    }
     if(pts>0){
       var pulse=1+Math.sin(clock*5)*.12;
       c.beginPath();c.arc(hx+charW-2,by+3,7*pulse,0,6.2832);
       c.fillStyle=COL.good;c.fill();
       tx(c,String(pts),hx+charW-2,by+3.5,9,'#0b0812','center');
     }
-    if(s.mode==='dungeon'){
+    if(s.mode==='dungeon' && !endless){
       var bx=qx+questW+gap, small=retreatW<57, inTent=!!(CC.Camp&&CC.Camp.isInside&&CC.Camp.isInside());
       if(s.area==='defense')button(c,addHit,bx,by,retreatW,sz,small?'EXIT':'Retreat',
         true,function(){if(CC.returnToTown)CC.returnToTown();},'#5a2a22');
@@ -814,6 +820,13 @@
     }
   }
 
+  function reset() {
+    target = false; cur = null; t = 0;
+    sel.skill = sel.item = sel.charge = null;
+    toast.t = 0; flash = {};
+    bb.alpha = bb.intro = 0; bb.pct = bb.chip = 1;
+  }
+
   function key(code) {
     var p = hero();
     if (code === 'Escape' && target) { close(); return true; }
@@ -821,7 +834,7 @@
     return false;
   }
 
-  CC.UI = { open: open, close: close, toggle: toggle, isOpen: function () { return target; }, visible: function () { return cur !== null; },
+  CC.UI = { open: open, close: close, reset: reset, toggle: toggle, isOpen: function () { return target; }, visible: function () { return cur !== null; },
     update: update, key: key, draw: draw, drawHud: drawHud, openCharacter: openCharacter, ownsBossBar: true,
     _state: function () { return { cur: cur, target: target, t: t, sel: sel }; } };
 })();

@@ -587,7 +587,11 @@
       p.x += p.vx * dt; p.y += p.vy * dt; p.rot += (p.vr || 0) * dt; if (p.grow) p.size += p.grow * dt;
     }
   };
-  V.clear = function () { fxs.length = 0; parts.length = 0; bolts.length = 0; sky.t = 0; };
+  V.clear = function (resetDarkness) {
+    fxs.length = parts.length = bolts.length = 0;
+    sky.t = 0;
+    if (resetDarkness) V._s.dark.lvl = 0;
+  };
   V.draw = function (c, cam) {
     var tt = tick(), i, e;
     c.save();
@@ -861,6 +865,28 @@
 
   /* ---------- the Patchwork Horror: the world goes dark around it until it is slain ---------- */
   var off = null, offc = null, lastAt = 0;
+  V.drawEndlessDarkness = function (c, cam, ambient, radius) {
+    if (!(ambient < 1)) return;
+    if (!off) { off = document.createElement('canvas'); offc = off.getContext('2d'); }
+    var w = Math.ceil(cam.w), h = Math.ceil(cam.h);
+    if (off.width !== w || off.height !== h) { off.width = w; off.height = h; }
+    var o = offc;
+    o.globalCompositeOperation = 'source-over';
+    o.clearRect(0, 0, w, h);
+    o.fillStyle = 'rgba(5,3,12,' + Math.min(1, 1 - ambient) + ')';
+    o.fillRect(0, 0, w, h);
+    o.globalCompositeOperation = 'destination-out';
+    CC.Endless.livingHeroes().forEach(function (hero) {
+      var x = hero.x - cam.x, y = hero.y - cam.y;
+      var light = o.createRadialGradient(x, y, radius * 0.3, x, y, radius);
+      light.addColorStop(0, '#000');
+      light.addColorStop(1, 'transparent');
+      o.fillStyle = light;
+      o.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+    });
+    c.drawImage(off, 0, 0, cam.w, cam.h);
+  };
+
   V.drawDarkness = function (c, cam) {
     var now = performance.now(), dt = Math.min(0.1, Math.max(0, (now - lastAt) / 1000)); lastAt = now;
     var E = CC.Enemies, hero = CC.state && CC.state.player, horror = null, i;

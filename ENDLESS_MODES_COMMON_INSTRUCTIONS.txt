@@ -1,0 +1,164 @@
+EMBERDEEP - ENDLESS MODES: SHARED INSTRUCTIONS (read this first)
+=================================================================
+Two new ENDLESS modes, each playable SINGLE PLAYER or CO-OP:
+  1. ENDLESS PLAINS    - survival, Vampire Survivors style hordes.        See PLAINS_HORDES_INSTRUCTIONS.txt
+  2. ENDLESS CATACOMBS - exploration, an endless descent.                 See ENDLESS_CATACOMBS_INSTRUCTIONS.txt
+This file defines everything the two modes share: how you enter them, which character you use, the timer, how a run ends, and the reward.
+Build the shared pieces ONCE (one module, e.g. endless.js with CC.Endless) and let each mode be a "director" plugged into it.
+
+THE GOAL OF A RUN: see how far you get. There is no winning. A run ends when every hero is down (or the player retires), then you get a
+reward whose RARITY rises the farther you got.
+
+
+1. MODE SELECT
+--------------
+- The mode/area select gets one new entry, "ENDLESS", which opens a small screen:
+    Mode:      [ PLAINS SURVIVAL ]   [ CATACOMBS EXPLORATION ]
+    Players:   [ SOLO ]              [ CO-OP ]
+    Hero:      [ USE MY CHARACTER ]  [ NEW CHARACTER ]
+    Difficulty: the player's existing Easy / Normal / Hard (and Dev when enabled) applies unchanged.
+    [ START ]   and a small panel showing this mode's BEST RUN (time, depth, kills).
+- Both modes work from the normal browser entry point. The campaign (town, forest, village, Plains quest line, tree, etc.) must be
+  completely unaffected. Test that after every change.
+- Endless is NOT inside the campaign map flow: it has its own run state (CC.Endless.state). Starting it never edits the campaign save.
+
+
+2. WHICH CHARACTER
+------------------
+- USE MY CHARACTER: pick one of the saved characters (the Continue screen already lists up to five). The run uses that hero's real level,
+  stats, skill tree, equipped gear and potions. This is a "power check" run.
+- NEW CHARACTER: pick a class and start at level 1 with the class starter kit. A fresh hero is the "pure skill" run.
+- Rule that keeps both fair: enemy difficulty scales with DEPTH (time or floors), never with the hero's level. A strong character simply
+  goes farther. Show the hero's level on the select screen so players can compare.
+- Rewards always go to the character that played (see section 5). If the player used a NEW character and did well, the reward is how
+  they get gear for it.
+- Anything the hero finds DURING a run (items, gold, perks) belongs to the run only and is discarded at the end, EXCEPT the final reward.
+  Their saved character is never damaged by a run: death in Endless does not cost gear, levels or gold. Level and perk gains made during
+  the run are run-only for a "use my character" run too (snapshot the character at start, restore the snapshot at the end, then add the reward).
+  This prevents Endless from being an XP exploit and keeps the final reward meaningful.
+
+
+3. THE TIMER (both modes)
+-------------------------
+- A run clock at the TOP CENTRE of the screen, big and readable: "MM:SS" (and "H:MM:SS" past an hour). It starts at 00:00 when play
+  begins. It counts ACTIVE play only: it pauses for the pause menu, inventory, level-up pick, chest pick, mode-transition banners and
+  co-op disconnect screens. It resets on Retry. Never read time from the wall clock; accumulate frame dt only when the world updates.
+- The existing difficulty badge and the dev slider are also top-centre: put the clock in that spot and move the badge directly under it
+  (or into the corner). Everything must stay readable next to the boss health bar and the minimap on a phone-sized screen.
+- Under the clock, show the mode's depth: ENDLESS PLAINS shows "NIGHTFALL II" (see the Plains file), ENDLESS CATACOMBS shows "FLOOR 7".
+- Keep a small "Kills 128" counter near it.
+
+
+4. HOW A RUN ENDS
+-----------------
+- A run ends when no hero is standing (solo: the hero dies. co-op: both are down at the same time; a downed hero can be revived by the
+  partner within a time window, see section 6) OR the player chooses RETIRE from the pause menu (retiring keeps the reward and asks for
+  confirmation; it never grants more than dying at the same moment would).
+- On the end: freeze the world for a beat, show the RUN SUMMARY:
+    TIME  mm:ss   DEPTH  (Nightfall N / Floor N)   KILLS  n   BEST-OF-RUN moment (biggest hit / longest streak)   HERO  (name, level, class)
+    If it is a new personal best, say so. Then the REWARD CEREMONY (section 5). Then buttons: RETRY (same settings) and EXIT.
+- RETRY and EXIT clear all run state: enemies, projectiles, drops, queue, timers, the character snapshot. Nothing leaks into the next run.
+
+
+5. THE REWARD (rarity rises with how far you got)
+-------------------------------------------------
+Compute a single RUN SCORE and map it to a REWARD TIER. Use the same tiers in both modes so players can compare them.
+
+  Progress value P (the number the tiers use):
+    Plains:      P = depth in minutes survived        (5:00 = 5)
+    Catacombs:   P = floors reached * 2               (floor 5 = 10)
+  Use these breakpoints (put them in one table, CC.Endless.TUNING.rewardTiers, so they are easy to tune):
+
+    Tier 0  P < 3        "Scrap"        1 item, any rarity up to Common       + gold
+    Tier 1  P >= 3       "Bronze"       1 item, minimum Uncommon-or-better chance rising   + gold
+    Tier 2  P >= 6       "Silver"       2 items, at least one Uncommon+     + gold + 1 potion bundle
+    Tier 3  P >= 10      "Gold"         2 items, at least one Rare+         + more gold + a charm roll
+    Tier 4  P >= 15      "Platinum"     3 items, at least one Epic+          + a skill respec token or perk-reroll
+    Tier 5  P >= 22      "Legendary"    3 items, at least one Legendary guaranteed, the rest Rare+ with a high Legendary chance
+    Tier 6  P >= 30      "Mythic"       4 items, two Legendary, plus a unique cosmetic/title for the character
+
+- Rarity must RISE with P. Use the existing Loot module:
+    CC.Loot.rollItem(floorEquivalent, luck, minRarity, cls, tier, level)  and  CC.Loot.makeItem(floor, rarity, slot, cls, level)
+  Loot has a depth gate (RARITY_MIN_FLOOR = [1,1,2,4,7]): a rarity cannot drop below its gate. So reward items use
+  floorEquivalent = clamp(2 + P * 0.55, 2, 14) and the tier's minRarity, which makes the best rarities reachable only at high P without
+  editing loot.js. Check the resulting rarity distribution with a test (see section 9).
+- Items are rolled for the hero's CLASS (cls) and a level equal to the hero's real level (for a NEW character use the level the character
+  has when the reward is applied: a level 1 hero still gets level-appropriate gear, scaled by the item level gate).
+- The REWARD CEREMONY: a short, satisfying scene. The reward chests appear one by one (rarity-coloured glow, sound sting per rarity, the
+  Legendary one gets a flash). The player taps to open each, sees the item card, and the items go to the hero's inventory or stash.
+  If the inventory is full, offer swap/sell/stash; never delete an item silently.
+- New personal bests (time, depth) are saved. Keep a tiny separate save entry, e.g. 'emberdeep-endless-v1':
+    { plains:{bestSeconds,bestLevel,kills,runs}, catacombs:{bestFloor,bestSeconds,kills,runs} }
+  This must not touch campaign saves.
+- Anti-exploit rules: (a) the reward is computed once at run end from the recorded progress, not claimed repeatedly; (b) quitting the browser
+  mid-run forfeits the reward (or auto-banks at the last checkpoint, pick one and document it); (c) retiring grants the same reward as
+  dying at the same P; (d) co-op: each player gets their OWN roll from the shared P, so partners do not share one item.
+
+
+6. CO-OP (applies to both modes)
+--------------------------------
+- Emberdeep already has a multiplayer module and room code (see MULTIPLAYER.md and CC.Multiplayer, CC.state.coop). ENDLESS co-op must
+  use that: a host creates an Endless room, a partner joins, and the host runs the director (spawns, timer, nightfall, floors) while the partner is
+  a full hero with their own character. Reuse the room's existing sync of heroes, projectiles, loot and enemies, and add:
+    - the shared run clock and depth (host-authoritative; the partner displays them),
+    - "mode started", "run ended", and "reward results" messages,
+    - the director's spawn events (enemy type, position, tier) so both screens show the same enemies.
+- Rule of thumb: the ENEMY list is host-owned; hits from the partner go through the existing multiplayer damage messages.
+- Scaling for two players: more enemies, not tougher ones. Population caps and spawn rates x1.7 in co-op (a table value), enemy health x1.25.
+  Rewards are the same tiers as solo (because P is the same), each player rolling their own items.
+- A downed hero lies where they fell and can be REVIVED by the partner standing next to them for 3 seconds (a ring + prompt, interrupts if the
+  reviver is hit). If nobody revives within 25 seconds, they stay down. The run ends only when both are down at once.
+- Both heroes keep independent controls, combat state, cooldowns, hold-to-charge spells, difficulty settings and aim mode.
+- Camera: each player has their own screen (online co-op). If a local same-screen mode is wanted later, treat that as a separate phase:
+  a shared camera with a maximum separation, two input schemes, and a split of the HUD; design the director around "a list of living heroes"
+  (CC.state.party) from day one so this is easy.
+- Disconnects: if the partner drops, the host keeps the run going solo and the partner's result is evaluated at the moment they left.
+
+
+7. WHERE IT PLUGS IN (existing code, reuse, do not rewrite)
+-----------------------------------------------------------
+- Entry and modes:   main.js (CC.startRun, CC.setMode, title/mode screens, pause menu, ui hit areas), ui.js (modal panels), save_game.js (campaign saves).
+- Heroes and combat: classes.js (CC.Classes.create, gainXp, hitEnemy, damage), charge.js and spell_charge.js (charged skills), smokebomb.js,
+                     difficulty.js (CC.Difficulty.hpMul/dmgMul/autoAim). Keep all of these working inside Endless.
+- Enemies:           enemies.js (CC.Enemies.spawn, list, TYPES, _think, damage), plains.js, forest.js, hauntedpond.js, patchwork.js, mask.js, tree_weasel.js.
+- Maps:              dungeon.js (floors/Catacombs generation), plains.js (Rolling Plains), realm.js (open-air maps).
+- Loot and rewards:  loot.js (CC.Loot.rollItem / makeItem / RARITIES / pickupNear).
+- HUD and fx:        ui.js drawHud, main.js drawControls, vfx.js (screen fx, darkness), critical_scene.js, holdguide.js (tutorial overlays: suppress in runs).
+- One new module file (endless.js) + its tests. Add the script tag in index.html before main.js and add the file to package.json "check".
+- Register the module's update(dt), draw(ctx,cam) and drawHud(ctx,W,H) in main.js beside the other call('Module','fn',...) lines.
+
+
+8. BUILD ORDER (shared part first)
+----------------------------------
+ 1. endless.js skeleton: CC.Endless { start(opts), update(dt), draw, drawHud, end(), retire(), state, TUNING }.
+ 2. Mode select screen + hero select (use my character / new) + the character snapshot and restore.
+ 3. The timer, depth label, kill counter, run summary screen, retry/exit with full cleanup.
+ 4. The reward calculator + ceremony + personal bests save.
+ 5. Plug in the Plains director, then the Catacombs director (each file's own plan).
+ 6. Co-op: host-authoritative director, partner HUD sync, revive, results.
+ 7. Balance log + tuning pass from real play (see the mode files).
+
+
+9. TESTS AND ACCEPTANCE (shared)
+--------------------------------
+Automated (add under tests/, they run in npm run validate):
+ - Snapshot: starting and ending a run restores the hero exactly (level, xp, gold, items, potions), then adds only the reward.
+ - Timer: advances only while the world updates; pause and menus do not move it; retry resets it to zero.
+ - Reward tiers: for P = 0, 3, 6, 10, 15, 22, 30 the number of items and the minimum rarity match the table; over 2000 simulated rolls the average
+   rarity is non-decreasing with P and Legendary appears essentially never below Tier 3.
+ - Cleanup: after end/retire/retry/exit, no enemies, projectiles, drops, queued spawns, nightfall/floor state or overlays remain; the campaign still loads.
+ - Co-op: a scripted two-hero run where one is downed and revived; the run ends only when both are down.
+Manual / browser (report what you could not verify):
+ - Both modes start from the normal entry in solo and co-op, with a leveled character and a new one.
+ - The clock is readable beside the boss bar and minimap on a phone-sized viewport.
+ - The reward ceremony shows each rarity colour correctly and never loses an item.
+Definition of done: a player can pick a mode and a hero, play until they die, see their time and depth, receive a reward that is clearly better
+because they went farther, and press Retry to go again in one tap, in solo and in co-op.
+
+
+10. NOTES
+---------
+- Work on a git branch (for example endless-modes). Run npm run validate before every commit; say what you could NOT verify.
+- Do not commit assets/preview/ or the splatter mp3 files unless asked.
+- A different version of an Endless director exists in Documents\ChatGPT\cave-crawler (endless.js). It is from an older copy of the game with
+  different class names, is not tracked by git, and should be treated as reference for ideas only. Port ideas, not files.
