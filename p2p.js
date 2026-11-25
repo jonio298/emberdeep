@@ -118,15 +118,16 @@
         if (typeof p[k] === 'number' && isFinite(p[k])) clean[k] = Math.max(-20000, Math.min(20000, p[k]));
       });
       clean.classId = room[role].hero; clean.moving = !!p.moving;
-      this.publish({ type: 'position', from: role, player: clean }); return;
+      this.sendRaw(role === 'host' ? 'guest' : 'host', JSON.stringify({ type: 'position', from: role, player: clean })); return; // only the partner needs it
     }
     if (t === 'fx') {
-      if (['fx', 'pr', 'sc', 'mn', 'df', 'tb', 'tc', 'opt', 'ch', 'qs', 'qe', 'vf', 'gp'].indexOf(d.k) < 0) return;
+      if (['fx', 'pr', 'sc', 'mn', 'df', 'tb', 'tc', 'opt', 'ch', 'qs', 'qe', 'vf', 'gp', 'pg', 'po', 'rq'].indexOf(d.k) < 0) return;
+      if (d.k === 'rq' && role !== 'guest') return;
       if ((d.k === 'df' || d.k === 'tb' || d.k === 'opt' || d.k === 'ch' || d.k === 'qs' || d.k === 'qe' || d.k === 'gp') && role !== 'host') return;
       if (d.k === 'tc' && role !== 'guest') return;
       var fx = cleanFx(d.d, 0);
       if (fx === undefined || JSON.stringify(fx).length > 2500) return;
-      this.publish({ type: 'fx', from: role, k: d.k, d: fx }); return;
+      this.sendRaw(role === 'host' ? 'guest' : 'host', JSON.stringify({ type: 'fx', from: role, k: d.k, d: fx })); return; // only the partner needs it
     }
     if (t === 'kill' && role === 'host') {
       var xp = Number(d.xp); if (isFinite(xp) && xp > 0 && xp < 5000) this.publish({ type: 'kill', xp: Math.round(xp) }); return;
@@ -288,6 +289,10 @@
     }, 300);
   };
   P2P.GuestTransport = GuestTransport;
+
+  // how much is waiting to leave on the data channel: the game skips stale updates while it is high
+  Object.defineProperty(HostTransport.prototype, 'bufferedAmount', { get: function () { var c = this.guestConn; return c && c.dataChannel ? c.dataChannel.bufferedAmount || 0 : 0; } });
+  Object.defineProperty(GuestTransport.prototype, 'bufferedAmount', { get: function () { var c = this.conn; return c && c.dataChannel ? c.dataChannel.bufferedAmount || 0 : 0; } });
 
   P2P.available = function () { return typeof root.Peer === 'function' && !!root.RTCPeerConnection; };
   P2P.cleanFx = cleanFx;

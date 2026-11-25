@@ -19,7 +19,7 @@
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
   function hero() { var s = CC.state; return s && s.player && !s.player.stub ? s.player : null; }
 
-  var FILES = ['treestab', 'bloodsplatter3', 'thiefknife', 'necrocrithit', 'necrobasic', 'pondspawn', 'critprojectile', 'basicprojectile', 'beargrowl', 'bearroar', 'beardeath', 'newquest', 'levelup', 'levelupvoice', 'thiefcrit', 'blood1', 'swordcrit', 'charge', 'legendarycharge', 'charge_up_boss', 'charge_blast', 'bat_squeak', 'bat_attack', 'explosion', 'splash_explosion', 'thunder_clap', 'enemyhit', 'enemydie', 'player_hit', 'skeleton_attack', 'skeleton_bone_sound', 'skeleton_death', 'ghost_moan', 'ghost_call_2', 'ghost_death', 'level_up', 'item_pickup_gen', 'special_item', 'awesome_legendary', 'door_open', 'door_close', 'door_slam', 'waterdrop1', 'waterdrop2', 'evil_laugh', 'boss_death_scream', 'boss_shot', 'jet_stream_fire', 'friend_summon', 'friend_summon2', 'blob_death', 'blob_hop1', 'radioactive_death', 'splash_hit_1', 'splash_hit_2', 'fountain_entrance'];
+  var FILES = ['treestab', 'bloodsplatter3', 'thiefknife', 'necrocrithit', 'necrobasic', 'pondspawn', 'critprojectile', 'basicprojectile', 'beargrowl', 'bearroar', 'beardeath', 'newquest', 'levelup', 'levelupvoice', 'thiefcrit', 'blood1', 'swordcrit', 'charge', 'legendarycharge', 'charge_up_boss', 'charge_blast', 'bat_squeak', 'bat_attack', 'explosion', 'splash_explosion', 'thunder_clap', 'enemyhit', 'enemydie', 'player_hit', 'skeleton_attack', 'skeleton_bone_sound', 'skeleton_death', 'ghost_moan', 'ghost_call_2', 'ghost_death', 'level_up', 'item_pickup_gen', 'special_item', 'awesome_legendary', 'door_open', 'door_close', 'door_slam', 'waterdrop1', 'waterdrop2', 'evil_laugh', 'boss_death_scream', 'boss_shot', 'jet_stream_fire', 'friend_summon', 'friend_summon2', 'blob_death', 'blob_hop1', 'radioactive_death', 'splash_hit_1', 'splash_hit_2', 'fountain_entrance', 'powerup', 'legendary'];
   A.names = FILES;
 
   /* ---------- the context ---------- */
@@ -437,7 +437,8 @@
       case 'pickup': A.play('item_pickup_gen', { vol: 0.8, x: d.x, y: d.y }); break;
       case 'gold': A.fx('coin', { x: d.x, y: d.y, vol: 0.6, gap: 70 }); break;
       case 'rare': A.play('special_item', { vol: 0.9 }); break;
-      case 'legendary': A.play('awesome_legendary', { vol: 1 }); break;
+      case 'legendary': A.play('legendary', { vol: 1, gap: 0, vary: 0 }); break; // picking up a legendary item
+      case 'powerup': A.play('powerup', { vol: 0.9, gap: 0, vary: 0 }); break; // picking up a power-up
       case 'chest': A.fx('chest', { x: d.x, y: d.y, vol: 0.8 }); break;
       case 'explosion': A.play('explosion', { x: d.x, y: d.y, vol: d.big ? 1 : 0.8, dur: d.big ? 2.2 : 1.1, rate: d.big ? 0.85 : 1.05 }); break;
       case 'splash': A.play('splash_explosion', { x: d.x, y: d.y, vol: 0.8 }); break;

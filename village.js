@@ -123,16 +123,29 @@
     // spawns: the dead walk the wood and the ruins (cellar monsters are separate)
     var spawns = [], types = ['skeleton', 'ghoul', 'ghost', 'bat', 'spider'];
     for (i = 0; i < 40; i++) { var sxp = 22 + Math.floor(rng() * (W - 36)), syp = 12 + Math.floor(rng() * (H - 24)); if (tiles[at(sxp, syp)] || kind[at(sxp, syp)] === 4 || res[at(sxp, syp)] && kind[at(sxp, syp)] === 1 || Math.hypot(sxp - 5, syp - mean(5)) < 18) continue; if (sxp > 80 && syp < 24) continue; spawns.push({ x: sxp * T + 16, y: syp * T + 16, type: types[Math.floor(rng() * types.length)] }); }
+    // The marked north trail runs directly from the square, west of the graveyard fence.
+    var forestTrail = { tx: plazaX, ty: 3, x: (plazaX + 0.5) * T, y: 3.5 * T };
+    var ringGhost = { x: forestTrail.x, y: 30.5 * T, ringQuest: true };
+    for (y = forestTrail.ty; y < plazaY; y++) {
+      for (x = plazaX - 1; x <= plazaX + 1; x++) open(x, y, 2);
+    }
+    trees = trees.filter(function (q) { return tiles[at(q[0], q[1])]; });
+    spawns = spawns.filter(function (e) { return Math.hypot(e.x - ringGhost.x, e.y - ringGhost.y) > 2 * T; });
+    ghostSpots.push(ringGhost);
+    placeProp(drawForestSign, forestTrail.x - T, forestTrail.y, 8);
     // reachability: spawn must reach every chest, the trapdoor, the ghosts and the plaza
     var seen = new Uint8Array(N), q = [at(Math.round(spawn.x / T), Math.round(spawn.y / T))], qi = 0; seen[q[0]] = 1;
     while (qi < q.length) { var c0 = q[qi++], x0 = c0 % W, y0 = (c0 / W) | 0; [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (d) { var xx = x0 + d[0], yy = y0 + d[1]; if (xx < 0 || yy < 0 || xx >= W || yy >= H) return; var ni = at(xx, yy); if (seen[ni] || tiles[ni]) return; seen[ni] = 1; q.push(ni); }); }
     var ok = seen[at(plazaX, plazaY)] === 1 && V.trap && seen[at(Math.round(V.trap.x / T), Math.round(V.trap.y / T))] === 1;
+    if (!seen[at(forestTrail.tx, forestTrail.ty)]) ok = false;
     chests.forEach(function (ch) { if (!seen[at(ch.tx, ch.ty)]) ok = false; });
     ghostSpots.forEach(function (g) { if (!seen[at(Math.floor(g.x / T), Math.floor(g.y / T))]) ok = false; });
     if (!ok) return null;
     var map = CC.Realm.create({ name: 'The Abandoned Village', w: W, h: H, kind: kind, tiles: tiles, spawn: spawn, stairs: { x: -999, y: -999, tx: -1, ty: -1 }, chests: chests, enemySpawns: spawns, props: props, lights: lights,
       ambient: '70,84,110,0.10', playerLight: 230, viewR: 330, fog: 0.04, fogColor: '150,160,160', ground: ground, detail: detail, drawSolid: solid, afterLight: after, reveal: false, viewBoost: 1.2 });
-    map.art = art; map.vil = { sy0: sy0, plazaX: plazaX, plazaY: plazaY, trees: trees, ghosts: ghostSpots.map(function (g, gi) { return { x: g.x, y: g.y, seed: gi * 2.7 + 1, a: 0 }; }), tombs: tombs, houses: HOUSES, u: 0, flash: 0, bolt: null, nextFlash: 6, thunder: 0, wisps: [], spawn: spawn };
+    map.art = art; map.vil = { sy0: sy0, plazaX: plazaX, plazaY: plazaY, trees: trees, ghosts: ghostSpots.map(function (g, gi) { return { x: g.x, y: g.y, idx: gi, seed: gi * 2.7 + 1, a: g.ringQuest ? 0.7 : 0, ringQuest: !!g.ringQuest }; }), tombs: tombs, houses: HOUSES, u: 0, flash: 0, bolt: null, nextFlash: 6, thunder: 0, wisps: [], spawn: spawn };
+    map.forestTrail = forestTrail;
+    map.ringQuestGiver = map.vil.ghosts[map.vil.ghosts.length - 1];
     map.backPos = { x: spawn.x - 24, y: spawn.y };
     return map;
   }
@@ -145,6 +158,18 @@
   };
 
   /* =================== art =================== */
+  function drawForestSign(c, x, y) {
+    c.save();
+    c.fillStyle = '#332720';
+    c.fillRect(x - 2, y - 32, 4, 34);
+    c.fillStyle = '#63513a';
+    c.fillRect(x - 43, y - 36, 86, 17);
+    c.fillStyle = '#f0e0ae';
+    c.font = 'bold 8px Georgia';
+    c.textAlign = 'center';
+    c.fillText('HAUNTED WOODS ↑', x, y - 25);
+    c.restore();
+  }
   function dayMix(u) { return clamp(u, 0, 1); }
   function ground(kind, hv, tx, ty) {
     var m = V.map, u = m && m.vil ? m.vil.u : 0;
@@ -324,14 +349,21 @@
     { name: 'Mina, the Baker\'s Daughter', lines: ['Is it market day? The bread must be cold by now...', 'Everyone went to the chapel when the bell rang. No one came out again.'] },
     { name: 'Brother Aldous', lines: ['The chapel bell tolled by itself that night. Three times. Then no more.', 'We prayed. Something below the floor listened instead.'] },
     { name: 'A Drowned Boy', lines: ['I am not cold anymore. Isn\'t that funny?', 'The well is deeper than it looks. Do not lean over.'] },
-    { name: 'The Widow Verrin', lines: ['You walk among us as if you were alive. That is a rare courtesy.', 'There is one who lies beneath the chapel, and he is not at rest. When you are stronger, come back to me. I will tell you what he did to this village.'] }
+    { name: 'The Widow Verrin', lines: ['You walk among us as if you were alive. That is a rare courtesy.', 'There is one who lies beneath the chapel, and he is not at rest. When you are stronger, come back to me. I will tell you what he did to this village.'] },
+    { name: 'Elsie', lines: ['Every night I wait for Rowan by the north trail.'] }
   ];
   V.ghostLines = GHOSTS;
   function interactVillage() {
     var s = CC.state, p = hero(), m = village(); if (!p || !m) return false;
     var best = null, bd = 60; m.vil.ghosts.forEach(function (g) { var d = Math.hypot(p.x - g.x, p.y - g.y); if (g.a > 0.3 && d < bd) { bd = d; best = g; } });
     if (best) {
-      var G = GHOSTS[best.idx], line = G.lines[(best.n = (best.n || 0) + 1) - 1 < G.lines.length ? best.n - 1 : G.lines.length - 1];
+      var G = GHOSTS[best.idx];
+      if (best.ringQuest && CC.HauntedForest) {
+        best.face = p.x < best.x ? -1 : 1;
+        V.speech = { name: G.name, text: CC.HauntedForest.speakToQuestGiver(), t0: Date.now() };
+        return true;
+      }
+      var line = G.lines[(best.n = (best.n || 0) + 1) - 1 < G.lines.length ? best.n - 1 : G.lines.length - 1];
       V.speech = { name: G.name, text: line, t0: Date.now() }; V.heard[best.idx] = 1; best.face = p.x < best.x ? -1 : 1;
       if (best.idx === 4 && best.n >= 2 && Object.keys(V.heard).length >= 3 && !V.hook) { V.hook = 1; fxText(p.x, p.y - 30, 'A NEW QUEST AWAITS...', '#bfe9ff', 12); if (CC.Audio) CC.Audio.event('newquest'); if (CC.SaveGame && CC.SaveGame.save) CC.SaveGame.save(); }
       return true;
@@ -342,7 +374,14 @@
   }
   V.interact = function () { var s = CC.state; if (!s) return false; if (s.area === 'village') return interactVillage(); if (s.area === 'village-cellar') return interactCellar(); return false; };
   V.nearAction = function () { var s = CC.state, p = hero(); if (!p || !s) return false; if (s.area === 'village' && V.map) { return V.map.vil.ghosts.some(function (g) { return g.a > 0.3 && Math.hypot(p.x - g.x, p.y - g.y) < 60; }) || (V.trap && Math.hypot(p.x - V.trap.x, p.y - V.trap.y) < 54) || Math.hypot(p.x - V.map.backPos.x, p.y - V.map.backPos.y) < 60; } if (s.area === 'village-cellar' && V.cellar) return Math.hypot(p.x - V.cellar.exit.x, p.y - V.cellar.exit.y) < 60; return false; };
-  V.reset = function () { V.heard = {}; V.hook = 0; };
+  V.nearForestTrail = function () {
+    var m = village(), p = hero();
+    return !!(m && p && Math.hypot(p.x - m.forestTrail.x, p.y - m.forestTrail.y) < 54);
+  };
+  V.reset = function () {
+    V.heard = {}; V.hook = 0;
+    if (CC.HauntedForest) CC.HauntedForest.reset();
+  };
   V.setHook = function (v) { V.hook = v ? 1 : 0; };
   V.enter = function () { if (CC.enterVillage) return CC.enterVillage(); return false; };
 
@@ -421,7 +460,7 @@
     if (p && v.u > 0.25 && v.wisps.length < 1 + Math.floor(v.u * 4) && R() < dt * (0.2 + v.u * 0.9)) { var a = R() * TAU, d = 100 + R() * 220; v.wisps.push({ x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d * 0.7, age: 0, life: 3 + R() * 3, vx: (R() - 0.5) * 8, vy: (R() - 0.5) * 6, seed: R() * 50, sc: 0.95 + R() * 0.5, blue: R() < 0.6 }); }
     // the graveyard ghosts fade in and out on their own slow tides (but never while you are speaking to one)
     var t = Date.now() / 1000;
-    v.ghosts.forEach(function (g, gi) { g.idx = gi; var tide = 0.5 + 0.5 * Math.sin(t * 0.35 + g.seed * 2.1), near = p && Math.hypot(p.x - g.x, p.y - g.y) < 120; var want = clamp((tide - 0.2) * 1.6, 0, 1) * (near ? 1 : 0.85); g.a += (want - g.a) * Math.min(1, dt * 1.2); if (p && near) g.face = p.x < g.x ? -1 : 1; });
+    v.ghosts.forEach(function (g) { var tide = 0.5 + 0.5 * Math.sin(t * 0.35 + g.seed * 2.1), near = p && Math.hypot(p.x - g.x, p.y - g.y) < 120; var want = clamp((tide - 0.2) * 1.6, 0, 1) * (near ? 1 : 0.85); if (g.ringQuest) want = Math.max(0.55, want); g.a += (want - g.a) * Math.min(1, dt * 1.2); if (p && near) g.face = p.x < g.x ? -1 : 1; });
     if (V.speech && Date.now() - V.speech.t0 > 6500) V.speech = null;
     return res;
   };

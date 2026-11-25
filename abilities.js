@@ -39,9 +39,9 @@
   // wizard
   def('wizard', 'spell1', 'Fireball', 1, 20, 2.5, 'orig', '#ff8a3c', 'Hurl an exploding ball of fire.', { id: 'burn', name: 'Immolation', desc: 'Burns targets for damage over time' }, 'spell2');
   def('wizard', 'spell2', 'Frost Nova', 4, 25, 7, 'orig', '#9fe3ff', 'A ring of frost that damages and slows.', { id: 'freeze', name: 'Deep Freeze', desc: 'Briefly freezes foes solid' }, 'spell1');
-  def('wizard', 'bolt', 'Chain Lightning', 8, 24, 5, 'chain', '#8fd0ff', 'Lightning leaps between nearby enemies.', { id: 'chain', name: 'Forked', desc: '+1 jump per rank' }, 'spell2');
+  def('wizard', 'bolt', 'Icicle Cannon', 8, 24, 5, 'icicle', '#bfeaff', 'Fire a long icicle that pierces three foes and splinters on each hit.', { id: 'pierce', name: 'Deep Piercing', desc: '+1 foe pierced per rank (tap and charge)' }, 'spell2');
   def('wizard', 'orb', 'Arcane Orb', 16, 30, 8, 'orb', '#b08aff', 'A slow, massive orb that tears through everything.', { id: 'slow', name: 'Gravity', desc: 'Slows foes hit' }, 'bolt');
-  def('wizard', 'blink', 'Blink', 26, 22, 10, 'blink', '#c8a8ff', 'Teleport a short way, bursting where you leave and arrive.', { id: 'burn', name: 'Scorch', desc: 'The arrival burst sets foes ablaze' }, 'spell1');
+  def('wizard', 'arcaneward', 'Arcane Ward', 26, 26, 10, 'ward', '#c8a8ff', 'Raise a brief shield that absorbs incoming damage.', { id: 'resonance', name: 'Shield Resonance', desc: 'The ward absorbs more per rank' }, 'spell1');
   // necromancer
   def('necromancer', 'spell1', 'Raise Skeleton', 1, 25, 5, 'orig', '#d8d4c0', 'Raise skeleton warriors to fight for you.', { id: 'legion', name: 'Bone Legion', desc: '+1 skeleton cap per rank' }, 'spell2');
   def('necromancer', 'spell2', 'Life Drain', 4, 15, 4, 'orig', '#7dff9a', 'Drain life from a nearby foe.', { id: 'leech', name: 'Soul Leech', desc: 'Heal more of the damage dealt' }, 'spell1');
@@ -49,12 +49,12 @@
   def('necromancer', 'blast', 'Corpse Blast', 16, 28, 7, 'blast', '#9aff7a', 'Detonate rot on the nearest foe; the blast poisons.', { id: 'poison', name: 'Plague', desc: 'Poisons harder and longer' }, 'spear');
   def('necromancer', 'curse', 'Hex of Weakness', 26, 30, 14, 'curse', '#b06aff', 'A curse over a wide area: foes take extra damage and slow.', { id: 'vuln', name: 'Withering', desc: 'Foes take more damage' }, 'spell2');
   // thief
-  def('thief', 'spell1', 'Throwing Knives', 1, 12, 2.2, 'orig', '#cfd8e6', 'Throw a fan of knives.', { id: 'poison', name: 'Venom Tips', desc: 'Knives poison' }, 'fan');
+  def('thief', 'spell1', 'Throwing Knives', 1, 12, 2.2, 'orig', '#cfd8e6', 'Throw a fan of knives.', { id: 'poison', name: 'Venom Tips', desc: 'Knives poison' }, 'razorwire');
   def('thief', 'spell2', 'Smoke Bomb', 4, 20, 8, 'orig', '#8a90a8', 'A smoke cloud for 5s: foes are blinded and confused, you cannot be hit by melee or shots, +7% crit, every hit is a backstab.', { id: 'slow', name: 'Choking Smoke', desc: 'Smoke lasts 0.8s longer and +1% crit per rank' }, 'step');
   def('thief', 'step', 'Shadow Step', 8, 18, 6, 'step', '#a078ff', 'Vanish and reappear behind a foe with a vicious backstab.', { id: 'bleed', name: 'Gutter', desc: 'The stab leaves a bleeding wound' }, 'spell2');
-  def('thief', 'fan', 'Blade Fan', 16, 24, 7, 'fan', '#e6edf7', 'Hurl a ring of blades in every direction.', { id: 'bleed', name: 'Serrated', desc: 'Blades open bleeding wounds' }, 'spell1');
+  def('thief', 'razorwire', 'Razor Wire', 16, 24, 7, 'wire', '#e6edf7', 'Throw a hooked wire that cuts and slows foes crossing it.', { id: 'bleed', name: 'Barbed Wire', desc: 'The wire opens bleeding wounds' }, 'spell1');
   def('thief', 'venom', 'Venom Flask', 26, 28, 12, 'venom', '#9aff3a', 'Shatter a flask: a toxic cloud that sickens foes.', { id: 'vuln', name: 'Weakening Toxin', desc: 'Poisoned foes take more damage' }, 'step');
-  var ORDER = { swordsman: ['spell1', 'spell2', 'leap', 'wave', 'cry'], wizard: ['spell1', 'spell2', 'bolt', 'orb', 'blink'], necromancer: ['spell1', 'spell2', 'spear', 'blast', 'curse'], thief: ['spell1', 'spell2', 'step', 'fan', 'venom'] };
+  var ORDER = { swordsman: ['spell1', 'spell2', 'leap', 'wave', 'cry'], wizard: ['spell1', 'spell2', 'bolt', 'orb', 'arcaneward'], necromancer: ['spell1', 'spell2', 'spear', 'blast', 'curse'], thief: ['spell1', 'spell2', 'step', 'razorwire', 'venom'] };
   S.AB = AB; S.ORDER = ORDER;
   function list(cls) { var c = ORDER[cls] ? cls : 'swordsman'; return ORDER[c].map(function (id) { return AB[full(c, id)]; }); }
   S.list = list;
@@ -120,7 +120,24 @@
 
   /* ---------- slots ---------- */
   var SLOT_ACT = ['spell1', 'spell2', 'spell3', 'spell4'];
+  // Old saves: Blink became Arcane Ward, Blade Fan became Razor Wire, Chain Lightning's 'Forked' ranks are refunded once. Runs once per hero (p.spellMig).
+  var RENAMED = { blink: 'arcaneward', fan: 'razorwire' };
+  S.migrate = function (p) {
+    if (!p || p.spellMig >= 1) return false;
+    p.spellMig = 1;
+    var k, sk = p.skills, id;
+    if (p.slots) p.slots = p.slots.map(function (x) { return RENAMED[x] || x; });
+    if (p.slotSeen) for (id in RENAMED) if (p.slotSeen[id]) { p.slotSeen[RENAMED[id]] = 1; delete p.slotSeen[id]; }
+    if (p.cd) for (id in RENAMED) if (p.cd['ab_' + id] !== undefined) { p.cd['ab_' + RENAMED[id]] = p.cd['ab_' + id]; delete p.cd['ab_' + id]; }
+    if (sk && sk.ranks) {
+      for (k in sk.ranks) { var m = /^ab:(blink|fan):(.+)$/.exec(k); if (m) { sk.ranks['ab:' + RENAMED[m[1]] + ':' + m[2]] = sk.ranks[k]; delete sk.ranks[k]; } }
+      var forked = sk.ranks['ab:bolt:eff'] || 0; // Chain Lightning's obsolete effect: refund the points
+      if (p.classId === 'wizard' && forked > 0) { delete sk.ranks['ab:bolt:eff']; sk.spent = Math.max(0, (sk.spent || 0) - forked); if (txt && p.x !== undefined) txt(p.x, p.y - 30, 'Skill refunded: ' + forked, '#9be36b', 11); }
+    }
+    return true;
+  };
   S.ensure = function (p) {
+    S.migrate(p);
     if (!p) return;
     var c0 = p.classId || 'swordsman', f1 = full(c0, 'spell1'), f2 = full(c0, 'spell2');
     if (!p.slots || p.slots.some(function (id) { return id && !AB[id]; })) p.slots = [f1, f2, null, null];
@@ -339,9 +356,10 @@
     });
     var a = AB[selAb], locked = (p.level || 1) < a.lvl; yy += 32;
     tx(c, a.name, x + 8, yy + 6, 15, a.col); tx(c, a.cost + ' mana  ·  ' + a.cd + 's cooldown', x + w - 8, yy + 6, 10, COL.dim, 'right');
-    tx(c, 'TAP:  ' + a.desc, x + 8, yy + 24, 10, COL.text);
-    var hi = a.orig && CC.SpellCharge && CC.SpellCharge.heldInfo ? CC.SpellCharge.heldInfo(p.classId, a.orig) : null; // what holding the button does
-    tx(c, hi ? 'HOLD:  ' + hi.name + '  -  aim it' + (hi.mult ? ', +' + Math.round((hi.mult - 1) * 100) + '% damage' : '') + ', costs more mana' : 'HOLD:  no charged form (only your two starting spells charge)', x + 8, yy + 38, 10, hi ? a.col : COL.dim);
+    var pr = CC.SpellPairs && CC.SpellPairs.get ? CC.SpellPairs.get(a.id) : null; // a registered tap/hold pair (spells_*.js)
+    var hi = !pr && a.orig && CC.SpellCharge && CC.SpellCharge.heldInfo ? CC.SpellCharge.heldInfo(p.classId, a.orig) : null; // the original spells' built-in hold
+    tx(c, 'TAP:  ' + (pr && pr.tapDesc || a.desc), x + 8, yy + 24, 10, COL.text);
+    tx(c, pr ? 'HOLD:  ' + (pr.chargeName || pr.name) + '  -  ' + (pr.chargeDesc || 'a stronger version') : hi ? 'HOLD:  ' + hi.name + '  -  aim it' + (hi.mult ? ', +' + Math.round((hi.mult - 1) * 100) + '% damage' : '') + ', costs more mana' : 'HOLD:  a stronger version (costs more mana)', x + 8, yy + 38, 10, pr || hi ? a.col : COL.dim);
     var cur = p.slots.indexOf(a.id);
     if (locked) tx(c, 'Unlocks at level ' + a.lvl, x + 8, yy + 56, 11, '#ffd36b');
     else btn(c, addHit, x + 4, yy + 44, w - 8, 22, cur >= 0 ? 'In slot ' + ROMAN[cur] + '  -  move to slot ' + ROMAN[selSlot] : 'Put in slot ' + ROMAN[selSlot], cur !== selSlot, function () { S.assign(p, selSlot, a.id); }, '#39644a');

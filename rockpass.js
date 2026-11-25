@@ -271,11 +271,41 @@
       tiles[at(bx, by)] = 1; kind[at(bx, by)] = 9; rockDepth[at(bx, by)] = 1;
     }
     alcoves.forEach(function (a) { var ch = { tx: Math.round(a.x), ty: Math.round(a.y), x: Math.round(a.x) * T + 16, y: Math.round(a.y) * T + 16, opened: false, tier: 1 }; if (!tiles[at(ch.tx, ch.ty)]) chests.push(ch); });
-    // reachability: start must reach the exit and every chest, else rebuild with another seed
+    // A short uphill spur leads off the road to the cave in the mountainside.
+    var junction = samples[Math.floor(n * 0.52)], caveX = Math.round(junction.x + nx * 11), caveY = Math.round(junction.y + ny * 11);
+    for (var step = 0; step <= 20; step++) {
+      var uCave = step / 20;
+      carve(junction.x + (caveX - junction.x) * uCave, junction.y + (caveY - junction.y) * uCave, 1.6, 2);
+    }
+    var caveEntrance = { tx: caveX, ty: caveY, x: (caveX + 0.5) * T, y: (caveY + 0.5) * T };
+    props.push({ x: caveEntrance.x, y: caveEntrance.y, sortY: 20, draw: function (c, sx, sy) {
+      c.save();
+      c.fillStyle = '#595861';
+      c.beginPath();
+      c.moveTo(sx - 34, sy + 5);
+      c.lineTo(sx - 22, sy - 31);
+      c.lineTo(sx - 5, sy - 48);
+      c.lineTo(sx + 18, sy - 42);
+      c.lineTo(sx + 33, sy + 5);
+      c.closePath();
+      c.fill();
+      c.fillStyle = '#17141d';
+      c.beginPath();
+      c.moveTo(sx - 18, sy + 5);
+      c.quadraticCurveTo(sx - 18, sy - 30, sx, sy - 33);
+      c.quadraticCurveTo(sx + 18, sy - 30, sx + 18, sy + 5);
+      c.fill();
+      c.fillStyle = '#ffe0a2';
+      c.font = 'bold 10px Georgia';
+      c.textAlign = 'center';
+      c.fillText('MOUNTAIN CAVE', sx, sy - 54);
+      c.restore();
+    } });
+    // Reachability: start must reach both branches and every chest, else rebuild with another seed.
     var seen = new Uint8Array(N), q = [at(Math.round(S.x), Math.round(S.y))], qi2 = 0; seen[q[0]] = 1;
     while (qi2 < q.length) { var c1 = q[qi2++], x1 = c1 % PW, y1 = (c1 / PW) | 0; [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (d) { var xx = x1 + d[0], yy = y1 + d[1]; if (xx < 0 || yy < 0 || xx >= PW || yy >= PH) return; var ni = at(xx, yy); if (seen[ni] || tiles[ni]) return; seen[ni] = 1; q.push(ni); }); }
     var ok = seen[at(Math.round(G.x), Math.round(G.y))] === 1; chests.forEach(function (ch) { if (!seen[at(ch.tx, ch.ty)]) ok = false; });
-    if (!ok || chests.length < 2) return null;
+    if (!ok || !seen[at(caveX, caveY)] || chests.length < 2) return null;
     var spawn = { x: Math.round(S.x) * T + 16, y: Math.round(S.y) * T + 16 }, exit = { x: Math.round(G.x) * T + 16, y: Math.round(G.y) * T + 16 };
     // monsters: harpies on the open stretches, golems and wolves on the two ledges, a few bears and crows between
     var spawns = [];
@@ -294,7 +324,7 @@
     props.push(marker(exit.x, exit.y, 'ABANDONED VILLAGE', 'rgba(150,200,255,.6)'));
     var map = CC.Realm.create({ name: 'Rocky Pass', w: PW, h: PH, kind: kind, tiles: tiles, spawn: { x: spawn.x, y: spawn.y - 8 }, stairs: { x: -999, y: -999, tx: -1, ty: -1 }, chests: chests, enemySpawns: spawns, props: props, lights: lights,
       ambient: '40,54,80,0.14', playerLight: 220, viewR: 300, fog: 0.04, fogColor: '190,205,225', ground: ground, detail: detail, drawSolid: solid, reveal: false, viewBoost: 1.2 });
-    map.rockDepth = rockDepth; map.passBack = { x: spawn.x, y: spawn.y - 8 }; map.passExit = exit; map.floor = 1;
+    map.rockDepth = rockDepth; map.passBack = { x: spawn.x, y: spawn.y - 8 }; map.passExit = exit; map.caveEntrance = caveEntrance; map.floor = 1;
     return map;
   }
   RP.generate = function (fixedSeed) {

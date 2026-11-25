@@ -1,0 +1,605 @@
+EMBERDEEP — SKILL TREE AND PAIRED SPELL REDESIGN
+DETAILED DEVELOPMENT INSTRUCTIONS
+Prepared for implementation in repository: https://github.com/jonio298/emberdeep
+Reference code inspected: main branch at commit 0fa56323 (2026-11-24). Re-check HEAD before editing.
+
+======================================================================
+1. GOAL AND NON-NEGOTIABLE DESIGN RULE
+======================================================================
+
+Redesign Emberdeep's four character classes to eliminate repetitive active skills,
+create distinctive build paths, and ensure EVERY active spell has:
+  (A) a quick REGULAR/TAP version, and
+  (B) a stronger, visually more dramatic CHARGED/HOLD version.
+
+CRITICAL RULE: The charged spell MUST be a logical, recognizable upgrade of the
+same regular spell. It may hit harder, last longer, reach farther, add projectiles,
+enlarge an area, improve control, or add a related secondary effect. It must NOT
+turn into an unrelated ability. A player should immediately recognize the same
+spell being empowered by charging it.
+
+Implement this rule for ALL FIVE active abilities for each of the four classes
+(20 abilities; 40 paired spell behaviors), including abilities unlocked after
+level 4. Do not limit hold-to-charge to the two original starting spells.
+
+Keep Emberdeep's fast, intuitive, crunchy arcade combat, responsive mobile
+controls, visible projectiles, impact effects, satisfying combat feedback, and
+pixel-art visual style. Avoid performance-heavy effects that obscure enemies
+or the player, particularly on mobile.
+
+The separately selected HOLD-ATK charge specials (Earthsplitter, Lightning
+Spear, Soul Spear, etc.) are a different system. Keep those independent from
+ordinary spell tap/hold pairing. Do not replace or confuse the Wizard's
+existing yellow lightning-spear special with Icicle Cannon.
+
+======================================================================
+2. RELEVANT CURRENT SYSTEMS / INSPECTION NOTES
+======================================================================
+
+Current files to inspect before editing:
+  abilities.js       Five active abilities per class; ability definitions,
+                     unlocked levels, slots, effects, mini-upgrade trees.
+  spell_charge.js    Hold-to-aim and charged versions, currently restricted
+                     mainly to the original spell1/spell2 plus dash.
+  classes.js         Original spell casts, projectiles, damage, statuses,
+                     combat and projectile collisions.
+  skilltree.js       Shared passive nodes, class mastery, HOLD-ATK specials.
+  charge.js          Independent HOLD-ATK special abilities.
+  ui.js              Skill screen and charge special selection.
+  vfx.js             Combat effects and sprite rendering.
+  main.js            HUD, inputs, rendering, update loop.
+  save_game.js       Character skill ranks, slots, state serialization.
+  multiplayer.js    Replication of spell visuals/partner effects where applicable.
+  tests/             Existing automated combat, charge, and lifecycle tests.
+
+Current structure:
+  - 5 ordinary abilities/class at levels 1, 4, 8, 16, 26.
+  - 4 equippable ordinary ability slots (Q/E/R/T / mobile buttons).
+  - Each ability currently shares generic Power, Reach, Haste, Effect, Mastery
+    upgrades; many upgrades merely increase damage, radius or cooldown.
+  - Three common passive columns: Offense, Defense, Utility, plus linear
+    class mastery nodes and repeatable Training.
+  - Separately selected HOLD-ATK specials unlock at levels 1, 10, 20, 30.
+  - Current spell_charge.js defines charged versions of initial spells and
+    dash but not all three additional unlockable abilities.
+  - Current charged and regular original spells have SEPARATE cooldowns.
+
+Change the spell-ability model so every equipped spell can resolve its own
+regular and charged cast through the same slot, while preserving the separate
+HOLD-ATK special system and existing charge-dash behavior.
+
+======================================================================
+3. UNIVERSAL TAP / HOLD INTERACTION AND UI
+======================================================================
+
+TAP:
+  - Tap/release BEFORE 0.25 seconds: execute the regular spell.
+  - No charge preview should appear on a quick tap.
+  - Apply standard mana cost and normal spell cooldown.
+
+HOLD:
+  - At >=0.25 seconds, enter the charged targeting state.
+  - Show a subtle spell-specific transparent preview (cone, line, radius,
+    single-target outline, etc.), and growing charging visual/audio.
+  - At approximately 0.90 seconds total hold, reach full charge.
+  - Continue holding may maintain full charge without automatic firing.
+  - On release, execute the charged version at the current aim location.
+  - During an incomplete charge after 0.25 seconds, scale charged power
+    smoothly according to actual time held; don't generate both tap and
+    charged casts from the same press.
+  - Charged versions cost MORE mana and have LONGER cooldowns than taps.
+  - Initial guide: roughly +50% to +80% mana and ~1.5x to 2x cooldown,
+    tuned per ability. Avoid enormous damage increases when the charge
+    adds multiple hits, crowd control or sustained area effects.
+  - Regular and charged versions should use ONE shared cooldown per
+    spell (charged cast writes the longer duration to the SAME cooldown).
+    This supersedes the existing separate p.cd and p.cdC arrangement for
+    spell abilities. Do not accidentally create a second free tap cast.
+  - If a hold is cancelled or mana is unavailable, do not consume mana
+    or trigger hidden damage. Communicate cooldown/unavailable state.
+
+MOBILE:
+  - Preserve the existing thumb-drag aim controls, especially SE aiming.
+  - Grow the held ability button subtly after the 0.25s threshold; keep
+    an internal aim knob so the thumb can clearly steer the attack.
+  - Targeting indicators should be semi-transparent, understandable and
+    anchored in the world. Spell visuals must not cover the player.
+  - Support diagonal casts and edge-of-screen drag amplification.
+
+PC:
+  - Apply the same semantics on equipped Q/E/R/T keys, with mouse or
+    current directional targeting consistent with existing game behavior.
+
+HUD / SKILLS SCREEN:
+  - Show BOTH TAP and HOLD descriptions for EVERY unlocked ability.
+  - Show spell-specific preview type, normal/charged mana and cooldown.
+  - Clearly distinguish independent HOLD-ATK special attacks.
+  - Distinct charge VFX and stronger audio must match the base spell's
+    elemental/martial identity.
+
+======================================================================
+4. WIZARD — REPLACE CHAIN LIGHTNING WITH ICICLE CANNON
+   (HIGH PRIORITY; FULL DETAILED SPECIFICATION)
+======================================================================
+
+Replace the Wizard's level-8 ordinary active ability "Chain Lightning" with:
+
+   NAME: ICICLE CANNON
+   ID: Prefer preserve existing ability ID "bolt" for save/slot migration,
+       but change display name, kind, behavior, effect upgrades, and VFX.
+   TYPE: Frost / physical-looking ice shards / piercing / limited splash.
+   COLORS: Crisp pale blue, cyan, white-blue highlights, ice fragments.
+   INTENT: Powerful visible ice projectiles, NOT an invisible line hit, NOT
+           homing chain lightning, NOT a generic frost ring.
+
+----------------------------
+4A. REGULAR TAP: PIERCING ICICLE
+----------------------------
+
+  - A single LONG, pointed, visibly distinct icicle shoots from the
+    Wizard's staff in the selected direction.
+  - Fast, straight-moving physical projectile with visible ice trail.
+  - Pierce UP TO THREE DISTINCT ENEMIES. The same projectile may hit each
+    enemy only once and MUST terminate after the third valid direct hit
+    or when it reaches max range / solid terrain.
+  - At EACH direct hit, produce a SMALL explosive ice splinter impact that
+    deals LIMITED SPLASH DAMAGE to nearby other enemies.
+  - Piercing must remain visible: the icicle should pass through the first
+    and second enemies and continue toward the third, not disappear early.
+  - Small glacial chip effects, brief cold hit response; don't turn it
+    into a room-clearing AoE spell.
+  - Wall collision: sharp glassy ice shatter, then remove projectile.
+  - No visually impossible damage to offscreen enemies or behind walls.
+
+  STARTING BALANCE TARGETS (adjust with playtests):
+    - Projectile count: 1
+    - Max enemy pierces: 3 distinct direct hits
+    - Travel distance: approximately 300 world pixels
+    - Direction: aim direction / target line
+    - Splash: small radius around EACH direct hit (starting 14-22 px)
+    - Base mana: 24
+    - Base cooldown: 5 seconds
+
+----------------------------
+4B. CHARGED HOLD: ICICLE CANNON / ICICLE BARRAGE
+----------------------------
+
+  - At 0.25s, reveal a readable, semi-transparent BLUE CONE preview.
+    The cone rotates with the player's thumb/mouse/directional aim.
+  - During charging, multiple needle-sharp icicles assemble visibly in
+    front of the Wizard's staff. They grow, brighten, vibrate and gather
+    ice mist/crystal particles as charge increases.
+  - On release, FIRE ACTUAL VISIBLE ICICLE PROJECTILES in a spreading
+    cone — an ice SHOTGUN / CANNON, not a single flat cone damage shape.
+  - Each icicle MUST travel independently, pointing in its movement
+    direction, with a sharp leading point and an ice particle trail.
+  - Suggested initial firing pattern: 9 icicles in 3 distinct fast waves
+    of 3, with staggered offsets across an approximately 55-degree cone.
+    Waves should be visible as they burst out sequentially rather than
+    spawning all nine simultaneously and looking like one blue flash.
+  - Each shard should have its own collision and SMALL splash of ice
+    fragments on impact. Charged shards may pierce one enemy at base
+    rank (upgrades can improve this); don't apply every shard's full
+    damage repeatedly to the same large target without a cap.
+  - On hitting a monster, the icicle visibly EMBEDS / STICKS INTO the
+    monster's body at the angle it entered. This is important. The
+    embedded shards move with the monster for approximately 0.8-1.2s.
+    Shards then crack, fall away or shatter; on death they can burst
+    into ice pieces and vanish. Use a per-enemy cap on embedded shards.
+  - Distinct impact sound: crisp crunchy piercing, glass/ice crack on
+    impact, followed by little clinks when shards fall or shatter.
+  - The charged cannon should FEEL stronger than the single icicle
+    through its number of projectiles, area coverage, impact and visual
+    feedback while still fitting the fast Emberdeep arcade rhythm.
+
+  STARTING BALANCE TARGETS:
+    - Total icicles: 9, over 3 short bursts of 3
+    - Targeting: cone, ~55 degrees wide
+    - Max travel distance: ~225 world pixels
+    - Direct hits: up to 1 distinct enemy per shard by default
+    - Splash: small per-shard hit effect, tightly capped
+    - Charged mana: 42
+    - Charged cooldown: 10 seconds (shared with regular tap cast)
+    - Suggested full charge: ~0.9s total hold
+    - Against bosses, cap aggregate damage across the full volley and
+      never multiply damage accidentally by overlapping splash explosions.
+
+----------------------------
+4C. DAMAGE, COLLISION AND EMBEDDED-ICE RULES
+----------------------------
+
+  - Store a hitSet (or comparable list) PER PROJECTILE, not globally.
+  - Count unique direct-hit enemies; stop regular icicle on hit #3.
+  - Splash must not re-hit the direct target on the same impact unless
+    deliberately balanced, and should not trigger itself recursively.
+  - Same enemy might be struck by multiple charged shards, but per-volley
+    damage falloff, a local hit interval or total cap must prevent absurd
+    damage at point-blank range and against large bosses.
+  - Apply frost slow consistently with upgrades (see below) without
+    per-hit infinite stun stacking. Bosses must follow existing
+    crowd-control resistance rules.
+  - Distinguish projectile state, impact state and embedded-shard state.
+    An embedded shard is a temporary visual attachment, NOT an active
+    projectile and should not keep dealing collision damage.
+  - Embedded shards follow enemy world position, rotation/direction as
+    applicable; clean up on death, despawn, area transitions, saves,
+    scene reset, and when an entity is recycled.
+  - Use pooled/limited VFX and a max embedded shard count per enemy.
+  - Multiplayer: replicate launch effects and impacts so remote players
+    see the cast; simulate gameplay damage only on the authoritative side
+    of the existing system to prevent duplicate hits.
+  - Render projectiles and embedded shards ABOVE fog as appropriate so
+    the player can understand the attack during the Pond boss encounter.
+
+----------------------------
+4D. ICICLE CANNON UNIQUE SKILL UPGRADES
+----------------------------
+
+  1. DEEP PIERCING
+     Tap: maximum pierces grows from 3 to 4 at an earned rank.
+     Charge: each individual icicle may pierce one additional target.
+
+  2. SPLINTERBURST
+     Tap: slightly wider splash on each pierced impact.
+     Charge: larger ice splinters erupt from embedded shard impacts.
+
+  3. FROSTBITE / GLACIAL PIN
+     Tap: pierced targets suffer a short movement slow.
+     Charge: sufficient shard hits apply stronger slow / brief freeze,
+     respecting boss CC rules and stun limits.
+
+  4. SHATTER MASTERY
+     Tap: deals increased damage to frozen targets.
+     Charge: embedded icicles break into a final small splash when
+     the target dies; cap these explosions to avoid exponential damage.
+
+  5. ABSOLUTE ZERO (CAPSTONE)
+     Requires deep investment in Icicle Cannon. Targets hit repeatedly by
+     charged shards can briefly freeze; a later ice hit produces a clear
+     shatter burst with capped bonus damage. No infinite freeze loops.
+
+These are behavior-changing upgrades; any Power/Reach/Haste numerical ranks
+should be secondary to the visible and tactical evolution of the spell.
+
+IMPORTANT: The Wizard already has Frost Nova -> charged Icicle Barrage as a
+separate starting-spell design in the inspected code. Avoid making two
+indistinguishable ice barrages. Under THIS plan, change charged Frost Nova to
+GLACIAL NOVA, a larger radial wave + second pulse + erupting ground ice, while
+Icicle Cannon uniquely fires FORWARD-FACING projectiles in a CONE.
+
+======================================================================
+5. COMPLETE 20-SPELL TAP / CHARGE PAIRINGS
+======================================================================
+
+SWORDSMAN — deliberate impact, precision, defense, and combo execution
+---------------------------------------------------------------------
+
+1) SHIELD BASH
+   Tap: Quick close-range frontal shield hit that stuns.
+   Charge: SHIELD BREAKER — visibly wind up the same bash, rush/strike
+           farther forward, stagger several foes and reduce enemy armor.
+   Why related: A stronger shield bash, not a separate magical attack.
+
+2) WHIRLWIND
+   Tap: One fast 360-degree sword spin.
+   Charge: BLADE STORM — the same spinning attack extends into three
+           clearly animated successive spins, with a modest enemy pull.
+   Why related: Charging extends the existing spinning technique.
+
+3) LEAP SLAM
+   Tap: Short leap followed by local shockwave on landing.
+   Charge: EARTHSHAKER — longer aimed leap and more powerful impact with
+           cracks/fissures travelling outward from the landing.
+   Why related: More committed leap and slam.
+
+4) BLADE WAVE
+   Tap: One narrow piercing blue crescent fired forward.
+   Charge: GREAT CLEAVE — wider, thicker crescent, stronger stagger and
+           longer travel, keeping the same projectile shape and direction.
+   Why related: Intensified sword wave.
+
+5) WAR CRY
+   Tap: Short temporary buff to damage and movement speed.
+   Charge: BATTLE ROAR — visibly louder/larger war cry that extends the
+           buff and additionally improves damage resistance for a while.
+   Why related: Same rallying cry empowered, not a new damage spell.
+
+Swordsman anti-duplication: WHIRLWIND is the one spinning skill. Do not make
+other unrelated charged skills into additional circular spins. Ensure the
+independent HOLD-ATK specials likewise do not become redundant chains of
+spinning moves; consider replacing independent Blade Storm with a parry/
+shield-counter special, and Sky Cleaver with a focused overhead finisher.
+
+WIZARD — elemental projectiles, control, gravity and magical defense
+-------------------------------------------------------------------
+
+1) FIREBALL
+   Tap: Fire one exploding fireball.
+   Charge: INFERNO ORB — an obviously LARGER, slower fireball with a
+           stronger impact explosion and lingering flames.
+
+2) FROST NOVA
+   Tap: Circular frost wave around the Wizard that damages/slows.
+   Charge: GLACIAL NOVA — enlarged circular frost wave, followed by a
+           second ice pulse and jagged ground ice from the same wave.
+   Note: This REPLACES existing charged Frost Nova's 'Icicle Barrage'
+         so it is distinct from Icicle Cannon.
+
+3) ICICLE CANNON (replaces Chain Lightning)
+   Tap: ONE sharp icicle projectile, pierce <=3 enemies with small splash
+        on each direct hit.
+   Charge: Forward CONE of several independently flying icicles, visibly
+           fired as a cannon, with shards physically sticking into enemies.
+   Complete design details in section 4 are mandatory.
+
+4) ARCANE ORB
+   Tap: Slow, powerful orb projectile travelling through foes.
+   Charge: GRAVITY ORB — an enlarged version of that same orb; drags
+           foes slightly toward itself and detonates at the end.
+
+5) ARCANE WARD (replaces ordinary Blink, as Wizard already has dash
+   teleportation)
+   Tap: Brief small magical protection shield centered on Wizard.
+   Charge: ARCANE FORTRESS — larger/longer protective shield that
+           absorbs more damage and releases a shockwave when exhausted.
+   Keep existing dash teleport mechanics intact.
+
+NECROMANCER — summons, draining, bone magic, corpse power, curses
+----------------------------------------------------------------
+
+1) RAISE SKELETON
+   Tap: Raise two ordinary skeleton warriors (respect cap).
+   Charge: BONE GUARDIAN — concentrate the same summoning into ONE
+           large, tougher skeletal guardian with visibly heavier attacks.
+   No uncontrolled additional skeleton population.
+
+2) LIFE DRAIN
+   Tap: Focus a green spectral life-drain beam on one enemy.
+   Charge: SOUL SIPHON — intensify SAME beam; a primary heavy channel
+           branches to nearby targets for sustained but capped drain.
+
+3) BONE SPEAR
+   Tap: Fire one pointed bone projectile through a straight line.
+   Charge: IMPALING LANCE — much larger bone spear with greater piercing
+           and a burst of splinters when it finally hits terrain/expires.
+
+4) CORPSE BLAST
+   Tap: Explode one nearby usable corpse; damage surrounding enemies.
+   Charge: CORPSE CHAIN — larger original blast propagates to up to two
+           nearby corpses in a short visible sequence, with falloff.
+   Engineering note: If the current game lacks usable retained corpse
+   objects, implement safe, time-limited corpse tokens or adapt current
+   corpse/rot mechanics; do not silently allow dead enemies to be hit
+   again or rely on non-existent references. Define living-target fallback
+   explicitly so the spell remains usable when corpses are absent.
+
+5) HEX OF WEAKNESS
+   Tap: Short-range curse reducing foe damage/speed.
+   Charge: WITHERING CURSE — stronger and wider version of the same
+           curse, with a short damage-over-time/decay component.
+
+Necromancer anti-duplication: RAISE SKELETON is the only dedicated active
+summoning spell. Revise/remove summon additions from Grave Choir, Bone
+Tide, Army of the Dead and redundant passives. Preserve one cool summon
+path, but offer fully viable non-minion plague and soul caster builds.
+
+THIEF — targeting, knives, stealth, traps and toxins
+--------------------------------------------------
+
+1) THROWING KNIVES
+   Tap: Throw two quick knives toward an aimed enemy.
+   Charge: KNIFE BARRAGE — rapid successive knives in a slightly widened
+           but still directional aim cone, with separate visible hits.
+
+2) SMOKE BOMB
+   Tap: Throw smoke that blinds/confuses enemies and enables backstabs.
+   Charge: SHADOW SHROUD — larger, longer-lasting smoke from the same
+           bomb, granting stronger concealment / ambush opportunity.
+
+3) SHADOW STEP
+   Tap: Briefly teleport behind one marked foe and backstab.
+   Charge: ASSASSINATION STEP — a longer aimed shadow step to a marked
+           foe, with multiple coordinated stabs and short re-vanish.
+   Do not auto-hit enemies beyond the explicit marked targeting area.
+
+4) RAZOR WIRE (replaces Blade Fan)
+   Tap: Throw a hooked wire that anchors and damages/slows enemies
+        crossing its short line.
+   Charge: RAZOR WEB — longer, denser multi-wire layout from the same
+           wire trap, with bleeding effects. Visually indicate wires.
+
+5) VENOM FLASK
+   Tap: Throw one toxic flask leaving a poison puddle.
+   Charge: TOXIC DELUGE — a larger/stronger flask that bursts into
+           several connected poison pools over a wider area.
+
+Thief anti-duplication: Keep Shadow Flurry as its distinct HOLD-ATK
+special; avoid making all slots another knife fan or another toxic cloud.
+
+======================================================================
+6. CLASS-SPECIFIC SKILL TREE REDESIGN
+======================================================================
+
+Keep the existing shared Offense / Defense / Utility progression and
+repeatable Training as progression foundations, but shift class mastery to
+THREE BRANCHING, MEANINGFUL SPECIALIZATIONS per class. Avoid a mandatory
+single six-node chain that simply buffs both starting spells.
+
+SWORDSMAN
+  VANGUARD: Braced Guard -> Shield Counter -> Last Stand -> Unyielding.
+    Identity: defense, counters, crushing shield retaliation.
+  DUELIST: Precision Window -> Combo Momentum -> Flawless Sequence -> Final Cut.
+    Identity: timing, combo streaks, precision finishers.
+  BERSERKER: Deep Wounds -> Battle Hunger -> Blood Frenzy -> Crimson Fury.
+    Identity: bleed, aggression, calculated low-HP risk.
+
+WIZARD
+  ELEMENTALIST: Fire enhancement -> Cold control -> Elemental reaction
+    -> Cataclysm. Reward combining fire/ice rather than repeating AoE.
+  CRYSTAL ARTILLERY: Deep Piercing -> Splinterburst -> Glacial Pin
+    -> Absolute Zero. Strong synergy with Icicle Cannon.
+  ARCANIST: Mana Economy -> Orb Control -> Shield Resonance -> Arcane
+    Fortress Mastery. Reward positioning, mana, and protective magic.
+
+NECROMANCER
+  BONEMASTER: Reinforced Skeletons -> Specialized Minion Attacks ->
+    Guardian Control -> Bone Commander. Stronger FEWER summons, not spam.
+  PLAGUEWEAVER: Contagion -> Corpse Catalyst -> Withering Infection ->
+    Black Plague. Spread and area damage via rot/curses.
+  SOUL REAPER: Greater Drain -> Soul Harvest -> Dangerous Sacrifice ->
+    Soul Devourer. Life/mana conversion and finishing power.
+
+THIEF
+  ASSASSIN: Marked Target -> Backstab Precision -> Perfect Timing ->
+    Perfect Execution. Critical precision and resets earned on kills.
+  TRICKSTER: Smoke Veil -> Decoy -> Evasive Positioning -> Vanishing Act.
+    Tactical stealth rather than raw damage.
+  VENOMBLADE: Poisoned Blades -> Lingering Toxins -> Debilitating Venom
+    -> Toxic Rupture. Damage-over-time and tactical detonation.
+
+REQUIREMENTS FOR ALL CLASS TREES:
+  - Meaningful visual/gameplay payoff at key tiers, especially capstones.
+  - Specialize early; deeper branches unlock with level AND point investment.
+  - Players can hybridize later; no accidental hard-lock to one branch.
+  - Name and describe effects accurately (what changes, how long, how often).
+  - Most upgrades should affect BOTH regular and charged variants in
+    connected but individually appropriate ways.
+  - Remove duplicate abilities/passives that only repeat one another.
+  - Keep numerical Training for high-level points, to level 99.
+  - Maintain balance against bosses, elite enemies and multiplayer/co-op.
+
+======================================================================
+7. TECHNICAL IMPLEMENTATION REQUIREMENTS
+======================================================================
+
+A. ABILITY DATA MODEL
+   - Give every active ability a reliable unique ID and paired tap/charge
+     definition (cast function, targeting shape, cost, cooldown, VFX,
+     effect upgrades and gameplay flags).
+   - Preserve existing IDs where practical, especially the Wizard's
+     legacy 'bolt' slot, so saved skill ranks/slots are not destroyed.
+   - Update button/help descriptions so each ability explicitly shows
+     both normal and charged effects.
+
+B. INPUT/CHARGE ROUTING
+   - Extend spell_charge.js (or refactor equivalent) for ALL equipped
+     abilities in slots 1-4, not only spell1 and spell2.
+   - Ensure actions go through slot->equipped ability->tap or charged
+     dispatcher consistently for mouse, keyboard, touch and multiplayer.
+   - Preserve existing charge-dash and HOLD-ATK systems independently.
+   - Apply a SHARED cooldown per regular spell + charged version.
+
+C. PROJECTILE / EFFECT IMPLEMENTATION
+   - Use visible actual projectiles whenever the spell promises physical
+     objects (icicles, knives, fireballs, bone spears, wire throws).
+   - Maintain wall collision, enemy collision, status resistance,
+     hit de-duplication, correct direction and range.
+   - Avoid visual-only effects that suggest projectiles but apply
+     unrelated instant damage in a hidden radius.
+   - For Icicle Cannon specifically, use per-projectile unique hits,
+     limited splash, sprite-or-canvas projectiles, embedded-shard visuals,
+     small impact fragments and safe VFX cleanup.
+
+D. SAVE MIGRATION
+   - Old slots, ranks, flags, class perks and cooldowns should be
+     migrated or safely defaulted without deleting players' progress.
+   - Map or refund points spent on removed or renamed skills.
+   - For Chain Lightning->Icicle Cannon, keep a compatible stable ID and
+     map old generic Power/Haste/Reach ranks where sensible, while
+     replacing obsolete Chain/Forked status/ranks with a new equivalent
+     or a one-time refunded skill point.
+   - Run migration only once. Never repeatedly refund on reload.
+
+E. BALANCING / UX
+   - Ensure stronger charged versions do not make tap useless. Tap
+     should remain a fast, efficient, lower-cost combat choice.
+   - Reward thoughtful aiming/positioning rather than unavoidable AoE.
+   - Keep attack naming, effects, damage and animation synchronized.
+   - Charge UI must be clear on small phone screens and readable through
+     the Lady of the Pond fog/other layered effects.
+   - No sustained freeze-frame on every crit; preserve existing
+     critical-kill animation settings and hit-stop rules.
+
+F. PERFORMANCE
+   - Cap simultaneous projectiles, attached shards, chain explosions,
+     particle counts and temporary summons.
+   - Prefer shared sprites/particle pools over expensive per-shot allocations.
+   - No unbounded timer callbacks or enemy references that persist
+     after death/zone changes.
+   - Verify steady performance on mid-range Android phones and desktop.
+
+======================================================================
+8. ACCEPTANCE TESTS / DEFINITION OF DONE
+======================================================================
+
+1. EVERY one of the 20 active abilities has a working tap and a working
+   charged variant in every allowed equipment slot.
+2. Holding a button >0.25s shows a relevant preview; short taps do not.
+3. Charged attack is an obviously powered-up version of the tap ability.
+4. Every spell has consistent mana/cooldown behavior with NO accidental
+   extra tap available immediately after a charge release.
+5. Regular Icicle Cannon fires ONE actual ice projectile with at most
+   THREE unique direct hits. Each hit produces a small capped splash.
+6. Charged Icicle Cannon fires multiple individually visible physical
+   icicles from the staff in a FORWARD AIMED CONE, with staggered volleys.
+7. Charged icicles visibly EMBED in enemies, track their movement, and
+   shatter/fall away after a short delay or on death.
+8. Bosses cannot be frozen indefinitely, and large hitboxes do not
+   multiply icicle damage without limit.
+9. Frost Nova charged remains a radial nova, not a second ice cannon.
+10. Swordsman has only one main spin-themed regular/charged ability pair;
+    the rest have distinct roles and effects.
+11. Necromancer active abilities do not repeatedly produce separate
+    skeleton armies; one summon path remains meaningful.
+12. Thief wires/traps are usable and visually readable; knife and venom
+    skills each have differentiated mechanics.
+13. New class skill branches can be bought, display correct costs/ranks,
+    and change both tap and charged variants as described.
+14. Existing saves load safely with correct investments/slots, with
+    one-time compatibility migration/refunds.
+15. Mobile thumb-drag aiming works in all directions, especially SE.
+16. Co-op clients see consistent spell visuals without duplicate damage.
+17. Repeated casts/area changes/death/restarts cause no leaked projectiles,
+    attached-ice sprites, summoned units, timers or leftover preview rings.
+18. Existing automated tests pass; add specific tests for charging every
+    unlocked ability, icicle piercing/splash/caps, cooldown integration,
+    save migration, and ability-specific status effects.
+
+======================================================================
+9. RECOMMENDED ORDER OF WORK
+======================================================================
+
+PHASE 1 — Foundation
+  Inspect latest HEAD. Refactor equipped spell tap/hold resolution so
+  any of the 5 abilities per class can be charged. Implement one shared
+  cooldown and correct targeting/preview API. Add tests first.
+
+PHASE 2 — ICICLE CANNON FIRST
+  Replace Chain Lightning with Icicle Cannon. Implement one 3-pierce
+  tap projectile, tiny splash impacts, the charged cone cannon, independent
+  shard projectiles, embedded-ice visuals and damage caps. Test mobile
+  aiming and monster motion. Make Frost Nova charge Glacial Nova.
+
+PHASE 3 — REMAINING SPELL PAIRS
+  Implement the 19 other regular/charged pairs, each with the same
+  underlying spell identity. Focus on combat readability and unique
+  impacts rather than adding layers of generic rings.
+
+PHASE 4 — TREES, PERKS AND SAVE SUPPORT
+  Build meaningful class mastery branches and spell-specific upgrades,
+  remove redundant spinning/summoning, update UI descriptions and slots,
+  and implement one-time save/rank migrations.
+
+PHASE 5 — POLISH AND QA
+  Playtest all four classes, mobile & PC, dense combat, bosses, co-op,
+  skill unlocks, maximum upgrades, low mana, interrupted charges, and
+  persistence. Verify frame pacing, collisions and animation clarity.
+
+FINAL DESIGN PRINCIPLE:
+A charged spell should never surprise the player by becoming a different
+ability. It is the SAME spell, amplified in a satisfying, readable way.
+Icicle Cannon must especially feel like firing an actual ice weapon:
+one very sharp piercing icicle on tap, or a fierce cone of distinct icy
+projectiles on charge, visibly stabbing and sticking into enemies.
+
+END OF INSTRUCTIONS

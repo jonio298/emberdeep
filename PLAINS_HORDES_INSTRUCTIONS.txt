@@ -1,0 +1,191 @@
+EMBERDEEP - ENDLESS PLAINS (SURVIVAL): DEVELOPMENT INSTRUCTIONS
+================================================================
+READ ENDLESS_MODES_COMMON_INSTRUCTIONS.txt FIRST. It defines the mode select, the character choice (use your leveled character or a new one),
+the top-centre timer, how a run ends, the reward tiers (rarity rises the farther you get) and co-op. This file covers only what is specific to
+the Plains survival mode. For this mode the progress value used for rewards is P = minutes survived (5:00 = 5).
+
+Goal: an endless survival mode on the Rolling Plains that feels like Vampire Survivors: you walk, you fight, the screen fills with enemies, you
+get stronger, and every 5 minutes the world turns darker and scarier and the monsters get meaningfully worse. The run ends when the hero
+dies. The feeling to protect: "just one more minute", power fantasy early, dread later.
+
+Read this whole file before writing code. Keep every number in ONE tuning table (section 9) so balance can be changed without hunting.
+
+
+1. THE FEEL (what a playtester should say)
+------------------------------------------
+- Minute 0-1: a few easy enemies drift toward you. You kill them in one or two hits. It feels good immediately.
+- Minute 1-5: the crowd thickens steadily. Never a flat plateau: density keeps creeping up.
+- Every 5:00: a "NIGHTFALL" event. The sky darkens one more step, colours drain, fog and sound change, a new enemy tier arrives, existing
+  enemy types get stronger, and a mini-boss shows up. The player must feel "this just got worse", not "this got a bit bigger".
+- Between nightfalls: waves, surges (short bursts of many enemies from one side), and rewards that make the player feel they are winning.
+- Death should feel earned and fast to retry.
+
+
+2. WHERE IT PLUGS IN (existing Emberdeep code - reuse, do not rewrite)
+----------------------------------------------------------------------
+- Map: plains.js builds the Rolling Plains (CC.Plains, CC.state.area === 'plains', map object in CC.Dungeon). Use its spawn points and
+  isSolid for placement. Do not edit forest.js; plains.js already wraps CC.Enemies._think and CC.Enemies.spawnForFloor.
+- Enemies: CC.Enemies.spawn(type, x, y, floorScale) creates one; CC.Enemies.list holds them; CC.Enemies.TYPES defines types
+  (name, hp, spd, dmg, r, xp, color, blood...). Add new tiers as new TYPES entries or as stat scalers (see section 5).
+- Damage and health scaling: CC.Difficulty.hpMul() / dmgMul() are already applied to every hit on enemies and to damage on the player.
+  The horde mode must NOT scale on top of them in a way that double counts; it supplies its own tier multipliers (section 5).
+- Darkness: CC.Vfx.drawDarkness already draws a darkness layer for the Patchwork Horror; reuse its approach (a screen-space overlay with a
+  light hole around the hero). Dungeon.drawLighting handles open-air lighting. Add a "nightfall level" (0-N) that feeds both.
+- HUD: CC.UI.drawHud and main.js drawControls own the HUD. Draw the run clock at top-centre (the difficulty badge/slider is also top-centre:
+  put the clock just below it, or move the badge).
+- Main loop: main.js update(dt) and draw() call modules through call('Module','fn',...). Add one module file (e.g. hordes.js) and register
+  its update/draw calls beside LevelBurst/SmokeBomb. Add the script tag in index.html before main.js and the file to the "check" script in package.json.
+- Run state lives in the module (CC.Hordes.state), reset on start/death/exit. Nothing may leak into campaign saves.
+- Existing systems to keep working: hold-to-charge spells (separate tap/charged cooldowns), SmokeBomb, difficulty modes, tutorial overlays,
+  boss arrows, Lightning Spear pins, kill cutscenes (rare by design), crit rules. Test each of these inside a horde.
+
+
+3. RUN STRUCTURE
+----------------
+- Entry: the ENDLESS select screen from the common file ("PLAINS SURVIVAL", solo or co-op, your character or a new one). The hero(es)
+  spawn at the map centre. In co-op the host runs the director and both players see the same enemies, the same clock and the same nightfall.
+- Run clock: counts active play only (not pause, not level-up screens). Show MM:SS at top-centre. Reset on retry.
+- Nightfall levels: level 0 at 0:00; level N starts at N * 5:00. Cap the visual darkness at level 6 (30:00) and keep scaling stats after.
+- Phases inside each 5-minute block (relative to the block start), with the spawn rate multiplied as shown:
+    0:00-1:00  "Calm"     rate x0.7   (breathing room after a nightfall event)
+    1:00-3:30  "Swell"    rate x1.0 rising to x1.6 linearly
+    3:30-4:30  "Surge"    rate x2.2   (one or two directional surges; a clear warning arrow/horn 3 s before)
+    4:30-5:00  "Dread"    rate x1.2   (screen shakes lightly, music tension, mini-boss telegraph)
+    5:00       NIGHTFALL event (section 4)
+- Population cap (performance): hard cap on living enemies, e.g. 90 at level 0 rising to 160 at level 6. Never exceed it; when at the cap,
+  hold new spawns in a queue, do not delete enemies. Test the frame rate at the cap on a mid-range phone.
+
+
+4. NIGHTFALL EVENT (every 5:00)
+-------------------------------
+Sequence (about 6 seconds, the world keeps running; do NOT freeze the game):
+  1. 0.0 s  A low bell/horn, a short screen pulse, and a banner: "NIGHTFALL  II" (roman numeral = nightfall level). Camera shake 4.
+  2. 0.0-3.0 s  The sky darkens one step with a smooth fade (never a pop). The palette shifts colder and more desaturated, with a faint
+     red or violet tint growing per level.
+  3. 1.0 s  A ring of the NEW tier's enemies erupts at the edge of the screen (they are visible and telegraphed, not instant damage).
+  4. 3.0 s  A MINI-BOSS rises from the ground with a telegraph circle. Its health bar appears. Killing it drops a guaranteed reward chest
+     (section 7) and ends the surge.
+  5. 6.0 s  Phase "Calm" begins for the new block.
+Darkness per level (suggested): ambient light 100% / 85% / 70% / 55% / 42% / 32% / 25%. The hero always has a light radius (grows with the
+level-up perk that increases it). Torches, fire spells, lightning and the Smoke Bomb glow stay bright and look better as it gets darker.
+Environment per level: fog density up, grass sways harder, more crows, distant howls, props start to look wrong (bones in the grass at level 3,
+red eyes in the dark at level 4, trees leaning toward the hero at level 5+). Each is cheap decoration, not new systems.
+Audio: crossfade to a darker music layer per level; add a heartbeat or drone from level 3.
+Escalation of enemies at each nightfall (all three, every time):
+  a. NEW TIER: a new enemy family joins the spawn table (section 5).
+  b. STAT BUMP: every existing enemy type gets +25% health, +15% damage, +6% speed (compounding per level, speed capped at +40%).
+  c. NEW BEHAVIOUR: one existing enemy type gains a mechanic (section 5).
+
+
+5. ENEMY ROSTER AND TIERS
+-------------------------
+Use the existing Plains monsters first (crow, plains wolves/scarecrows if present, pond things) and add families so each level has a new look.
+Suggested tiers (reuse art and sounds where possible; palette-swap with darker/redder tints for higher tiers):
+  Tier 0 (0:00)   Carrion Crows, Field Mice swarms (tiny, 1 hit), Scarecrows (slow, tanky)            - fodder, fast kills
+  Tier 1 (5:00)   Wolves (run in packs, flank), Bone Hounds, Rot Farmers (ranged, pitchfork throws)
+  Tier 2 (10:00)  Grave Knights (armoured, slow), Wailers (blind/confuse aura), Burrowers (emerge under the hero after a telegraph)
+  Tier 3 (15:00)  Hollow Riders (charge in lines), Plague Priests (heal others), Mirror Crows (split when hit)
+  Tier 4 (20:00)  Veyr-class horrors (teleport/bite), Patchwork shamblers (immune to confusion), Grinning Masks (mini-boss tier)
+  Tier 5+ (25:00+) Nightmare variants of everything: red eyes, +50% size, new telegraph. Endless: keep stacking multipliers.
+Spawn table: each tier has a weight; newer tiers get a growing weight, old tiers never disappear (they become the "swarm" layer).
+Spawn positions: just outside the visible screen, around the hero, biased toward the hero's movement direction so enemies arrive in front of
+the player. Reject spots inside walls (CC.Dungeon.isSolid) and spots too close to the hero.
+Elites: from level 1, 1 in 25 spawns is an elite (glowing outline, +100% health, drops a gem cluster). From level 3, 1 in 15.
+Mini-bosses (one per nightfall, rotating): Bone Colossus, Carrion Queen, Hollow Rider, Plague Priest Elder, Grinning Mask, Veyr, Pond Horror.
+Each uses existing telegraph conventions (tele circles/lines, warnings visible in the dark) and is immune to Smoke Bomb confusion.
+
+
+6. PLAYER POWER CURVE (the Vampire Survivors part)
+--------------------------------------------------
+- XP gems: every kill drops a gem; gems magnetise to the hero within a pickup radius (upgradeable). Big gems from elites. This replaces
+  instant XP in this mode so the screen fills with satisfying pickups.
+- Level-ups come fast early (about every 20-30 s at the start, slowing to every 60-90 s by minute 10). Each level-up offers 3 choices from
+  the existing perk list plus horde-specific perks: pickup radius, projectile count, area size, cooldown, regeneration, light radius, luck.
+- Chests: killing a mini-boss or elite pack drops a chest: pick 1 of 3 strong rewards (a skill rank, an item, or a temporary power-up).
+- Healing: sparse. Small heart drops (about 1 in 30 kills) and a larger one from each mini-boss. Potions work as in the campaign.
+- Do NOT scale player damage by time. The player grows only through perks, gear and skill ranks they choose, or the run becomes meaningless.
+- Difficulty modes (Easy/Normal/Hard/Dev) apply on top: Easy lowers incoming damage, Hard removes auto-aim.
+
+
+7. REWARDS AND META
+-------------------
+- The END-OF-RUN REWARD is defined in the common file (section 5): the tier comes from P = minutes survived, and the item rarity rises with it
+  (3:00 Bronze, 6:00 Silver, 10:00 Gold, 15:00 Platinum, 22:00 Legendary, 30:00 Mythic). Reaching your first NIGHTFALL (5:00) should feel like
+  a real milestone: show a "reward tier reached" toast each time a new tier breakpoint is crossed during the run so the player can see
+  the prize growing (just the tier name and colour; the items themselves are revealed in the end ceremony).
+- Per-run summary on death: survival time, nightfall level reached, kills, gold, best DPS moment, perks taken (run-only), then the reward ceremony.
+- Everything gained during the run (levels, perks, gear, gold) is run-only and discarded at the end (common file, section 2). Only the reward is kept.
+- Persist ONLY: best time, best nightfall level, total kills (the small 'emberdeep-endless-v1' entry, separate from campaign saves).
+- Optional later phases: a permanent upgrade shop funded by run gold, a leaderboard or share card.
+
+
+8. IMPLEMENTATION PLAN (do these in order, test after each)
+------------------------------------------------------------
+Phase 1 - Skeleton (1 day)
+  1. hordes.js with CC.Hordes: start(), update(dt), draw(ctx,cam), drawHud(ctx,W,H), end(), state (clock, level, queue).
+  2. Mode entry + HUD clock + death summary + retry. Spawn a constant trickle of tier-0 enemies. Verify clock excludes pause.
+Phase 2 - Director (1-2 days)
+  3. Spawn-rate curve by phase (section 3), population cap, spawn positioning, queueing at the cap.
+  4. Surges with a clear warning. Spawn table and tier weights.
+Phase 3 - Nightfall (2 days)
+  5. Darkness levels, palette shift, fog, banner, audio cues. Make it smooth and readable (see section 10).
+  6. Stat bumps and the new-tier eruption. Mini-boss with telegraph and chest.
+Phase 4 - Power curve (2 days)
+  7. XP gems and magnet, fast level-ups, horde perks, chests with 3 choices.
+Phase 5 - Polish and balance (ongoing)
+  8. Add the balance log (kills per minute, damage taken per minute, deaths by enemy, time per nightfall) printed to the console and saved
+     in the run summary. Use it to tune section 9 numbers from real play sessions.
+  9. Performance pass: pool particles and projectiles, cap fx counts, draw culling.
+
+
+9. TUNING TABLE (put in one object, e.g. CC.Hordes.TUNING, easy to edit)
+------------------------------------------------------------------------
+  nightfallEverySeconds : 300
+  spawnPerSecondBase    : 1.2 at 0:00, +0.35 per minute inside a block, resets partially (x0.7) after each nightfall
+  populationCap         : 90 + 12 per nightfall level (max 160)
+  statBumpPerLevel      : health +25%, damage +15%, speed +6% (speed capped +40%)
+  eliteChance           : 0.04 at level 1, 0.067 at level 3
+  surgeAt               : 3:30 in each block, length 60 s, rate x2.2, warning 3 s
+  darknessByLevel       : [1.0, 0.85, 0.70, 0.55, 0.42, 0.32, 0.25]
+  heroLightRadius       : 150 px base (perks raise it)
+  gemMagnetRadius       : 60 px base
+  firstLevelUpSeconds   : 20
+  miniBossHealth        : base boss x (1 + 0.4 * level)
+Everything above is a starting guess. Play it, then change the numbers.
+
+
+10. READABILITY RULES (so "darker and scarier" never means "unplayable")
+------------------------------------------------------------------------
+- Enemy telegraphs, projectiles, pickups, the hero and the minimap must stay readable at every darkness level. Use additive glow and
+  bright outlines for danger, not just brightness.
+- Never darken below the contrast of the existing pond-fog levels; the hero's light radius never shrinks below 110 px.
+- Do not rely on colour alone for warnings: add shape and motion.
+- Keep a "reduce darkness" accessibility setting (caps darkness at level 3) and respect the existing reduced-motion handling.
+- Screen shake and flashes: low amplitude, short, and skippable via the existing reduced-motion preference.
+
+
+11. TESTING AND ACCEPTANCE
+--------------------------
+Automated (add to tests/, run with npm run validate):
+  - Director: given a seeded RNG, spawn counts by minute match the curve within tolerance; the population cap is never exceeded.
+  - Nightfall: at 300 s the level increments exactly once, stats bump once, a mini-boss spawns once; pausing does not advance the clock.
+  - Reset: after death and Retry, the clock, level, queue and enemies are all clear; campaign state is untouched.
+Manual / browser (report what you could and could not verify):
+  - Survive to 0:30, 2:00, 5:10, 10:10 and screenshot each. The world must visibly darken at 5:00 and 10:00.
+  - Hold-to-charge spells, Smoke Bomb, Lightning Spear and boss arrows still work inside a crowd.
+  - Frame rate stays smooth at the population cap on a phone-sized viewport.
+  - Easy, Normal, Hard and Dev all start and finish a run.
+Definition of done: a fresh player can start a run, feel stronger for the first 5 minutes, see and feel the first nightfall, and die to the
+second or third one with a clear summary and a one-tap retry.
+
+
+12. NOTES FOR WHOEVER BUILDS THIS
+---------------------------------
+- Codex already built a different ENDLESS director in the older copy at Documents\ChatGPT\cave-crawler (endless.js, ~320 lines: wave limits,
+  boss every 5 minutes, population limits, arena factories). Read it for ideas only. That copy uses different class names (CC.state.party, 'warrior')
+  and is not git-tracked; do not copy it over this project. Port ideas, not files.
+- Work on a git branch. Run npm run validate before every commit. Keep the commit message short and say what you could not verify.
+- Do not commit assets/preview/ or the splatter mp3 files unless asked.
+- Co-op: follow the common file (online co-op through the existing multiplayer module, host-authoritative director, revive rules). In co-op the
+  spawn rate and population cap are x1.7 and enemy health x1.25; each player rolls their own reward from the shared run progress.
+  Design the director around "a list of living heroes" from day one so a same-screen local co-op mode can be added later.

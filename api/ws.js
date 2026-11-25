@@ -274,7 +274,8 @@ async function relay(ws, data) {
   if (data.type === 'fx') {
     // Visual-only combat effects (slashes, spells, projectiles, minions) mirrored to the partner.
     if (!rate(ws, 'fx', 70)) return;
-    if (!['fx', 'pr', 'sc', 'mn', 'df', 'tb', 'tc', 'opt', 'ch', 'qs', 'qe', 'vf', 'gp'].includes(data.k)) return;
+    if (!['fx', 'pr', 'sc', 'mn', 'df', 'tb', 'tc', 'opt', 'ch', 'qs', 'qe', 'vf', 'gp', 'pg', 'po', 'rq'].includes(data.k)) return;
+    if (data.k === 'rq' && role !== 'guest') return;
     if ((data.k === 'df' || data.k === 'tb' || data.k === 'opt' || data.k === 'ch' || data.k === 'qs' || data.k === 'qe' || data.k === 'gp') && role !== 'host') return; // wave state and crossbow fire come from the host
     if (data.k === 'tc' && role !== 'guest') return; // crossbow requests come from the guest
     const d = cleanFx(data.d, 0);

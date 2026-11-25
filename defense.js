@@ -864,6 +864,7 @@
   }
   function collect(pk, who) {
     if (pk.type === 'meteor') { // meteor rain is for everybody
+      if (CC.Audio) CC.Audio.event('powerup');
       startMeteor(); if (mp()) mp().sendFx('tb', { e: 'm' });
       return;
     }
@@ -876,6 +877,7 @@
     if (type === 'shield') { p.pw.shield = def.dur; p.pw.shieldBase = p.hp; }
     else p.pw[type] = def.dur;
     toast(def.name + '!', def.col);
+    if (CC.Audio) CC.Audio.event('powerup');
     if (CC.fx && CC.fx.burst) CC.fx.burst(p.x, p.y, def.col, 16, 110);
   }
   function updatePower(dt) { // the local hero's timers and the shield's guard

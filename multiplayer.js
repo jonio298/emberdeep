@@ -6,6 +6,15 @@
 var CC=root.CC=root.CC||{};
 var MP=CC.Multiplayer={active:false,role:null,room:null,remote:null,connected:false,options:{guestInvuln:false}};
 var ws=null,session=null,reconnectDelay=800,pending=null,opened=false,playing=false;
+// ---- network health: counters, backpressure and the delta snapshot state (host side) ----
+var NET={bytesOut:0,bytesIn:0,rateOut:0,rateIn:0,rateAt:0,lastOut:0,lastIn:0,snapAt:0,needInit:true,keyClock:0,known:new Map(),dropSig:'',dropAt:0,
+ pingClock:0,buf:90000,resyncAt:0,bid:'',peerBid:'',warned:false,show:false,needFull:true,rqAt:0,snapKind:'',snapBytes:0,drops:0};
+MP.net=NET;
+try{NET.show=/[?&]net=1/.test(location.search);}catch(_){}
+function wsend(s){NET.bytesOut+=s.length;ws.send(s);}
+// a congested link must not queue stale positions and world updates behind each other (that is what turns a slow link into a laggy one): skip them, send the newest later
+function congested(){return !!ws&&(ws.bufferedAmount||0)>NET.buf;}
+
 var chat=[],trade=null,positionClock=0,snapshotClock=0,roomClock=0,pickupClock=0;
 var lastScene='',lastRemote=0,pendingPickups={},hostPos=null,extClock=0,qsClock=0;
 var SCENES=['cave','defense','forest','tree-tunnel','plains','tree-ascent','rocky-pass','village','village-cellar'];
@@ -28,7 +37,7 @@ var URL=function(){
  return (location.protocol==='https:'?'wss:':'ws:')+'//'+location.host+'/api/ws';
 };
 var ready=function(){return ws&&ws.readyState===1;};
-function send(o){if(ready()){ws.send(JSON.stringify(o));return true;}return false;}
+function send(o){if(ready()){wsend(JSON.stringify(o));return true;}return false;}
 function message(t){if(el('mp-status'))el('mp-status').textContent=t;}
 function setError(t){message(t);if(el('mp-server'))el('mp-server').textContent=t;}
 function safeName(){return ((MP.character&&MP.character.name)||'Adventurer').trim().slice(0,22);}
@@ -62,6 +71,7 @@ function connect(){
   else if(kind==='ws')send({type:'list'});
  };
  mine.onmessage=function(e){
+  NET.bytesIn+=(e.data&&e.data.length)||0;
   try{handle(JSON.parse(e.data));}catch(err){console.warn('Co-op message:',err);}
  };
  mine.onclose=function(){
@@ -189,7 +199,7 @@ function broadcastScene(){
  if(hostPos){scene.px=Math.round(hostPos.x);scene.py=Math.round(hostPos.y);}
  lastScene=sceneKey(scene);MP.scene=scene;
  send({type:'scene',scene:scene});
- var data=snapshot();if(data)send({type:'snapshot',snapshot:data});
+ var data=snapshot('init');if(data){send({type:'snapshot',snapshot:data});NET.needInit=false;NET.keyClock=0;}
 }
 function incomingScene(scene){
  if(!scene||SCENES.indexOf(scene.area)<0||MP.role!=='guest')return;
@@ -223,34 +233,118 @@ var enemyFields=['id','type','name','x','y','r','hp','maxHp','dmg','spd','state'
  'heartPhase','introDone','rage','poison','fireproof','mkGrip','mkFx','orbs','trail','enraged','mkSt','lostN'];
 function fields(v,names){
  var o={};if(!v)return o;
- names.forEach(function(n){if(v[n]!==undefined&&typeof v[n]!=='function')o[n]=v[n];});return o;
+ names.forEach(function(n){if(v[n]!==undefined&&typeof v[n]!=='function')o[n]=r1(v[n]);});return o;
 }
-function snapshot(){
+function r1(v){return typeof v==='number'&&isFinite(v)?Math.round(v*10)/10:v;}
+// Fields that change while a monster lives. A snapshot sends only the ones that changed since the last one (delta); the rest of an enemy is sent once, when the partner first meets it.
+var FAST=['x','y','hp','state','t','face','tele','dangerous','invuln','stunT','slow','burn','shield','ang','atk','phase','collapsed','asleep','boss','weaselMove','weaselPhase','weaselGlow','weaselElapsed','weaselFx','weaselTarget','weaselAngle','heartPhase','introDone','rage','enraged','mkSt','mkGrip','mkFx','orbs','trail','lostN','bar','look','horrorParts','eth','def','poison','contact','flash'];
+function sig(v){return v!==null&&typeof v==='object'?JSON.stringify(v):v;}
+function baseline(e){var o={};for(var i=0;i<FAST.length;i++){var v=e[FAST[i]];if(v!==undefined&&typeof v!=='function')o[FAST[i]]=sig(r1(v));}return o;}
+function delta(e,b){
+ var o=null;
+ for(var i=0;i<FAST.length;i++){
+  var n=FAST[i],v=e[n];if(typeof v==='function')continue;
+  if(v===undefined){if(b[n]===undefined||b[n]===null)continue;v=null;}
+  v=r1(v);var g=sig(v);
+  if(b[n]!==g){(o=o||{})[n]=v;b[n]=g;}
+ }
+ return o;
+}
+function heroList(){var h=[],p=CC.state&&CC.state.player;if(p&&!awayNow())h.push(p);if(MP.remote)h.push(MP.remote);return h;}
+function nearHero(e,h,r){for(var i=0;i<h.length;i++)if(Math.abs(e.x-h[i].x)<r&&Math.abs(e.y-h[i].y)<r)return true;return false;}
+function curSceneKey(){var s=CC.state;return sceneKey({area:s.area,floor:s.floor,tf:s.treeFloor||1,seed:CC.Dungeon&&CC.Dungeon.seed});}
+// A fingerprint of the world generators and monster tables: if the two phones disagree, they are running different versions of the game.
+function buildId(){
+ if(NET.bid)return NET.bid;
+ var s='',E=CC.Enemies;
+ ['Forest','Plains','Dungeon','RockPass','AbandonedVillage','TreeTunnel','Defense','TreeAscent'].forEach(function(k){var o=CC[k];if(o&&typeof o.generate==='function')s+=o.generate.toString();});
+ if(E){if(E.spawnForFloor)s+=E.spawnForFloor.toString();if(E.TYPES)s+=Object.keys(E.TYPES).join(',');}
+ var h=0;for(var i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;
+ return NET.bid=(h>>>0).toString(36);
+}
+function checkBuild(){
+ if(NET.warned||!NET.peerBid||NET.peerBid===buildId())return;
+ NET.warned=true;
+ var t='Your partner is running a different version of Emberdeep. Reload the page on BOTH phones, or the two worlds will not match.';
+ chatItem({name:'System',text:t});setError(t);
+ if(CC.fx&&CC.state.player&&CC.fx.text)CC.fx.text(CC.state.player.x,CC.state.player.y-34,'DIFFERENT GAME VERSIONS - RELOAD','#ff9a7a',11);
+}
+// kind: 'init' = everything (a new partner, a new scene, a request), 'key' = a full refresh of the nearby monsters every few seconds, 'delta' = only what changed nearby
+function snapshot(kind){
  var E=CC.Enemies,L=CC.Loot;
  if(!E)return null;
- return {enemies:E.list.filter(function(e){return !e.dead;}).slice(0,150).map(function(e){return fields(e,enemyFields);}),
-  projectiles:E.projectiles.slice(0,120).map(function(e){return fields(e,['x','y','vx','vy','r','life','ring','color','fx','kind','hostile','ghost','dmg']);}),
-  zones:E.zones.slice(0,24).map(function(e){return fields(e,['x','y','rad','t','max','dmg','kind']);}),
-  drops:(L&&L.drops||[]).slice(0,80).map(function(d){
+ kind=kind||'init';
+ var heroes=heroList(),alive=[],aliveSet=new Set(),out=[],rm=[],i;
+ for(i=0;i<E.list.length;i++){var q=E.list[i];if(!q.dead){alive.push(q);aliveSet.add(q.id);}}
+ if(alive.length>150)alive.length=150;
+ if(kind==='init')NET.known.clear();
+ for(i=0;i<alive.length;i++){
+  var e=alive[i],b=NET.known.get(e.id);
+  if(!b){out.push(fields(e,enemyFields));NET.known.set(e.id,baseline(e));continue;} // new to the partner: send all of it
+  var near=nearHero(e,heroes,e.asleep?520:900)||e.boss||e.miniBoss||e.stitched;
+  if(!near)continue; // far away and asleep (or far away): nothing the partner could see changed
+  if(kind==='key'){out.push(fields(e,enemyFields));NET.known.set(e.id,baseline(e));continue;}
+  var d=delta(e,b);if(d){d.id=e.id;out.push(d);}
+ }
+ NET.known.forEach(function(v,id){if(!aliveSet.has(id)){rm.push(id);NET.known.delete(id);}});
+ var snap={enemies:out,
+  projectiles:E.projectiles.slice(0,120).map(function(p){return fields(p,['x','y','vx','vy','r','life','ring','color','fx','kind','hostile','ghost','dmg']);}),
+  zones:E.zones.slice(0,24).map(function(z){return fields(z,['x','y','rad','t','max','dmg','kind']);}),
+  chests:(CC.Dungeon&&CC.Dungeon.chests||[]).map(function(c){return c.opened?1:0;}).join(''),
+  bossId:E.boss&&E.boss.id,at:Date.now(),sk:curSceneKey(),bid:buildId()};
+ if(kind==='init')snap.full=1;else snap.d=1;
+ if(rm.length)snap.rm=rm;
+ var drops=(L&&L.drops||[]).slice(0,80),dsig=drops.map(function(d){return d.mpId||'';}).join(','),now=Date.now(),fresh=drops.some(function(d){return !d.mpId;});
+ if(fresh||kind==='init'||dsig!==NET.dropSig||now-NET.dropAt>3000){ // loot changes rarely: send it when it does (and now and then, for safety)
+  snap.drops=drops.map(function(d){
    if(!d.mpId)d.mpId='d'+Math.random().toString(36).slice(2,11);
    return fields(d,['mpId','kind','x','y','z','age','amount','item','rarity','color','seed']);
-  }),
-  chests:(CC.Dungeon&&CC.Dungeon.chests||[]).map(function(c){return c.opened?1:0;}).join(''),
-  bossId:E.boss&&E.boss.id,at:Date.now()};
+  });
+  NET.dropSig=drops.map(function(d){return d.mpId;}).join(',');NET.dropAt=now;
+ }
+ NET.snapKind=kind;
+ return snap;
+}
+function sameWorld(sk){return sk===curSceneKey();}
+function resyncTo(sk){
+ var now=performance.now();if(now-NET.resyncAt<3000)return;NET.resyncAt=now;
+ var p=String(sk).split(':'),scene={area:p[0],floor:parseInt(p[1],10)||1,tf:parseInt(p[2],10)||1,seed:Number(p[3])};
+ if(SCENES.indexOf(scene.area)<0||!Number.isFinite(scene.seed)||!CC.syncCoopScene)return;
+ MP.scene=Object.assign({},MP.scene||{},scene);NET.needFull=true;
+ if(CC.state.player&&CC.fx&&CC.fx.text)CC.fx.text(CC.state.player.x,CC.state.player.y-30,'SYNCING WORLD','#9fe3ff',10);
+ CC.syncCoopScene(scene);
 }
 function applySnapshot(data){
  if(MP.role!=='guest'||!playing||!data||!Array.isArray(data.enemies)||awayNow())return;
  var E=CC.Enemies,L=CC.Loot;
  if(!E)return;
- var old=new Map(E.list.map(function(e){return [e.id,e];}));
- E.list=data.enemies.map(function(net){
-  var e=old.get(net.id)||{},oldX=e.x,oldY=e.y;
-  Object.assign(e,net);
-  if(Number.isFinite(oldX)&&Number.isFinite(oldY)){
-   e.tx=e.x;e.ty=e.y;e.x=oldX;e.y=oldY;
-  }else{e.tx=e.x;e.ty=e.y;}
-  return e;
- });
+ NET.snapAt=performance.now();
+ if(data.bid){NET.peerBid=data.bid;checkBuild();}
+ if(data.sk&&!sameWorld(data.sk)){resyncTo(data.sk);return;} // we are standing in a different world from the host: go to theirs
+ if(!data.d){ // a full snapshot (the first one, a new scene, or an older host): replace the monster list
+  NET.needFull=false;
+  var old=new Map(E.list.map(function(e){return [e.id,e];}));
+  E.list=data.enemies.map(function(net){
+   var e=old.get(net.id)||{},oldX=e.x,oldY=e.y;
+   Object.assign(e,net);
+   if(Number.isFinite(oldX)&&Number.isFinite(oldY)){
+    e.tx=e.x;e.ty=e.y;e.x=oldX;e.y=oldY;
+   }else{e.tx=e.x;e.ty=e.y;}
+   return e;
+  });
+ }else{ // a delta: merge the changes into the monsters we already have
+  var byId=new Map(E.list.map(function(e){return [e.id,e];}));
+  data.enemies.forEach(function(net){
+   var e=byId.get(net.id);
+   if(!e){if(net.type===undefined)return;e=Object.assign({},net);e.tx=e.x;e.ty=e.y;E.list.push(e);byId.set(net.id,e);return;}
+   var ox=e.x,oy=e.y;
+   Object.assign(e,net);
+   if(net.x!==undefined){e.tx=net.x;if(Number.isFinite(ox))e.x=ox;}
+   if(net.y!==undefined){e.ty=net.y;if(Number.isFinite(oy))e.y=oy;}
+   if(Number.isFinite(e.tx)&&Number.isFinite(e.ty)&&Math.hypot(e.tx-e.x,e.ty-e.y)>160){e.x=e.tx;e.y=e.ty;} // a teleport is a jump, not a glide
+  });
+  if(data.rm&&data.rm.length){var gone=new Set(data.rm);E.list=E.list.filter(function(e){return !gone.has(e.id);});}
+ }
  E.boss=E.list.find(function(e){return e.boss&&e.id===data.bossId;})||null;
  E.bossBar=E.boss&&E.boss.bar?Object.assign({},E.boss.bar,{pct:E.boss.hp/Math.max(1,E.boss.maxHp)}):null;
  if(!E.bossBar){var stitch=E.list.find(function(e){return e.stitched;});
@@ -346,7 +440,7 @@ function handle(m){
   hud();return;
  }
  if(!MP.active)return;
- if(m.type==='players'){MP.room=m.room;hud();return;}
+ if(m.type==='players'){MP.room=m.room;if(MP.role==='host'&&m.room&&m.room.guest)NET.needInit=true;hud();return;}
  if(m.type==='position'){
   if(m.from===MP.role||!m.player)return;
   var hero=m.player,prev=MP.remote;
@@ -383,6 +477,9 @@ function handle(m){
   else if((m.k==='qs'||m.k==='qe')&&MP.role==='guest'&&d&&CC.EggQuest&&CC.EggQuest.coopSync)CC.EggQuest.coopSync(d);
   else if(m.k==='gp'&&MP.role==='guest'&&d&&CC.state&&CC.state.player){var gpl=CC.state.player;gpl.psyT=Math.min(4,d.t||0);gpl.psyPull=d.n?null:{x:d.x,y:d.y};} // the Grinning Mask's psychic grip
   else if(m.k==='vf'&&d&&CC.Vfx&&CC.Vfx.addRemote)CC.Vfx.addRemote(d); // the partner's spell art (nova rings, explosions, lightning)
+  else if(m.k==='pg'&&d){NET.peerBid=typeof d.b==='string'?d.b:NET.peerBid;checkBuild();sendFx('po',{t:d.t});}
+  else if(m.k==='po'&&d&&Number.isFinite(d.t)){MP.rtt=(Math.round(performance.now())%20000-d.t+20000)%20000;}
+  else if(m.k==='rq'&&MP.role==='host'){NET.needInit=true;}
   else if(m.k==='mn'&&d&&Array.isArray(d.l)){
    remoteMinions=d.l.map(function(q,i){var old=remoteMinions[i]||{};
     return {x:q.x,y:q.y,face:q.f>=0?1:-1,hp:q.h,maxHp:q.m||1,life:9,anim:old.anim||0,spawn:0,atkCd:0,charged:!!q.c};});
@@ -399,7 +496,7 @@ function handle(m){
  }
  if(m.type==='hit'&&MP.role==='host'){
   var E=CC.Enemies,e=E&&E.list.find(function(item){return item.id===m.id&&!item.dead;});
-  if(e&&MP.remote&&Math.hypot(e.x-MP.remote.x,e.y-MP.remote.y)<280)
+  if(e&&MP.remote&&Math.hypot(e.x-MP.remote.x,e.y-MP.remote.y)<380)
    E.damage(e,Math.min(450,m.damage),m.kind||'slash');
   return;
  }
@@ -441,6 +538,7 @@ function posData(ext){
   moving:!!p.moving,atkAnim:p.atkAnim||0,swingAng:p.swingAng||0,swingSign:p.swingSign||1,
   castFlash:p.castFlash||0,whirlT:p.whirlT||0,dashT:p.dashT||0,
   pwb:p.pw?((p.pw.rapid>0?1:0)|(p.pw.explode>0?2:0)|(p.pw.shield>0?4:0)):0,sc:myScene()};
+ for(var pk in o)if(typeof o[pk]==='number')o[pk]=r1(o[pk]);
  if(ext){ // our portal and camp, a couple of times a second
   var pt=CC.Portal&&CC.Portal.share?CC.Portal.share():{a:0};
   o.pta=pt.a;if(pt.a){o.ptx=pt.x;o.pty=pt.y;o.ptr=pt.r;o.ptf=pt.f;o.ptt=pt.t;}
@@ -449,6 +547,20 @@ function posData(ext){
  }
  return o;
 }
+// Every second: our send/receive rates, and a ping every two seconds. Tap the ONLINE label (or open the game with ?net=1) to show the readout.
+function netTick(dt){
+ NET.rateAt+=dt;NET.pingClock+=dt;
+ if(NET.pingClock>2){NET.pingClock=0;sendFx('pg',{t:Math.round(performance.now())%20000,b:buildId()});}
+ if(NET.rateAt<1)return;
+ var span=NET.rateAt;NET.rateAt=0;
+ NET.rateOut=(NET.bytesOut-NET.lastOut)/span;NET.rateIn=(NET.bytesIn-NET.lastIn)/span;NET.lastOut=NET.bytesOut;NET.lastIn=NET.bytesIn;
+ var box=el('mp-netstat');if(!box)return;
+ box.style.display=NET.show?'block':'none';if(!NET.show)return;
+ var E=CC.Enemies,age=NET.snapAt?((performance.now()-NET.snapAt)/1000).toFixed(1)+'s':'-',peer=MP.role==='host'?(MP.remote?'partner seen':'no partner pos'):(MP.remote?'host seen':'no host pos');
+ box.textContent=MP.role+'  ping '+(MP.rtt===undefined?'-':MP.rtt+'ms')+'  up '+(NET.rateOut/1024).toFixed(1)+'KB/s  down '+(NET.rateIn/1024).toFixed(1)+'KB/s  snap '+age+'  skipped '+NET.drops+'\n'
+  +'monsters '+(E&&E.list.length||0)+'  '+peer+'  queue '+Math.round((ws&&ws.bufferedAmount||0)/1024)+'KB  link '+linkKind+'\n'
+  +'world '+curSceneKey()+'  build '+buildId()+(NET.peerBid?(NET.peerBid===buildId()?' (same as partner)':' (DIFFERENT from partner '+NET.peerBid+')'):'');
+}
 function tick(dt){
  if(!playing||!MP.active||(CC.state.mode!=='dungeon'&&CC.state.mode!=='town'&&!(CC.state.mode==='dead'&&CC.state.area==='defense')))return;
  var away=awayNow();
@@ -456,6 +568,8 @@ function tick(dt){
  if(MP.role==='host'&&MP.remote&&MP.remote.invuln>0)
   MP.remote.invuln=Math.max(0,MP.remote.invuln-dt);
  if(MP.role==='guest'&&!away){
+  var pj=CC.Enemies&&CC.Enemies.projectiles||[];for(var pi=0;pi<pj.length;pi++){var pq=pj[pi];if(Number.isFinite(pq.vx)&&Number.isFinite(pq.vy)){pq.x+=pq.vx*dt;pq.y+=pq.vy*dt;}} // shots keep flying between snapshots
+  if(NET.needFull&&performance.now()-NET.rqAt>1500){NET.rqAt=performance.now();sendFx('rq',{});} // ask the host for the whole world until we have it
   (CC.Enemies&&CC.Enemies.list||[]).forEach(function(e){
    e.anim=(e.anim||0)+dt;
    if(Number.isFinite(e.tx)){
@@ -464,7 +578,8 @@ function tick(dt){
   });
  }
  if(!ready())return;
- if(positionClock>.05){positionClock=0;var wantExt=extClock>.5;if(wantExt)extClock=0;send({type:'position',player:posData(wantExt)});}
+ netTick(dt);
+ if(positionClock>.05){positionClock=0;var wantExt=extClock>.5;if(wantExt)extClock=0;if(!congested())send({type:'position',player:posData(wantExt)});else NET.drops++;}
  optClock+=dt;
  if(MP.role==='host'&&optClock>2){optClock=0;if(MP.room&&MP.room.guest)sendFx('opt',{gi:MP.options.guestInvuln?1:0});}
  minionClock+=dt;
@@ -481,8 +596,10 @@ function tick(dt){
    if(sk!==lastScene)broadcastScene();
   }
   if(qsClock>3){qsClock=0;if(MP.room&&MP.room.guest&&CC.EggQuest&&CC.EggQuest.stage)sendFx('qs',{s:CC.EggQuest.stage()});} // everyone follows the leader's quest
-  if(snapshotClock>.15){snapshotClock=0;
-   var snap=snapshot();if(snap)send({type:'snapshot',snapshot:snap});
+  if(snapshotClock>.1){snapshotClock=0;NET.keyClock+=.1;
+   var kind=NET.needInit?'init':NET.keyClock>4?'key':'delta';
+   if(kind==='delta'&&congested())NET.drops++; // the link is behind: skip this one, the next carries the newest
+   else{var snap=snapshot(kind);if(snap){send({type:'snapshot',snapshot:snap});if(kind!=='delta')NET.keyClock=0;if(kind==='init')NET.needInit=false;}}
   }
  }else if(pickupClock>.23&&!away){
   pickupClock=0;var L=CC.Loot,p=CC.state.player;
@@ -612,9 +729,9 @@ function hostTree(){
 MP.requestTree=function(){sendFx('tc',{ta:1});};
 MP.questEvent=function(d){if(MP.isHost())sendFx('qe',d);};
 MP.requestChest=function(i){sendFx('tc',{ch:i});};
-MP.requestDrop=function(item){if(ready())ws.send(JSON.stringify({type:'drop_item',item:item}));};
+MP.requestDrop=function(item){if(ready())wsend(JSON.stringify({type:'drop_item',item:item}));};
 MP.requestDescend=function(){sendFx('tc',{dn:1});};
-function sendFx(k,d){if(playing&&MP.active&&ready())ws.send(JSON.stringify({type:'fx',k:k,d:d}));}
+function sendFx(k,d){if(playing&&MP.active&&ready())wsend(JSON.stringify({type:'fx',k:k,d:d}));}
 MP.sendFx=sendFx;
 function initialize(){
  var div=document.createElement('div');div.id='emberdeep-mp';
@@ -667,8 +784,10 @@ function initialize(){
      <button id="mp-trade-decline">DECLINE</button></div></section>
  `;
  document.body.appendChild(div);
+ var ns=document.createElement('div');ns.id='mp-netstat';ns.style.cssText='position:fixed;left:4px;bottom:4px;z-index:99999;background:rgba(0,0,0,.7);color:#9fffb0;font:10px/1.3 monospace;padding:4px 6px;border-radius:4px;white-space:pre;pointer-events:none;display:none';document.body.appendChild(ns);
  var sheet=document.createElement('link');sheet.rel='stylesheet';sheet.href='multiplayer.css';
  document.head.appendChild(sheet);
+ if(el('mp-online'))el('mp-online').onclick=function(){NET.show=!NET.show;};
  el('mp-chars-back').onclick=function(){el('mp-chars').classList.add('mp-hidden');};
  el('mp-back').onclick=function(){el('mp-lobby').classList.add('mp-hidden');opened=false;if(!MP.active&&ws){ws.onclose=null;ws.close();ws=null;}};
  el('mp-create').onclick=function(){startRoom(false);};
@@ -717,8 +836,9 @@ function initialize(){
  try{var raw=sessionStorage.getItem('emberdeep-room');if(raw){session=JSON.parse(raw);if(session&&session.code)message('Previous room found. Open Multiplayer to reconnect.');}}
  catch(_){}
 }
-MP.openLobby=function(code){
+MP.openLobby=function(code,mode){ // mode: 'cave' (adventure) or 'defense' (Town Defense) preselects the game type
  el('mp-lobby').classList.remove('mp-hidden');
+ if((mode==='cave'||mode==='defense')&&el('mp-mode'))el('mp-mode').value=mode;
  if(typeof code==='string'&&/^[0-9A-Fa-f]{6}$/.test(code)){el('mp-join-code').value=code.toUpperCase();el('mp-net').value='direct';}
  syncNet();
 };

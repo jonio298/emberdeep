@@ -1,3 +1,22 @@
+/* SPELL PAIR REGISTRY (contract for the per-class spell modules spells_*.js)
+ *   CC.SpellPairs.register(abilityId, def)   abilityId = id from abilities.js ('bolt', 'leap', ...).
+ *     Registering 'wizard_spell2' etc. overrides the built-in charged version of an original spell.
+ *     Modules loaded before this file may push [id, def] pairs into CC.SpellPairs._queue instead.
+ *   def: {name, color, shape:'cone'|'circle'|'line'|'self'|'dash', range, radius, half (cone half-angle, rad),
+ *         cost (tap mana, number or fn(p)), cooldown (tap seconds, number or fn(p)), manaMul (default 1.65),
+ *         cdMul (default 1.75), tapDesc, chargeDesc,
+ *         tap(p,where,ctx)       optional; omitted: the ability's own CC.Skills.cast / tapAction runs
+ *         charge(p,where,power)  required to be chargeable; power 0..1 grows with hold time; return false = cancelled (mana refunded)
+ *         preview(c,cam,inf)     optional custom aiming preview; omitted: default transparent shape
+ *         clear()                optional; called on death, restart and zone change (drop projectiles/timers)
+ *         drawers:{kind:fn(c,e,x,y,progress,t)}  optional; draws SC.effect(kind,opts) visuals (also on the co-op partner)}
+ *   where = {x,y,dx,dy,rad,range,valid}: world aim point and unit direction. The dispatcher pays mana, writes the
+ *   cooldown and the cast flash. Tap < 0.25s casts the tap; hold >= 0.25s previews; full charge at 0.9s.
+ *   ONE shared cooldown per spell: a charged cast writes its longer cooldown into p.cd[key] (and p.cdCharged[key]
+ *   for the HUD ring); p.cdMax[key] stays the tap cooldown. p.cdC is only used by the dash charge.
+ *   Co-op: SC.effect(kind,opts) replicates a visual to the partner (numbers/strings/booleans only);
+ *   damage is only ever dealt by the casting client.
+ */
 /* Emberdeep charged spellcasting: tap Q/E/Dash for the original ability,
  * hold >= 0.25s to aim and release a class-specific, higher-mana spell.
  * Mobile thumb drag aims relative to its spell button (MOBA-style). The game
@@ -7,7 +26,21 @@
 (function(root){
 'use strict';
 var CC=root.CC=root.CC||{}, SC=CC.SpellCharge={}, TAU=Math.PI*2;
-var ARM=.25,FULL=.9, MAX_AIM=92,frameTime=0,active=null,effects=[],lastArea=null;
+var ARM=.25,FULL=.9, MAX_AIM=92,frameTime=0,active=null,effects=[],lastArea=null,wiped=false;
+var PAIRS={},DRAWERS={},SLOTS=['spell1','spell2','spell3','spell4'],SP=CC.SpellPairs=CC.SpellPairs||{};
+function register(id,def){
+ if(typeof id!=='string'||!id||!def||typeof def!=='object')return false;
+ var d=Object.assign({name:id,color:'#9fe3ff',shape:'circle'},def);
+ d.id=id;PAIRS[id]=d;
+ if(d.drawers)for(var k in d.drawers)if(typeof d.drawers[k]==='function')DRAWERS[k]=d.drawers[k];
+ return true;
+}
+SP.register=register;
+SP.unregister=function(id){return delete PAIRS[id];};
+SP.get=function(id){return PAIRS[id]||null;};
+SP.has=function(id){return !!PAIRS[id];};
+SP.list=function(){return Object.keys(PAIRS);};
+if(Array.isArray(SP._queue)){SP._queue.forEach(function(q){register(q[0],q[1]);});SP._queue=[];}
 var DEFINITIONS={
   swordsman:{
     spell1:{name:'EARTHBREAKER',shape:'cone',range:92,radius:58,color:'#f2b264',mult:1.8},
@@ -69,15 +102,65 @@ function targets(x,y,r){
  });
 }
 function slotDefinition(p,slot){var c=slot==='spell1'?p.testSpell1:slot==='spell2'?p.testSpell2:null;return (DEFINITIONS[c||p.classId]||DEFINITIONS.swordsman)[slot];}
+// The ability equipped in a slot -> {slot,id,key (cooldown key),legacy (built-in original spell/dash name),reg,def}
+function equipped(p,slot){
+ var i=SLOTS.indexOf(slot);
+ if(i<0)return null;
+ if(CC.Skills&&CC.Skills.ensure)CC.Skills.ensure(p);
+ var id=p.slots&&p.slots[i];
+ if(id)return id;
+ return !p.slots&&i<2?(p.classId+'_'+slot):null;
+}
+function resolve(p,slot){
+ if(slot==='dash')return {slot:slot,key:'dash',legacy:'dash',def:slotDefinition(p,'dash')};
+ var id=equipped(p,slot);
+ if(!id)return null;
+ var m=/^[a-z]+_(spell[12])$/.exec(id),reg=PAIRS[id]||null;
+ if(m&&!reg){var d=slotDefinition(p,m[1]);return d?{slot:slot,id:id,key:m[1],legacy:m[1],def:d}:null;}
+ if(!reg||typeof reg.charge!=='function')return null;
+ var key=m?m[1]:CC.Skills&&CC.Skills.cdKey?CC.Skills.cdKey(p,slot):'ab_'+id;
+ return {slot:slot,id:id,key:key,legacy:m?m[1]:null,reg:reg,def:reg};
+}
+function defFor(p,slot){var r=resolve(p,slot);return r?r.def:slotDefinition(p,slot);}
+function num(v,p){return typeof v==='function'?v(p):v;}
+function tapCost(p,r){
+ var c=r.reg&&num(r.reg.cost,p);
+ if(c==null&&CC.Skills&&CC.Skills.slotInfo){var si=CC.Skills.slotInfo(p,r.slot);c=si&&si.cost;}
+ if(c==null)c=p.cost&&p.cost[r.key];
+ return c==null?12:c;
+}
+function costOf(p,r){
+ if(!r.reg)return cost(p,r.legacy);
+ return Math.ceil(tapCost(p,r)*(r.reg.manaMul||1.65));
+}
+function tapCooldown(p,r){
+ var b=r.reg&&num(r.reg.cooldown,p);
+ if(b==null)return (p.cdMax&&p.cdMax[r.key])||4;
+ if(CC.Skills&&CC.Skills.cdMul&&r.id)b*=CC.Skills.cdMul(p,r.id);
+ return b*(1-Math.min(.5,(p.stats&&p.stats.cdr)||0));
+}
+// One shared cooldown: the charged cast writes its longer time into the same p.cd[key] the tap uses.
+function setSharedCd(p,r){
+ var m=tapCooldown(p,r)*(r.reg&&r.reg.cdMul||CHARGED_CD_MUL[r.key]||1.75);
+ p.cdCharged=p.cdCharged||{};p.cdCharged[r.key]=m;
+ p.cd[r.key]=Math.max(p.cd[r.key]||0,m);
+}
 function cost(p,slot){
  var def=slotDefinition(p,slot);
  if(slot==='dash')return Math.max(10,Math.ceil((p.maxMana||60)*.16));
  return Math.ceil(((p.cost&&p.cost[slot])||12)*(def.mult||1.8));
 }
-function levelOk(p,slot){return !!(p&&p.cd&&!(slot==='spell2'&&p.level<4));}
-// The tap spell and its charged version have SEPARATE cooldowns: p.cd[slot] is the tap, p.cdC[slot] the charged one (p.cdCMax holds its length).
+function levelOk(p,r){
+ if(!p||!p.cd||!r)return false;
+ if(r.legacy==='spell2'&&p.level<4)return false;
+ var si=r.slot!=='dash'&&CC.Skills&&CC.Skills.slotInfo&&p.slots?CC.Skills.slotInfo(p,r.slot):null;
+ return !(si&&(si.locked||si.empty));
+}
+// Spells: tap and charged versions share ONE cooldown, p.cd[key]. Dash only: p.cdC.dash is a separate charged cooldown (p.cdCMax holds its length).
 function chargedReady(p,slot){p.cdC=p.cdC||{};return (p.cdC[slot]||0)<=.01;}
-function unlocked(p,slot){return levelOk(p,slot)&&(p.cd[slot]<=.01||chargedReady(p,slot));}
+// spells share one cooldown (p.cd[key]); only the dash keeps its separate charged cooldown
+function cdReady(p,r){return r.key==='dash'?(p.cd.dash<=.01||chargedReady(p,'dash')):(p.cd[r.key]||0)<=.01;}
+function unlocked(p,r){return levelOk(p,r)&&cdReady(p,r);}
 var CHARGED_CD_MUL={spell1:2,spell2:2,dash:1.6}; // a charged cast recharges for longer than the tap (tap: 1x its cooldown)
 function standable(p,x,y){
  var D=CC.Dungeon,r=Math.max(3,(p.r||8)*.78);
@@ -98,7 +181,7 @@ function dashLanding(p,n,reach){
  return {x:p.x+n.x*last,y:p.y+n.y*last,distance:last};
 }
 function aim(p,slot,drag){
- var d=slotDefinition(p,slot),dx=p.aimX||p.face||1,dy=p.aimY||0,autoDistance=null;
+ var d=defFor(p,slot),dx=p.aimX||p.face||1,dy=p.aimY||0,autoDistance=null;
  // Stationary input: auto-target the closest visible monster in casting range.
  var best=null,range=d.range||95,bd=(range+24)*(range+24);
  if(!drag){
@@ -140,10 +223,12 @@ function aim(p,slot,drag){
 }
 function begin(slot,sx,sy,viewW,viewH){
  var p=hero();
- if(!p||!DEFINITIONS[p.classId]||!unlocked(p,slot))return false;
+ var res=p&&DEFINITIONS[p.classId]?resolve(p,slot):null;
+ if(!res||!unlocked(p,res))return false;
  if(active)return false;
  if(lastArea===null)lastArea=CC.state.area;
- active={slot:slot,hero:p,time:0,originX:sx||0,originY:sy||0,
+ wiped=false;
+ active={slot:slot,hero:p,res:res,time:0,originX:sx||0,originY:sy||0,
    viewW:viewW||0,viewH:viewH||0,drag:null,charged:false};
  return true;
 }
@@ -161,9 +246,14 @@ function drag(x,y,viewW,viewH){
  var ax=dx*sx,ay=dy*sy;
  active.drag=dd<8?null:{x:ax,y:ay,distance:Math.hypot(ax,ay)};
 }
-SC.heldInfo=function(cls,slot){var d=(DEFINITIONS[cls]||{})[slot];return d?{name:d.name,color:d.color,shape:d.shape,mult:d.mult}:null;};
+function canCharge(slot){var p=hero();return !!(p&&DEFINITIONS[p.classId]&&resolve(p,slot));} // ignores cooldown/mana: only "does the equipped spell have a charged version"
+SC.heldInfo=function(cls,slot){var d=PAIRS[cls+'_'+slot]||(DEFINITIONS[cls]||{})[slot];return d?{name:d.name,color:d.color,shape:d.shape,mult:d.mult}:null;};
 function cancel(){if(active&&active.snd&&CC.Audio)CC.Audio.chargeEnd(false);active=null;}
-function clear(){active=null;effects.length=0;}
+function wipeHooks(){ // modules drop their own projectiles/timers/attached visuals
+ for(var id in PAIRS){var f=PAIRS[id].clear;if(typeof f==='function'){try{f();}catch(e){if(root.console)console.error(e);}}}
+}
+function wipe(){effects.length=0;wipeHooks();}
+function clear(){active=null;wipe();}
 function isActive(){return !!active;}
 function landingRadius(p){
  var ST=CC.SkillTree,f=ST&&ST.rank?ST.rank(p,'focus'):0,
@@ -177,11 +267,11 @@ function worldAim(x,y){
 function info(){
  if(!active)return null;
  var p=hero();if(!p||p!==active.hero)return null;
- var d=slotDefinition(p,active.slot),where=aim(p,active.slot,active.drag),
-     total=cost(p,active.slot),power=clamp((active.time-ARM)/(FULL-ARM),0,1);
+ var d=active.res.def,where=aim(p,active.slot,active.drag),
+     total=costOf(p,active.res),power=clamp((active.time-ARM)/(FULL-ARM),0,1);
  var motion=active.drag,rawX=motion&&!motion.world?motion.x:0,rawY=motion&&!motion.world?motion.y:0;
  var length=Math.hypot(rawX,rawY);
- return {slot:active.slot,name:d.name,color:d.color,shape:d.shape,range:d.range,
+ return {slot:active.slot,name:d.name,color:d.color,shape:d.shape,range:d.range,half:d.half,pid:active.res.id,preview:d.preview,
    radius:active.slot==='dash'?landingRadius(p):d.radius,
    elapsed:active.time,power:power,progress:power,
    aiming:active.time>=ARM,ready:active.time>=FULL,
@@ -272,7 +362,7 @@ function tickTeleport(p,dt){
  }
  if(t.t>=t.duration){p.teleportPhase=null;p.chargedDash=false;}
 }
-function setChargedCd(p,slot){p.cdC=p.cdC||{};p.cdCMax=p.cdCMax||{};var m=(p.cdMax[slot]||4)*(CHARGED_CD_MUL[slot]||2);p.cdC[slot]=Math.max(p.cdC[slot]||0,m);p.cdCMax[slot]=m;}
+function setChargedCd(p,slot){if(slot!=='dash'){setSharedCd(p,{key:slot});return;}p.cdC=p.cdC||{};p.cdCMax=p.cdCMax||{};var m=(p.cdMax[slot]||4)*(CHARGED_CD_MUL[slot]||2);p.cdC[slot]=Math.max(p.cdC[slot]||0,m);p.cdCMax[slot]=m;}
 function cast(p,slot,where,power){
  var d=slotDefinition(p,slot),col=d.color,sc=1+power*.52,
      dmg=p.stats.dmg,angle=Math.atan2(where.dy,where.dx),
@@ -359,29 +449,59 @@ cast=function(p,slot,where,power){ // test mode: a spell borrowed from another c
  if(ov&&ov!==real){p.classId=ov;try{return castInner(p,slot,where,power);}finally{p.classId=real;}}
  return castInner(p,slot,where,power);
 };
+function tapDispatch(p,r,a){
+ var reg=r.reg;
+ if(reg&&typeof reg.tap==='function'){
+   if((p.cd[r.key]||0)>.01)return false;
+   var mana=tapCost(p,r);
+   if(p.mana<mana){fxText(p.x,p.y-20,'NEED '+mana+' MANA','#7bbddd');return false;}
+   var where=aim(p,r.slot,a.drag),ok;
+   p.mana-=mana;
+   try{ok=reg.tap(p,where,{slot:r.slot,id:r.id});}catch(e){ok=false;if(root.console)console.error(e);}
+   if(ok===false){p.mana+=mana;return false;}
+   var cd=tapCooldown(p,r);
+   p.cd[r.key]=cd;if(!r.legacy){p.cdMax=p.cdMax||{};p.cdMax[r.key]=cd;}
+   p.castFlash=Math.max(p.castFlash||0,.2);
+   return true;
+ }
+ if(r.legacy)return !!(CC.Classes&&CC.Classes.tapAction&&CC.Classes.tapAction(r.legacy));
+ return !!(CC.Skills&&CC.Skills.cast&&CC.Skills.cast(p,r.id));
+}
+function castReg(p,r,where,power){
+ var ok;
+ try{ok=r.reg.charge(p,where,power,{slot:r.slot,id:r.id});}catch(e){ok=false;if(root.console)console.error(e);}
+ if(ok===false)return false;
+ setSharedCd(p,r);
+ p.castFlash=.28;
+ fxText(p.x,p.y-30,r.reg.chargeName||r.reg.name,r.reg.color);
+ return true;
+}
 function release(slot){
  if(!active||active.slot!==slot)return false;
  var p=hero(),a=active;active=null;
- if(!p||p!==a.hero||!levelOk(p,slot))return false;
+ var r=a.res,now=p&&resolve(p,slot);
+ if(!p||p!==a.hero||!now||now.id!==r.id||!levelOk(p,r))return false;
  if(a.time<ARM){
-   var tapped=!!(CC.Classes&&CC.Classes.tapAction&&CC.Classes.tapAction(slot));
-   if(tapped)fxText(p.x,p.y-29,slot==='dash'?'DASH':
-     (p.spellNames&&p.spellNames[slot==='spell1'?0:1])||slot,
-     slotDefinition(p,slot).color);
+   var tapped=tapDispatch(p,r,a);
+   if(tapped&&r.legacy&&!(r.reg&&r.reg.tap))fxText(p.x,p.y-29,slot==='dash'?'DASH':
+     (p.spellNames&&p.spellNames[r.legacy==='spell1'?0:1])||slot,
+     r.def.color);
    return tapped;
  }
- if(!chargedReady(p,slot)){fxText(p.x,p.y-20,'CHARGE RECHARGING','#7bbddd');if(a.snd&&CC.Audio)CC.Audio.chargeEnd(false);return false;}
- var mana=cost(p,slot);
+ if(!(r.key==='dash'?chargedReady(p,'dash'):cdReady(p,r))){fxText(p.x,p.y-20,'CHARGE RECHARGING','#7bbddd');if(a.snd&&CC.Audio)CC.Audio.chargeEnd(false);return false;}
+ var mana=costOf(p,r);
  if(p.mana<mana){fxText(p.x,p.y-20,'NEED '+mana+' MANA','#7bbddd');if(a.snd&&CC.Audio)CC.Audio.chargeEnd(false);return false;}
  if(a.snd&&CC.Audio)CC.Audio.chargeEnd(true);
  var where=aim(p,slot,a.drag),power=clamp((a.time-ARM)/(FULL-ARM),0,1);
  if(!where.valid){fxText(p.x,p.y-20,'BLOCKED LANDING','#f3969d');return false;}
- p.mana-=mana;cast(p,slot,where,power);
+ p.mana-=mana;
+ if(r.reg){if(!castReg(p,r,where,power)){p.mana+=mana;return false;}}else cast(p,r.legacy,where,power);
  return true;
 }
 function combatTick(dt){
  var p=hero();
- if(!p){cancel();effects.length=0;return;}
+ if(!p){cancel();effects.length=0;if(!wiped){wiped=true;wipeHooks();}return;}
+ wiped=false;
  tickTeleport(p,dt);
  if(p.cdC){for(var ck in p.cdC)if(p.cdC[ck]>0)p.cdC[ck]=Math.max(0,p.cdC[ck]-dt);}
  if(active){
@@ -447,7 +567,7 @@ function update(dt){
  frameTime+=dt;
  var a=CC.state&&CC.state.area;
  if(lastArea===null)lastArea=a;
- else if(lastArea!==a){lastArea=a;cancel();effects.length=0;}
+ else if(lastArea!==a){lastArea=a;cancel();wipe();}
  combatTick(dt);
  if(active&&CC.Audio&&active.time>=ARM){if(!active.snd){active.snd=1;CC.Audio.chargeStart(false,0.6);}CC.Audio.chargeSet(Math.min(1,(active.time-ARM)/(FULL-ARM)));}
 }
@@ -469,6 +589,7 @@ function drawEffects(c,cam){
    var e=effects[i],x=(e.owner?e.owner.x:e.x)-cam.x,
       y=(e.owner?e.owner.y:e.y)-cam.y,progress=e.t/e.life;
    c.save();c.globalAlpha=clamp(1-progress,0,1)*.85;
+   if(DRAWERS[e.kind]){try{DRAWERS[e.kind](c,e,x,y,progress,t);}catch(_){}c.restore();continue;} // module-registered visuals
    if(CC.Vfx&&CC.Vfx.drawSC&&CC.Vfx.drawSC(c,e,x,y,progress,t)){c.restore();continue;} // stylised art for every held spell
    if(e.kind==='flame'){
      c.translate(x,y);c.rotate(Math.atan2(e.dy,e.dx));
@@ -676,6 +797,7 @@ function sigil(c,cls,x,y,r,col,t){
 }
 function drawPreview(c,cam){
  var inf=info();if(!inf||!inf.aiming)return;
+ if(typeof inf.preview==='function'){c.save();try{inf.preview(c,cam,inf);}finally{c.restore();}return;}
  var x=inf.x-cam.x,y=inf.y-cam.y,px=inf.originX-cam.x,py=inf.originY-cam.y,
      factor=.57+.43*inf.power,r=Math.max(12,inf.radius)*factor,
      cls=inf.heroClass,progress=inf.progress,
@@ -689,8 +811,14 @@ function drawPreview(c,cam){
    c.fillStyle='rgba(14,22,29,.17)';
    c.beginPath();c.arc(x,y,r,0,TAU);c.fill();
    sigil(c,cls,x,y,r,col,frameTime);ring(c,x,y,5,col,1.5);
+ }else if(inf.shape==='line'){
+   var la=Math.atan2(inf.dy,inf.dx),ll=Math.max(12,inf.range)*factor,lw=Math.max(5,(inf.radius||14)*.5);
+   c.save();c.translate(px,py);c.rotate(la);
+   c.fillStyle='rgba(45,112,183,.17)';c.fillRect(0,-lw,ll,lw*2);
+   c.strokeStyle=col;c.lineWidth=1.2+progress*.8;c.strokeRect(0,-lw,ll,lw*2);c.restore();
+   sigil(c,cls,x,y,Math.min(22,r*.4),col,frameTime);
  }else if(inf.shape==='cone'){
-   var a=Math.atan2(inf.dy,inf.dx),half=cls==='wizard'?.48:.7;
+   var a=Math.atan2(inf.dy,inf.dx),half=inf.half||(cls==='wizard'?.48:.7);
    c.fillStyle=cls==='thief'?'rgba(125,32,52,.17)':
      cls==='necromancer'?'rgba(39,113,71,.18)':'rgba(45,118,195,.17)';
    c.beginPath();c.moveTo(px,py);
@@ -709,5 +837,6 @@ function drawPreview(c,cam){
 }
 SC.begin=begin;SC.drag=drag;SC.worldAim=worldAim;SC.release=release;SC.cancel=cancel;SC.clear=clear;SC.update=update;SC.land=landing;SC.addRemote=addRemote;
 SC.isActive=isActive;SC.info=info;SC.draw=function(c,cam){drawEffects(c,cam);drawPreview(c,cam);};
+SC.effect=effect;SC.canCharge=canCharge;SC.pairs=SP;
 SC.sigil=sigil;SC.definitions=DEFINITIONS;SC.chargeThreshold=ARM;SC.holdDuration=FULL;
 })(window);

@@ -15,7 +15,7 @@
   try { var sv = JSON.parse(root.localStorage.getItem(KEY) || 'null'); if (sv && typeof sv === 'object') { done.hold = sv.hold || {}; done.firstSpell = !!sv.firstSpell; done.aim = !!sv.aim; } } catch (_) { /* optional */ }
   try { if (/[?&]tut=1/.test(root.location.search)) { done = { hold: {}, firstSpell: false, aim: false }; root.localStorage.removeItem(KEY); } } catch (_) { /* optional */ }
   function save() { try { root.localStorage.setItem(KEY, JSON.stringify(done)); } catch (_) { /* optional */ } }
-  function enabled() { return !(CC.Settings && CC.Settings.get && CC.Settings.get('tutorial') === false); }
+  function enabled() { return !CC.Endless?.active() && !(CC.Settings && CC.Settings.get && CC.Settings.get('tutorial') === false); }
   function now() { return (root.performance && performance.now ? performance.now() : Date.now()) / 1000; }
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
   function rgbOf(hex) { var m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) return '120,190,255'; var n = parseInt(m[1], 16); return (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255); }
@@ -260,5 +260,5 @@
     c.restore(); return true;
   }
 
-  CC.HoldGuide = { button: button, decorate: decorate, overlay: overlay, onAction: onAction, frozen: function () { return !!(ov && ov.kind === 'hold'); }, showAim: showAim, drawMonster: drawMonster, enabled: enabled, isOverlay: function () { return !!ov; }, state: function () { return { done: done, playSecs: playSecs, overlay: ov && ov.kind }; }, reset: function () { done = { hold: {}, firstSpell: false, aim: false }; save(); } };
+  CC.HoldGuide = { button: button, decorate: decorate, overlay: overlay, onAction: onAction, frozen: function () { return enabled() && !!(ov && ov.kind === 'hold'); }, showAim: showAim, drawMonster: drawMonster, enabled: enabled, isOverlay: function () { return !!ov; }, state: function () { return { done: done, playSecs: playSecs, overlay: ov && ov.kind }; }, reset: function () { done = { hold: {}, firstSpell: false, aim: false }; save(); } };
 })(window);
