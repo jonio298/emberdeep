@@ -1609,6 +1609,10 @@
     label('Tap a character to continue. A new game uses the first empty slot.', W / 2, H - 16, 10, '#8a80a8');
   }
 
+  function drawVersion() { // version and build number, bottom centre of every title page
+    if (!CC.VERSION) return;
+    ctx.save(); ctx.globalAlpha = 0.7; label(CC.VERSION.label, W / 2, H - 10, 10, '#a99bd0'); ctx.restore();
+  }
   function drawTitle() {
     var g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, '#1a0f2e'); g.addColorStop(1, '#07040d');
@@ -1738,7 +1742,7 @@
     ui = [];
     var m = CC.state.mode, endless = CC.Endless?.active();
     if (m === 'endless-summary') { CC.Endless.drawSummary(ctx, W, H, addButton); return; }
-    if (m === 'title') { drawTitle(); return; }
+    if (m === 'title') { drawTitle(); drawVersion(); return; }
     drawWorld();
     if (m === 'town' || m === 'dungeon' || m === 'dead') drawScreenFx();
     if (m === 'dungeon') call('Vfx', 'drawScreen', ctx, W, H); // the sky flashes yellow for chain lightning

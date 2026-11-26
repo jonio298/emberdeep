@@ -979,6 +979,7 @@
         });
         fxBurst(s.x, s.y, s.col, 5, 60);
       }
+      if (s.perfect && CC.PerfectWarp) CC.PerfectWarp.land(s, target); // the golden explosion, whether or not the hit kills
       projs.splice(i, 1);
     }
   }
@@ -1431,6 +1432,7 @@
   }
 
   function drawProj(c, s, cam) {
+    if (s.perfect && CC.PerfectWarp && CC.PerfectWarp.drawShot) { CC.PerfectWarp.drawShot(c, s, cam); return; } // the golden swirling perfect shot
     if (s.preRolledCrit && CC.CriticalScene && CC.CriticalScene.drawProjectile) {
       CC.CriticalScene.drawProjectile(c, s, cam);
       return;
