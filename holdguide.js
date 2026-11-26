@@ -10,7 +10,7 @@
 (function (root) {
   'use strict';
   var CC = root.CC = root.CC || {}, TAU = Math.PI * 2, KEY = 'emberdeep-tutorial';
-  var CHARGEABLE = { spell1: 1, spell2: 1, dash: 1, attack: 1 };
+  var CHARGEABLE = { spell1: 1, spell2: 1, spell3: 1, spell4: 1, dash: 1, attack: 1 };
   var done = { hold: {}, firstSpell: false, aim: false };
   try { var sv = JSON.parse(root.localStorage.getItem(KEY) || 'null'); if (sv && typeof sv === 'object') { done.hold = sv.hold || {}; done.firstSpell = !!sv.firstSpell; done.aim = !!sv.aim; } } catch (_) { /* optional */ }
   try { if (/[?&]tut=1/.test(root.location.search)) { done = { hold: {}, firstSpell: false, aim: false }; root.localStorage.removeItem(KEY); } } catch (_) { /* optional */ }
@@ -134,7 +134,7 @@
   function decorate(c, name, b, o) {
     if (!CHARGEABLE[name] || o.contextual || o.locked) { if (!o.on) since[name] = 0; return; }
     var p = CC.state && CC.state.player, rgb = colorFor(name, p, o.sInfo);
-    if ((name === 'spell1' || name === 'spell2' || name === 'dash') && p && (name === 'dash' || !CC.Skills || !CC.Skills.chargeOk || CC.Skills.chargeOk(name))) chargedRing(c, name, b, rgb, p);
+    if (/^(spell[1-4]|dash)$/.test(name) && p && (name === 'dash' || (CC.SpellCharge && CC.SpellCharge.canCharge ? CC.SpellCharge.canCharge(name) : (!CC.Skills || !CC.Skills.chargeOk || CC.Skills.chargeOk(name))))) chargedRing(c, o.sInfo && o.sInfo.key ? o.sInfo.key : name, b, rgb, p);
     if (o.on) {
       if (!since[name]) since[name] = clock;
       var secs = clock - since[name], prog = holdProgress(name, secs), ready = prog >= 1 && secs > 0.3;

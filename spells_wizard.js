@@ -5,7 +5,8 @@
   const ICE = '#9feaff';
   const ARCANE = '#c5a5ff';
   const CONE_ANGLE = 55 * Math.PI / 180;
-  const WAVES = [[-27.5, 0, 27.5], [-21, -7, 14], [-14, 7, 21]];
+  const SHARDS = 11;           // the charged Icicle Blast: one cone of shards
+  const CHARGED_REACH = 170;
   const EMBED_LIMIT = 4;
   const projectiles = [];
   const sequences = [];
@@ -192,14 +193,16 @@
   function launch(cast, offset, volley, index) {
     if (projectiles.length >= 48) return;
     const angle = cast.angle + offset * Math.PI / 180;
-    const reach = cast.charged ? 195 + cast.power * 30 : 300;
-    const speed = cast.charged ? 435 : 490;
+    // shotgun shards leave at slightly different speeds so the blast fans out raggedly instead of as one wall
+    const jitter = cast.charged ? 0.88 + (index * 7 % 5) * 0.06 : 1;
+    const reach = cast.charged ? (CHARGED_REACH + cast.power * 34) * jitter : 300;
+    const speed = (cast.charged ? 540 : 490) * jitter;
     CC.SpellCharge?.effect?.('wizardFlight', { x: cast.x, y: cast.y, angle, speed,
-      length: cast.charged ? 17 : 28, life: reach / speed });
+      length: cast.charged ? 14 : 28, life: reach / speed });
     projectiles.push({
       kind: 'icicle', x: cast.x, y: cast.y, angle, dx: Math.cos(angle), dy: Math.sin(angle),
-      cast, volley, index, remaining: reach, speed: cast.charged ? 435 : 490, radius: 2.5,
-      maxHits: (cast.charged ? 1 : 3) + Number(cast.marks.piercing),
+      cast, volley, index, remaining: reach, speed, radius: cast.charged ? 3.2 : 2.5,
+      maxHits: (cast.charged ? 2 : 3) + Number(cast.marks.piercing),
       hitSet: new Set(), splashSet: new Set(), trail: 0
     });
   }
@@ -209,16 +212,35 @@
       launch(cast, 0, null, 0);
       return;
     }
+    // ICICLE BLAST: one shotgun burst. Every shard leaves at once across the cone and pierces two foes.
     const volley = new Map();
-    const fire = wave => {
-      WAVES[wave].forEach((offset, i) => launch(cast, offset, volley, wave * 3 + i));
-      fragments(cast.x + 8 * cast.dx, cast.y + 8 * cast.dy, 6, 5, cast.angle);
-      iceSound(cast.x, cast.y, 0.55);
-      CC.fx?.shake?.(2.5);
-    };
-    fire(0);
-    later(0.09, () => fire(1));
-    later(0.18, () => fire(2));
+    for (let i = 0; i < SHARDS; i++) launch(cast, (i / (SHARDS - 1) - 0.5) * CONE_ANGLE * 180 / Math.PI, volley, i);
+    blast(cast);
+    // enemies standing in the cone are frosted at once: little shards stick in them straight away
+    if (!cast.visual) {
+      const reach = CHARGED_REACH + cast.power * 34;
+      for (const e of nearby(cast.x, cast.y, reach)) {
+        const a = Math.atan2(e.y - cast.y, e.x - cast.x);
+        if (Math.abs(Math.atan2(Math.sin(a - cast.angle), Math.cos(a - cast.angle))) > CONE_ANGLE / 2) continue;
+        frost(e, 1.1, 0.7);
+      }
+    }
+  }
+
+  // the icy explosion at the muzzle: a flash wedge, a spiked ring and a spray of shards travelling outwards
+  function blast(cast) {
+    const reach = CHARGED_REACH + cast.power * 34;
+    addVisual({ kind: 'cone', x: cast.x, y: cast.y, angle: cast.angle, radius: reach, life: 0.34, total: 0.34 });
+    CC.SpellCharge?.effect?.('wizardBlast', { x: cast.x, y: cast.y, angle: cast.angle, radius: reach, life: 0.34 });
+    ring(cast.x + cast.dx * 14, cast.y + cast.dy * 14, 30, ICE, 0.3, true);
+    for (let i = 0; i < 26 && visuals.length < 100; i++) {
+      const a = cast.angle + ((i * 0.6180339) % 1 - 0.5) * CONE_ANGLE * 1.1;
+      const s = 120 + (i * 37) % 170, life = 0.26 + (i % 5) * 0.07;
+      addVisual({ kind: 'chip', x: cast.x + cast.dx * 10, y: cast.y + cast.dy * 10, dx: Math.cos(a) * s, dy: Math.sin(a) * s - 20,
+        angle: a, size: 4 + (i % 4) * 1.6, life, total: life, color: i % 3 ? ICE : '#ffffff' });
+    }
+    iceSound(cast.x, cast.y, 0.9);
+    CC.fx?.shake?.(4);
   }
 
   function later(delay, run) {
@@ -465,6 +487,7 @@
         crystal(ctx, v.x, v.y - 3, v.angle, v.size, v.size / 2, alpha, v.color);
         continue;
       }
+      if (v.kind === 'cone') { coneFlash(ctx, v.x, v.y, v.angle, v.radius, 1 - alpha); continue; }
       const radius = 5 + (1 - alpha) * v.radius;
       ctx.save();
       ctx.globalAlpha = alpha;
@@ -509,11 +532,31 @@
     ctx.restore();
   }
 
+  // the blast wedge: a pale cone that races outwards and fades, with a bright edge
+  function coneFlash(ctx, x, y, angle, radius, progress) {
+    const r = radius * (0.35 + progress * 0.75), a = 1 - progress;
+    ctx.save();
+    ctx.globalAlpha = a * 0.55;
+    const g = ctx.createRadialGradient(x, y, 4, x, y, r);
+    g.addColorStop(0, '#ffffff'); g.addColorStop(0.5, '#bfeeff'); g.addColorStop(1, 'rgba(120,200,255,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(x, y - 3);
+    ctx.arc(x, y - 3, r, angle - CONE_ANGLE / 2, angle + CONE_ANGLE / 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = a;
+    ctx.strokeStyle = '#effdff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+  }
+
   function drawCharge(ctx, camera, info) {
     const { dx, dy, power } = info;
     const angle = Math.atan2(dy, dx);
     const x = info.originX - camera.x, y = info.originY - camera.y;
-    const range = 195 + 30 * power;
+    const range = CHARGED_REACH + 34 * power;
     ctx.strokeStyle = info.affordable ? ICE : '#e07e85';
     ctx.fillStyle = '#53b6f128';
     ctx.lineWidth = 1.4;
@@ -547,6 +590,10 @@
         ctx.fill();
         ctx.stroke();
       }
+    },
+    wizardBlast(ctx, e, x, y, progress) {
+      if (!e.visual) return;
+      coneFlash(ctx, x, y, e.angle, e.radius, progress);
     },
     wizardImpact(ctx, e, x, y, progress) {
       if (!e.visual) return;
@@ -592,9 +639,9 @@
       else def.cdMul = 1.75;
       registry.register(id, def);
     }
-    pair('bolt', 'Icicle Cannon', 'Icicle Barrage',
+    pair('bolt', 'Icicle Cannon', 'Icicle Blast',
       'Fire a long icicle that pierces three foes and splinters on each hit.',
-      'Fire nine icicles in three waves. Shards stick in foes and slow them.',
+      'A shotgun blast of ice shards in a cone. Each shard pierces two foes and sticks in them.',
       { shape: 'cone', range: 225, radius: 105, half: CONE_ANGLE / 2, color: ICE },
       [24, 42], [5, 10], cannon);
     // Registered over wizard_spell2: the tap stays the existing Frost Nova, the hold becomes Glacial Nova.
@@ -638,6 +685,7 @@
   hookDamage();
   CC.WizardSpells = { register, update, draw, clear, absorb, hookDamage,
     get projectiles() { return projectiles.slice(); },
-    get attachments() { return attachments.slice(); } };
+    get attachments() { return attachments.slice(); },
+    get visuals() { return visuals.slice(); } };
   register();
 })(typeof window !== 'undefined' ? window : globalThis);

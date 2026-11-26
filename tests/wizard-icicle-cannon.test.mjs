@@ -56,7 +56,7 @@ test('icicles shatter against walls before hitting foes behind them', () => {
   assert.equal(wizard.projectiles.length, 0);
 });
 
-test('charge fires nine independent icicles in three timed forward waves', () => {
+test('charge is ONE shotgun blast: eleven shards leave at once across the cone and pierce two foes each', () => {
   const { player, pairs, wizard, step } = setup();
   const angle = Math.PI / 4;
   const pair = pairs.get('bolt');
@@ -64,17 +64,26 @@ test('charge fires nine independent icicles in three timed forward waves', () =>
   assert.equal(pair.cost * pair.manaMul, 42);
   assert.equal(pair.cooldown, 5);
   assert.equal(pair.cooldown * pair.cdMul, 10);
+  assert.equal(pair.chargeName, 'Icicle Blast');
   pair.charge(player, { dx: Math.cos(angle), dy: Math.sin(angle) }, 1);
-  assert.equal(wizard.projectiles.length, 3);
-  step(0.08);
-  assert.equal(wizard.projectiles.length, 3);
-  step(0.01);
-  assert.equal(wizard.projectiles.length, 6);
-  step(0.09);
-  assert.equal(wizard.projectiles.length, 9);
-  assert.equal(new Set(wizard.projectiles.map(q => q.hitSet)).size, 9);
+  assert.equal(wizard.projectiles.length, 11, 'every shard exists immediately: no timed waves');
+  step(0.2);
+  assert.equal(wizard.projectiles.length, 11, 'and no later waves follow');
+  assert.equal(new Set(wizard.projectiles.map(q => q.hitSet)).size, 11);
+  assert.ok(wizard.projectiles.every(q => q.maxHits === 2), 'each shard pierces two foes');
   const spread = Array.from(wizard.projectiles, q => (q.angle - angle) * 180 / Math.PI);
-  assert.ok(Math.abs(Math.max(...spread) - Math.min(...spread) - 55) < 1e-8);
+  assert.ok(Math.abs(Math.max(...spread) - Math.min(...spread) - 55) < 1e-6, 'a 55 degree cone');
+  assert.ok(wizard.visuals.some(v => v.kind === 'cone'), 'the icy blast animation plays');
+});
+
+test('a shard pierces two foes and stops in the third; shards stick in the foes it hits', () => {
+  const { player, enemy, hits, pairs, wizard, step } = setup();
+  const a = enemy(40), b = enemy(70), c = enemy(100);
+  pairs.get('bolt').charge(player, { dx: 1, dy: 0 }, 1);
+  step(0.5);
+  assert.ok(hits.some(h => h.e === a) && hits.some(h => h.e === b));
+  assert.ok(wizard.attachments.some(x => x.enemy === a), 'little ice shards are embedded in the foes');
+  assert.equal(c.hp, 2000, 'beyond two foes the shards are spent or out of reach');
 });
 
 test('the complete volley caps damage and embedded shards on a large boss', () => {
@@ -164,7 +173,7 @@ test('charged ward absorbs more damage and shocks nearby enemies once on exhaust
 test('registration: Icicle Cannon names, original Frost Nova and Arcane Orb taps are kept', () => {
   const { pairs } = setup();
   assert.equal(pairs.get('bolt').name, 'Icicle Cannon');
-  assert.equal(pairs.get('bolt').chargeName, 'Icicle Barrage');
+  assert.equal(pairs.get('bolt').chargeName, 'Icicle Blast');
   for (const id of ['wizard_spell2', 'orb']) {
     assert.equal(pairs.get(id).tap, undefined, id + ' keeps its existing tap spell');
     assert.equal(typeof pairs.get(id).charge, 'function');

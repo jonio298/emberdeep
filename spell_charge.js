@@ -139,11 +139,11 @@ function tapCooldown(p,r){
  if(CC.Skills&&CC.Skills.cdMul&&r.id)b*=CC.Skills.cdMul(p,r.id);
  return b*(1-Math.min(.5,(p.stats&&p.stats.cdr)||0));
 }
-// One shared cooldown: the charged cast writes its longer time into the same p.cd[key] the tap uses.
+// Independent cooldowns: the charged cast runs its own (longer) cooldown in p.cdC[key]; the tap keeps p.cd[key].
 function setSharedCd(p,r){
  var m=tapCooldown(p,r)*(r.reg&&r.reg.cdMul||CHARGED_CD_MUL[r.key]||1.75);
- p.cdCharged=p.cdCharged||{};p.cdCharged[r.key]=m;
- p.cd[r.key]=Math.max(p.cd[r.key]||0,m);
+ p.cdC=p.cdC||{};p.cdCMax=p.cdCMax||{};
+ p.cdC[r.key]=Math.max(p.cdC[r.key]||0,m);p.cdCMax[r.key]=m;
 }
 function cost(p,slot){
  var def=slotDefinition(p,slot);
@@ -159,7 +159,8 @@ function levelOk(p,r){
 // Spells: tap and charged versions share ONE cooldown, p.cd[key]. Dash only: p.cdC.dash is a separate charged cooldown (p.cdCMax holds its length).
 function chargedReady(p,slot){p.cdC=p.cdC||{};return (p.cdC[slot]||0)<=.01;}
 // spells share one cooldown (p.cd[key]); only the dash keeps its separate charged cooldown
-function cdReady(p,r){return r.key==='dash'?(p.cd.dash<=.01||chargedReady(p,'dash')):(p.cd[r.key]||0)<=.01;}
+// a press may start when EITHER the tap or the charged version is ready; release then checks the one actually cast
+function cdReady(p,r){return (p.cd[r.key]||0)<=.01||chargedReady(p,r.key);}
 function unlocked(p,r){return levelOk(p,r)&&cdReady(p,r);}
 var CHARGED_CD_MUL={spell1:2,spell2:2,dash:1.6}; // a charged cast recharges for longer than the tap (tap: 1x its cooldown)
 function standable(p,x,y){
@@ -488,7 +489,7 @@ function release(slot){
      r.def.color);
    return tapped;
  }
- if(!(r.key==='dash'?chargedReady(p,'dash'):cdReady(p,r))){fxText(p.x,p.y-20,'CHARGE RECHARGING','#7bbddd');if(a.snd&&CC.Audio)CC.Audio.chargeEnd(false);return false;}
+ if(!chargedReady(p,r.key)){fxText(p.x,p.y-20,'CHARGE RECHARGING','#7bbddd');if(a.snd&&CC.Audio)CC.Audio.chargeEnd(false);return false;}
  var mana=costOf(p,r);
  if(p.mana<mana){fxText(p.x,p.y-20,'NEED '+mana+' MANA','#7bbddd');if(a.snd&&CC.Audio)CC.Audio.chargeEnd(false);return false;}
  if(a.snd&&CC.Audio)CC.Audio.chargeEnd(true);

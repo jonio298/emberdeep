@@ -120,33 +120,39 @@ test('partial charge scales power with the time held', () => {
   assert.ok(log.charge[0].power > .4 && log.charge[0].power < .6, 'power ' + log.charge[0].power);
 });
 
-test('a charged release writes the longer cooldown into the same cooldown: no free tap after it', () => {
+test('tap and charged cooldowns are independent: the charge is longer and never blocks the tap', () => {
   const { SC, SP, p, calls } = boot();
   const log = newLog();
   SP.register('bolt', pair(log));
   SC.begin('spell3', 0, 0); hold(SC, .9); SC.release('spell3');
-  assert.equal(p.cd.ab_bolt, 5 * 1.75);
-  assert.equal(p.cdCharged.ab_bolt, 5 * 1.75);
-  assert.equal(p.cdMax.ab_bolt === undefined || p.cdMax.ab_bolt === 5 * 1.75 || p.cdMax.ab_bolt === 5, true);
-  const manaAfter = p.mana;
-  assert.equal(SC.begin('spell3', 0, 0), false, 'cannot even start another cast while the shared cooldown runs');
-  assert.equal(log.tap.length, 0);
-  assert.equal(calls.skillCast.length, 0);
-  assert.equal(p.mana, manaAfter);
+  assert.equal(p.cdC.ab_bolt, 5 * 1.75, 'the charged version has its own longer cooldown');
+  assert.equal(p.cdCMax.ab_bolt, 5 * 1.75);
+  assert.ok(!(p.cd.ab_bolt > 0), 'the tap cooldown is untouched');
+  assert.equal(SC.begin('spell3', 0, 0), true, 'the tap is still available');
+  SC.release('spell3');
+  assert.equal(log.tap.length, 1, 'a tap right after a charge works');
+  assert.ok(p.cd.ab_bolt > 0 && p.cd.ab_bolt <= 5, 'and runs the short cooldown');
   p.cd.ab_bolt = 0;
-  assert.equal(SC.begin('spell3', 0, 0), true, 'available again once the cooldown ends');
+  SC.begin('spell3', 0, 0); hold(SC, .9);
+  assert.equal(SC.release('spell3'), false, 'but the charge itself is still recharging');
+  assert.equal(log.charge.length, 1);
+  p.cdC.ab_bolt = 0;
+  SC.begin('spell3', 0, 0); hold(SC, .9);
+  assert.equal(SC.release('spell3'), true);
+  assert.equal(log.charge.length, 2);
 });
 
-test('original spells (not Flamethrower/Fireball behaviour) also share one cooldown', () => {
+test('a tap does not start the charged cooldown, and the original spells keep separate cooldowns too', () => {
   const { SC, p, calls } = boot();
   assert.equal(SC.canCharge('spell1'), true);
   SC.begin('spell1', 0, 0); hold(SC, .9); assert.equal(SC.release('spell1'), true);
-  assert.equal(p.cd.spell1, 2.5 * 2, 'charged flame writes 2x the tap cooldown into the tap cooldown');
+  assert.equal(p.cdC.spell1, 2.5 * 2, 'charged flame: 2x the tap cooldown, in its own timer');
   assert.equal(p.cdMax.spell1, 2.5, 'tap base cooldown is untouched');
-  assert.equal(p.cdC, undefined, 'no separate charged cooldown for spells');
-  assert.equal(SC.begin('spell1', 0, 0), false);
-  assert.equal(p.mana, 200 - Math.ceil(20 * 1.8), 'legacy mana formula unchanged');
-  assert.deepEqual(calls.tapAction, []);
+  assert.ok(!(p.cd.spell1 > 0), 'the tap is free');
+  assert.equal(SC.begin('spell1', 0, 0), true);
+  SC.release('spell1');
+  assert.deepEqual(calls.tapAction, ['spell1'], 'the tap fires the original spell');
+  assert.equal(p.mana, 200 - Math.ceil(20 * 1.8), 'legacy mana formula unchanged for the charge');
 });
 
 test('an original spell in a different slot taps through its own tap action and charges', () => {
@@ -157,7 +163,7 @@ test('an original spell in a different slot taps through its own tap action and 
   assert.equal(SC.canCharge('spell4'), true);
   SC.begin('spell4', 0, 0); hold(SC, .9);
   assert.equal(SC.release('spell4'), true);
-  assert.equal(p.cd.spell1, 5);
+  assert.equal(p.cdC.spell1, 5);
 });
 
 test('not enough mana for the charge spends nothing, casts nothing and keeps the cooldown free', () => {

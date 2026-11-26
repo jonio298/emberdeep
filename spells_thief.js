@@ -1,7 +1,7 @@
 /* Thief tap/hold pairs. SpellCharge owns mana, cooldowns and input.
  *   thief_spell1  Throwing Knives  tap: two quick knives         -> hold: KNIFE BARRAGE, rapid knives in a widened aimed cone
  *   thief_spell2  Smoke Bomb       tap (existing smoke cloud)    -> hold: SHADOW SHROUD, the same bomb, larger and longer, with a longer ambush
- *   step          Shadow Step      tap (existing)                -> hold: ASSASSINATION STEP, a longer aimed step to a marked foe with three stabs and a re-vanish
+ *   step          Shadow Step      tap (existing)                -> hold: FUSEBLADE GAMBIT, dash onto a foe, stab + splash, pin 4 fused bomb daggers on the nearest foes, snap back; ATTACK detonates
  *   razorwire     Razor Wire       tap: a hooked wire barricade  -> hold: RAZOR WEB, three connected wires, longer, with bleeding
  *   venom         Venom Flask      tap: one flask and a puddle   -> hold: TOXIC DELUGE, a bigger flask that bursts into five connected pools
  */
@@ -10,11 +10,11 @@
   const CC = root.CC = root.CC || {};
   const TAU = Math.PI * 2;
   const STEEL = '#dfe6f2', VENOM = '#9aff3a', SHADOW = '#a796ce', WIRE = '#f0f4fb';
-  const knives = [], flasks = [], pools = [], wires = [], steps = [], timers = [], fx = [];
+  const knives = [], flasks = [], pools = [], wires = [], steps = [], bombs = [], timers = [], fx = [];
   let scene;
 
   function clear() {
-    knives.length = flasks.length = pools.length = wires.length = steps.length = timers.length = fx.length = 0;
+    knives.length = flasks.length = pools.length = wires.length = steps.length = bombs.length = timers.length = fx.length = 0;
     scene = undefined;
   }
   function sync() {
@@ -93,9 +93,12 @@
     return true;
   }
 
-  /* ---------- 3. Assassination Step ---------- */
-  function assassinate({ player, angle, id }) {
-    // a marked foe: the one closest to the aim line, inside a narrow cone and in line of sight. No marked foe, no step (the mana is refunded).
+  /* ---------- 3. Fuseblade Gambit (hold of Shadow Step) ---------- */
+  // Dash onto a foe, stab it (with splash), pin four fused bomb daggers on the nearest foes, then snap back to where you started.
+  // Press ATTACK (tap or hold) to detonate them; otherwise the fuses burn down on their own.
+  const FUSE = 4.5, BOMBS = 4;
+  function standable(x, y) { return !solid(x, y) && !solid(x - 5, y - 5) && !solid(x + 5, y - 5) && !solid(x - 5, y + 5) && !solid(x + 5, y + 5); }
+  function fuseGambit({ player, angle, id }) {
     let mark, best = 1e9;
     for (const e of enemies()) {
       const dx = e.x - player.x, dy = e.y - player.y, d = Math.hypot(dx, dy);
@@ -105,27 +108,71 @@
       const score = diff * 120 + d * 0.2;
       if (score < best) { best = score; mark = e; }
     }
-    if (!mark) { text(player.x, player.y - 20, 'NO MARK', '#cfc6e8'); return false; }
+    if (!mark) { text(player.x, player.y - 20, 'NO TARGET', '#cfc6e8'); return false; }
     const dir = Math.atan2(mark.y - player.y, mark.x - player.x), fromX = player.x, fromY = player.y;
-    let tx = mark.x + Math.cos(dir) * ((mark.r || 8) + 9), ty = mark.y + Math.sin(dir) * ((mark.r || 8) + 9);
-    if (solid(tx, ty)) { tx = mark.x - Math.cos(dir) * ((mark.r || 8) + 9); ty = mark.y - Math.sin(dir) * ((mark.r || 8) + 9); }
-    if (solid(tx, ty)) { text(player.x, player.y - 20, 'NO ROOM', '#cfc6e8'); return false; }
-    add(fx, { kind: 'streak', x: fromX, y: fromY, x2: tx, y2: ty, t: 0, life: 0.5 });
-    player.x = tx; player.y = ty; player.face = Math.cos(dir) >= 0 ? -1 : 1;
-    player.iframes = Math.max(player.iframes || 0, 0.9);
-    CC.Classes?.status?.(mark, 'stun', 0.7); // held for the stabs: every one lands from behind
-    const dmg = base(player, id) * 1.15;
-    for (let i = 0; i < 3; i++) add(timers, { wait: 0.12 + i * 0.13, fn: () => {
-      if (!(mark.hp > 0) || mark.dead || player.hp <= 0) return;
-      knifeHit(mark, dmg, dir); burst(mark.x, mark.y, '#d6c4ff', 6); CC.fx?.shake?.(2);
-      add(fx, { kind: 'stab', x: mark.x, y: mark.y, a: dir + (i - 1) * 0.7, t: 0, life: 0.25 });
+    let tx = mark.x - Math.cos(dir) * ((mark.r || 8) + 9), ty = mark.y - Math.sin(dir) * ((mark.r || 8) + 9);
+    if (!standable(tx, ty)) { tx = mark.x + Math.cos(dir) * ((mark.r || 8) + 9); ty = mark.y + Math.sin(dir) * ((mark.r || 8) + 9); }
+    if (!standable(tx, ty)) { text(player.x, player.y - 20, 'NO ROOM', '#cfc6e8'); return false; }
+    add(fx, { kind: 'streak', x: fromX, y: fromY, x2: tx, y2: ty, t: 0, life: 0.4 });
+    player.x = tx; player.y = ty; player.face = Math.cos(dir) >= 0 ? 1 : -1;
+    player.iframes = Math.max(player.iframes || 0, 1.0);
+    player.castFlash = 0.4;
+    const dmg = base(player, id);
+    knifeHit(mark, dmg * 1.7, dir);                       // the stab
+    for (const o of enemies()) {                          // splash around the target
+      if (o === mark || Math.hypot(o.x - mark.x, o.y - mark.y) > 46 + (o.r || 8)) continue;
+      spellHit(o, dmg * 0.75, 'slash');
+    }
+    add(fx, { kind: 'splash2', x: mark.x, y: mark.y, t: 0, life: 0.35, radius: 50 });
+    burst(mark.x, mark.y, '#d6c4ff', 12); CC.fx?.shake?.(3);
+    // the four closest foes (all four on one foe if it is alone), pinned with fused bomb daggers
+    const near = enemies().filter(e => Math.hypot(e.x - tx, e.y - ty) <= 230 && clearLine(tx, ty, e.x, e.y))
+      .sort((p, q) => Math.hypot(p.x - tx, p.y - ty) - Math.hypot(q.x - tx, q.y - ty)).slice(0, BOMBS);
+    if (!near.length) near.push(mark);
+    for (let i = 0; i < BOMBS; i++) {
+      const e = near[i % near.length], a = (i / BOMBS) * TAU + 0.5, off = (e.r || 8) * 0.7;
+      add(bombs, { enemy: e, sx: tx, sy: ty - 4, ox: Math.cos(a) * off, oy: Math.sin(a) * off * 0.8 - 2, ang: Math.atan2(-Math.sin(a), -Math.cos(a)),
+        t: 0, flight: 0.16 + i * 0.05, fuse: FUSE, armed: false, x: tx, y: ty, damage: dmg, id }, 16);
+    }
+    add(timers, { wait: 0.45, fn: () => { // back to the starting spot
+      if (player.hp <= 0) return;
+      let bx = fromX, by = fromY;
+      if (!standable(bx, by)) { bx = tx; by = ty; }
+      add(fx, { kind: 'puff', x: player.x, y: player.y, t: 0, life: 0.5 });
+      player.x = bx; player.y = by;
+      add(fx, { kind: 'puff', x: bx, y: by, t: 0, life: 0.5 });
+      burst(bx, by, SHADOW, 10);
     } });
-    add(timers, { wait: 0.62, fn: () => { // and gone again
-      add(fx, { kind: 'puff', x: player.x, y: player.y, t: 0, life: 0.6 });
-      burst(player.x, player.y, SHADOW, 12);
-    } });
-    text(tx, ty - 26, 'ASSASSINATION STEP', '#d6c4ff');
+    text(tx, ty - 28, 'FUSEBLADE GAMBIT', '#ffb0b8');
     return true;
+  }
+  function explodeBomb(b) {
+    if (b.done) return;
+    b.done = true;
+    const e = b.enemy, live = b.armed && e && e.hp > 0, x = live ? e.x + b.ox : b.x, y = live ? e.y + b.oy : b.y;
+    for (const o of enemies()) {
+      const d = Math.hypot(o.x - x, o.y - y);
+      if (o === e && b.armed) { spellHit(o, b.damage * 1.5, 'fire'); continue; } // the foe it is stuck in takes the full blast
+      if (d <= 40 + (o.r || 8)) spellHit(o, b.damage * 0.7, 'fire');             // splash
+    }
+    add(fx, { kind: 'boom', x, y, t: 0, life: 0.45, radius: 46 });
+    burst(x, y, '#ff9a4a', 14); CC.fx?.shake?.(4);
+    CC.Audio?.event?.('explosion', { x, y });
+  }
+  function detonateBombs() { let n = 0; for (const b of bombs) if (!b.done && b.armed) { explodeBomb(b); n++; } return n; }
+  function onAttack() { if (!bombs.length || !scene) return false; return detonateBombs() > 0; } // wired to every ATTACK press (tap or hold); the normal attack still happens too
+  function updateBomb(b, dt) {
+    b.t += dt;
+    const e = b.enemy;
+    if (!b.armed) {
+      if (b.t >= b.flight) { b.armed = true; b.t = 0; burst(e.x + b.ox, e.y + b.oy, STEEL, 3); }
+      else { const u = b.t / b.flight; b.x = b.sx + ((e.x + b.ox) - b.sx) * u; b.y = b.sy + ((e.y + b.oy) - b.sy) * u; }
+      return;
+    }
+    const alive = e && e.hp > 0 && !e.dead;
+    if (alive) { b.x = e.x + b.ox; b.y = e.y + b.oy; }
+    b.fuse -= dt;
+    if (b.fuse <= 0 || !alive) explodeBomb(b); // a foe that dies first sets its bombs off where it fell
   }
 
   /* ---------- 4. Razor Wire / Razor Web ---------- */
@@ -218,6 +265,7 @@
     sweep(flasks, updateFlask, dt);
     sweep(pools, updatePool, dt);
     sweep(wires, updateWire, dt);
+    sweep(bombs, updateBomb, dt);
     for (let i = timers.length - 1; i >= 0; i--) {
       timers[i].wait -= dt;
       if (timers[i].wait <= 0) { const t = timers.splice(i, 1)[0]; try { t.fn(); } catch (e) { if (root.console) console.error(e); } }
@@ -227,7 +275,7 @@
 
   /* ---------- drawing ---------- */
   function draw(ctx, cam) {
-    if (!knives.length && !flasks.length && !pools.length && !wires.length && !fx.length) return;
+    if (!knives.length && !flasks.length && !pools.length && !wires.length && !bombs.length && !fx.length) return;
     const t = CC.Enemies?._time || 0;
     ctx.save();
     ctx.lineCap = 'round';
@@ -263,6 +311,16 @@
       ctx.fillStyle = '#68c030'; ctx.beginPath(); ctx.ellipse(0, 2.5, 3, 3, 0, 0, TAU); ctx.fill();
       ctx.fillStyle = '#6a4a2a'; ctx.fillRect(-1.5, -6, 3, 3); ctx.restore();
     }
+    for (const b of bombs) { // a dagger stuck in its foe; the red light at the hilt blinks faster as the fuse burns down
+      const x = b.x - cam.x, y = b.y - cam.y;
+      ctx.save(); ctx.translate(x, y - 3); ctx.rotate(b.ang);
+      ctx.fillStyle = STEEL; ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(-2, -2.2); ctx.lineTo(-5, 0); ctx.lineTo(-2, 2.2); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#6a5a8a'; ctx.fillRect(-9, -1.4, 4, 2.8);
+      const rate = b.armed ? (b.fuse > 1.5 ? 4 : 11) : 0, on = b.armed && Math.sin(t * rate * 2) > -0.2;
+      ctx.fillStyle = on ? '#ff3030' : '#5a1010'; ctx.shadowColor = '#ff2020'; ctx.shadowBlur = on ? 7 : 0;
+      ctx.beginPath(); ctx.arc(-10, 0, 1.8, 0, TAU); ctx.fill();
+      ctx.restore();
+    }
     for (const e of fx) {
       const u = e.t / e.life, x = e.x - cam.x, y = e.y - cam.y;
       ctx.globalAlpha = Math.max(0, 1 - u);
@@ -270,6 +328,8 @@
       else if (e.kind === 'hook') { const hx = e.x + (e.x2 - e.x) * Math.min(1, u * 2.4); ctx.strokeStyle = WIRE; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(hx - cam.x, e.y + (e.y2 - e.y) * Math.min(1, u * 2.4) - cam.y); ctx.stroke(); }
       else if (e.kind === 'stab') { ctx.strokeStyle = '#efe6ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - Math.cos(e.a) * 12 * (1 - u), y - Math.sin(e.a) * 12 * (1 - u)); ctx.lineTo(x + Math.cos(e.a) * 12 * (1 - u), y + Math.sin(e.a) * 12 * (1 - u)); ctx.stroke(); }
       else if (e.kind === 'splash') { ctx.strokeStyle = VENOM; ctx.lineWidth = 3 * (1 - u) + 1; ctx.beginPath(); ctx.ellipse(x, y, e.radius * (0.3 + u * 0.8), e.radius * (0.3 + u * 0.8) * 0.62, 0, 0, TAU); ctx.stroke(); }
+      else if (e.kind === 'boom') { ctx.fillStyle = 'rgba(255,170,60,0.5)'; ctx.beginPath(); ctx.ellipse(x, y, e.radius * (0.3 + u * 0.8), e.radius * (0.3 + u * 0.8) * 0.75, 0, 0, TAU); ctx.fill(); ctx.strokeStyle = '#ffe08a'; ctx.lineWidth = 3 * (1 - u) + 1; ctx.stroke(); }
+      else if (e.kind === 'splash2') { ctx.strokeStyle = '#d6c4ff'; ctx.lineWidth = 3 * (1 - u) + 1; ctx.beginPath(); ctx.ellipse(x, y, e.radius * (0.3 + u * 0.8), e.radius * (0.3 + u * 0.8) * 0.7, 0, 0, TAU); ctx.stroke(); }
       else if (e.kind === 'puff') { ctx.fillStyle = 'rgba(120,100,170,0.5)'; ctx.beginPath(); ctx.ellipse(x, y, 10 + u * 22, (10 + u * 22) * 0.7, 0, 0, TAU); ctx.fill(); }
     }
     ctx.restore();
@@ -299,9 +359,9 @@
     pair('thief_spell2', 'Smoke Bomb', 'Shadow Shroud', 'Throw smoke that blinds and confuses foes and makes every hit a backstab.',
       'The same bomb: larger, lasting longer, with a longer ambush for a crit.',
       { shape: 'circle', range: 142, radius: 80, color: SHADOW }, [20, 33], [8, 14], null, shadowShroud);
-    pair('step', 'Shadow Step', 'Assassination Step', 'Vanish and reappear behind a foe with a vicious backstab.',
-      'A longer aimed step to a marked foe: three stabs, then vanish again.',
-      { shape: 'line', range: 200, radius: 24, color: '#a078ff' }, [18, 30], [6, 11], null, assassinate);
+    pair('step', 'Shadow Step', 'Fuseblade Gambit', 'Vanish and reappear behind a foe with a vicious backstab.',
+      'Dash onto a foe and stab it with splash, pin four fused bomb daggers on the nearest foes, then snap back. Press ATTACK to detonate them.',
+      { shape: 'line', range: 200, radius: 24, color: '#a078ff' }, [18, 30], [6, 11], null, fuseGambit);
     pair('razorwire', 'Razor Wire', 'Razor Web', 'Hook a short wire barricade that cuts and slows foes crossing it.',
       'Three connected wires, longer lasting, that make foes bleed.',
       { shape: 'circle', range: 130, radius: 60, color: WIRE }, [24, 40], [7, 12], wireTap, razorWeb);
@@ -317,7 +377,7 @@
     shell.draw = function (ctx, camera) { paint.call(this, ctx, camera); draw(ctx, camera); };
   }
 
-  CC.ThiefSpells = { register, update, draw, clear,
+  CC.ThiefSpells = { register, update, draw, clear, onAttack, get bombs() { return bombs.slice(); },
     get knives() { return knives.slice(); }, get wires() { return wires.slice(); }, get pools() { return pools.slice(); }, get flasks() { return flasks.slice(); } };
   register();
 })(typeof window !== 'undefined' ? window : globalThis);

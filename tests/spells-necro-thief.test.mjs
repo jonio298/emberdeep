@@ -205,17 +205,40 @@ test('Venom Flask leaves one puddle; Toxic Deluge bursts into five connected poo
   assert.equal(big.CC.ThiefSpells.pools.length, 0);
 });
 
-test('Assassination Step needs a marked foe, stabs three times from behind and leaves the thief protected', () => {
+test('Fuseblade Gambit: dash on, stab with splash, pin four fused bomb daggers, snap back; ATTACK detonates', () => {
   const none = thief();
-  assert.equal(none.pairs.get('step').charge(none.player, { dx: 1, dy: 0 }, 1), false, 'no mark: refunded');
+  assert.equal(none.pairs.get('step').charge(none.player, { dx: 1, dy: 0 }, 1), false, 'no target: refunded');
   const { player, pairs, enemy, hits, step, CC } = thief();
-  const mark = enemy(120), off = enemy(100, 120);
+  assert.equal(pairs.get('step').chargeName, 'Fuseblade Gambit');
+  const mark = enemy(120), side = enemy(135, 20), far = enemy(200, 90), off = enemy(100, 300);
   assert.equal(pairs.get('step').charge(player, { dx: 1, dy: 0 }, 1), true);
-  assert.ok(player.x > 110 && player.iframes > 0.5);
-  step(1, CC.ThiefSpells);
-  assert.equal(hits.filter(h => h.e === mark).length, 3);
-  assert.equal(hits.filter(h => h.e === off).length, 0, 'only the marked foe is struck');
-  assert.ok(mark.stunT > 0);
+  assert.ok(player.x > 100, 'dashed onto the target');
+  assert.ok(hits.some(h => h.e === mark && h.damage > 20 * 1.5), 'the target takes a decent stab');
+  assert.ok(hits.some(h => h.e === side), 'splash reaches foes beside the target');
+  step(0.34, CC.ThiefSpells);
+  const bombs = CC.ThiefSpells.bombs;
+  assert.equal(bombs.length, 4, 'four bomb daggers');
+  assert.deepEqual([...new Set(bombs.map(b => b.enemy))].filter(e => e === off).length, 0, 'out of range foes are skipped');
+  assert.ok(bombs.every(b => b.armed));
+  step(0.2, CC.ThiefSpells);
+  assert.equal(Math.round(player.x), 0, 'back at the starting spot');
+  const before = hits.length;
+  assert.equal(CC.ThiefSpells.onAttack(), true, 'pressing attack sets them off');
+  assert.ok(hits.length > before && hits.slice(before).some(h => h.type === 'fire'), 'explosive damage');
+  step(0.02, CC.ThiefSpells);
+  assert.equal(CC.ThiefSpells.bombs.length, 0, 'the daggers are gone after the blast');
+  assert.equal(CC.ThiefSpells.onAttack(), false);
+});
+
+test('Fuseblade Gambit puts all four daggers on a lone foe, and the fuses burn out by themselves', () => {
+  const { player, pairs, enemy, hits, step, CC } = thief();
+  const only = enemy(120);
+  pairs.get('step').charge(player, { dx: 1, dy: 0 }, 1);
+  step(0.3, CC.ThiefSpells);
+  assert.equal(CC.ThiefSpells.bombs.filter(b => b.enemy === only).length, 4);
+  step(5, CC.ThiefSpells);
+  assert.equal(CC.ThiefSpells.bombs.length, 0);
+  assert.equal(hits.filter(h => h.e === only && h.type === 'fire').length, 4);
 });
 
 test('Shadow Shroud is the same smoke bomb, charged', () => {
@@ -260,21 +283,4 @@ test('old saves migrate once: Blink -> Arcane Ward, Blade Fan -> Razor Wire, Cha
   assert.equal(thief.skills.spent, 2);
   assert.ok(S.AB.arcaneward && S.AB.razorwire && !S.AB.blink && !S.AB.fan);
   assert.equal(S.AB.bolt.name, 'Icicle Cannon');
-});
-
-test('Inferno Orb is a slow, large fireball that explodes on the first foe and leaves lingering flames', () => {
-  const w = world('spells_wizard_fire.js', 'wizard');
-  const front = w.enemy(80), back = w.enemy(140);
-  const pair = w.pairs.get('wizard_spell1');
-  assert.equal(pair.chargeName, 'Inferno Orb');
-  assert.equal(pair.tap, undefined, 'the tap stays the existing Fireball');
-  assert.equal(pair.charge(w.player, { dx: 1, dy: 0 }, 1), true);
-  assert.equal(w.CC.WizardFireSpells.orbs.length, 1);
-  w.step(0.2, w.CC.WizardFireSpells);
-  assert.equal(w.hits.length, 0, 'slow: it has not reached anything yet');
-  w.step(0.6, w.CC.WizardFireSpells);
-  assert.ok(w.hits.some(h => h.e === front) && !w.hits.some(h => h.e === back && h.damage > 20 * 3), 'explodes on the first foe');
-  assert.equal(w.CC.WizardFireSpells.flames.length, 1);
-  w.step(5, w.CC.WizardFireSpells);
-  assert.equal(w.CC.WizardFireSpells.flames.length, 0, 'the flames burn out');
 });

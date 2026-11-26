@@ -611,7 +611,7 @@
   var paused = false, uiWas = false;
   function playing() { return CC.state.mode === 'town' || CC.state.mode === 'dungeon'; }
   function pressAction(name) {
-    if (playing() && !paused && !uiOpen() && !(CC.state.player && CC.state.player.perkOpen)) { pending[name] = true; call('HoldGuide', 'onAction', name); }
+    if (playing() && !paused && !uiOpen() && !(CC.state.player && CC.state.player.perkOpen)) { pending[name] = true; call('HoldGuide', 'onAction', name); if (name === 'attack') call('ThiefSpells', 'onAttack'); }
   }
   CC.useManaPotion = function () {
     var s=CC.state,p=s&&s.player;
@@ -1493,7 +1493,6 @@
         ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.stroke();
       }
       var cdK = sInfo ? sInfo.key : name, cd = !contextual && p && p.cd ? p.cd[cdK] : 0, cdMax = !contextual && p && p.cdMax ? (p.cdMax[cdK] || (sInfo && sInfo.cdMax)) : 0;
-      if (cd > cdMax && p && p.cdCharged && p.cdCharged[cdK]) cdMax = p.cdCharged[cdK]; // a charged cast waits longer on the shared cooldown
       if (cd > 0 && cdMax > 0) {
         var f = Math.min(1, cd / cdMax);
         ctx.beginPath(); ctx.moveTo(b.x, b.y);
