@@ -1,9 +1,9 @@
 /* Thief tap/hold pairs. SpellCharge owns mana, cooldowns and input.
  *   thief_spell1  Throwing Knives  tap: two quick knives         -> hold: KNIFE BARRAGE, rapid knives in a widened aimed cone
  *   thief_spell2  Smoke Bomb       tap (existing smoke cloud)    -> hold: SHADOW SHROUD, the same bomb, larger and longer, with a longer ambush
- *   step          Shadow Step      tap (existing)                -> hold: FUSEBLADE GAMBIT, dash onto a foe, stab + splash, pin 4 fused bomb daggers on the nearest foes, snap back; ATTACK detonates
+ *   step          Shadow Step      tap (existing)                -> hold: ASSASSINATION STEP, a longer aimed step to a marked foe with three stabs and a re-vanish
  *   razorwire     Razor Wire       tap: a hooked wire barricade  -> hold: RAZOR WEB, three connected wires, longer, with bleeding
- *   venom         Venom Flask      tap: one flask and a puddle   -> hold: TOXIC DELUGE, a bigger flask that bursts into five connected pools
+ *   venom         Venom Flask      tap: one flask and a puddle   -> hold: FUSEBLADE GAMBIT, dash onto a foe, stab + splash, pin 4 fused bomb daggers on the nearest foes, snap back; ATTACK detonates
  */
 (function (root) {
   'use strict';
@@ -93,7 +93,42 @@
     return true;
   }
 
-  /* ---------- 3. Fuseblade Gambit (hold of Shadow Step) ---------- */
+  /* ---------- 3. Assassination Step ---------- */
+  function assassinate({ player, angle, id }) {
+    // a marked foe: the one closest to the aim line, inside a narrow cone and in line of sight. No marked foe, no step (the mana is refunded).
+    let mark, best = 1e9;
+    for (const e of enemies()) {
+      const dx = e.x - player.x, dy = e.y - player.y, d = Math.hypot(dx, dy);
+      if (d > 200 + (e.r || 8) || !clearLine(player.x, player.y, e.x, e.y)) continue;
+      const diff = Math.abs(Math.atan2(Math.sin(Math.atan2(dy, dx) - angle), Math.cos(Math.atan2(dy, dx) - angle)));
+      if (diff > 0.5) continue;
+      const score = diff * 120 + d * 0.2;
+      if (score < best) { best = score; mark = e; }
+    }
+    if (!mark) { text(player.x, player.y - 20, 'NO MARK', '#cfc6e8'); return false; }
+    const dir = Math.atan2(mark.y - player.y, mark.x - player.x), fromX = player.x, fromY = player.y;
+    let tx = mark.x + Math.cos(dir) * ((mark.r || 8) + 9), ty = mark.y + Math.sin(dir) * ((mark.r || 8) + 9);
+    if (solid(tx, ty)) { tx = mark.x - Math.cos(dir) * ((mark.r || 8) + 9); ty = mark.y - Math.sin(dir) * ((mark.r || 8) + 9); }
+    if (solid(tx, ty)) { text(player.x, player.y - 20, 'NO ROOM', '#cfc6e8'); return false; }
+    add(fx, { kind: 'streak', x: fromX, y: fromY, x2: tx, y2: ty, t: 0, life: 0.5 });
+    player.x = tx; player.y = ty; player.face = Math.cos(dir) >= 0 ? -1 : 1;
+    player.iframes = Math.max(player.iframes || 0, 0.9);
+    CC.Classes?.status?.(mark, 'stun', 0.7); // held for the stabs: every one lands from behind
+    const dmg = base(player, id) * 1.15;
+    for (let i = 0; i < 3; i++) add(timers, { wait: 0.12 + i * 0.13, fn: () => {
+      if (!(mark.hp > 0) || mark.dead || player.hp <= 0) return;
+      knifeHit(mark, dmg, dir); burst(mark.x, mark.y, '#d6c4ff', 6); CC.fx?.shake?.(2);
+      add(fx, { kind: 'stab', x: mark.x, y: mark.y, a: dir + (i - 1) * 0.7, t: 0, life: 0.25 });
+    } });
+    add(timers, { wait: 0.62, fn: () => { // and gone again
+      add(fx, { kind: 'puff', x: player.x, y: player.y, t: 0, life: 0.6 });
+      burst(player.x, player.y, SHADOW, 12);
+    } });
+    text(tx, ty - 26, 'ASSASSINATION STEP', '#d6c4ff');
+    return true;
+  }
+
+  /* ---------- 5b. Fuseblade Gambit (hold of Venom Flask) ---------- */
   // Dash onto a foe, stab it (with splash), pin four fused bomb daggers on the nearest foes, then snap back to where you started.
   // Press ATTACK (tap or hold) to detonate them; otherwise the fuses burn down on their own.
   const FUSE = 4.5, BOMBS = 4;
@@ -220,29 +255,20 @@
     }
   }
 
-  /* ---------- 5. Venom Flask / Toxic Deluge ---------- */
-  function flask({ player, x, y, id, charged, power = 0 }) {
-    const d = Math.hypot(x - player.x, y - player.y), max = charged ? 150 : 135;
+  /* ---------- 5. Venom Flask ---------- */
+  function flask({ player, x, y, id }) {
+    const d = Math.hypot(x - player.x, y - player.y), max = 135;
     const k = d > max ? max / d : 1;
     let tx = player.x + (x - player.x) * k, ty = player.y + (y - player.y) * k;
     if (solid(tx, ty)) { tx = player.x + (tx - player.x) * 0.5; ty = player.y + (ty - player.y) * 0.5; }
-    add(flasks, { sx: player.x, sy: player.y - 6, tx, ty, t: 0, life: charged ? 0.55 : 0.45, charged, power, id, damage: base(player, id) });
-    player.castFlash = charged ? 0.3 : 0.22;
+    add(flasks, { sx: player.x, sy: player.y - 6, tx, ty, t: 0, life: 0.45, id, damage: base(player, id) });
+    player.castFlash = 0.22;
     return true;
   }
   function addPool(x, y, r, life, damage) { add(pools, { x, y, r, t: 0, life, damage, tick: 0.2, seed: Math.random() * 100 }, 12); }
   function landFlask(f) {
-    burst(f.tx, f.ty, VENOM, f.charged ? 16 : 9);
-    if (!f.charged) { addPool(f.tx, f.ty, 38, 4.2, f.damage * 0.28); return; }
-    const r = 46 + f.power * 8;
-    addPool(f.tx, f.ty, r, 6, f.damage * 0.34);
-    for (let i = 0; i < 4; i++) { // satellite pools joined to the centre by a trail
-      const a = i * TAU / 4 + 0.6 + Math.random() * 0.3, sx = f.tx + Math.cos(a) * (r + 18), sy = f.ty + Math.sin(a) * (r + 18);
-      if (!solid(sx, sy)) addPool(sx, sy, 28, 5.2, f.damage * 0.3);
-    }
-    add(fx, { kind: 'splash', x: f.tx, y: f.ty, t: 0, life: 0.5, radius: r + 20 });
-    CC.fx?.shake?.(3);
-    text(f.tx, f.ty - 24, 'TOXIC DELUGE', VENOM);
+    burst(f.tx, f.ty, VENOM, 9);
+    addPool(f.tx, f.ty, 38, 4.2, f.damage * 0.28);
   }
   function updateFlask(f, dt) { f.t += dt; if (f.t >= f.life) { landFlask(f); f.done = true; } }
   function updatePool(p, dt) {
@@ -359,15 +385,15 @@
     pair('thief_spell2', 'Smoke Bomb', 'Shadow Shroud', 'Throw smoke that blinds and confuses foes and makes every hit a backstab.',
       'The same bomb: larger, lasting longer, with a longer ambush for a crit.',
       { shape: 'circle', range: 142, radius: 80, color: SHADOW }, [20, 33], [8, 14], null, shadowShroud);
-    pair('step', 'Shadow Step', 'Fuseblade Gambit', 'Vanish and reappear behind a foe with a vicious backstab.',
-      'Dash onto a foe and stab it with splash, pin four fused bomb daggers on the nearest foes, then snap back. Press ATTACK to detonate them.',
-      { shape: 'line', range: 200, radius: 24, color: '#a078ff' }, [18, 30], [6, 11], null, fuseGambit);
+    pair('step', 'Shadow Step', 'Assassination Step', 'Vanish and reappear behind a foe with a vicious backstab.',
+      'A longer aimed step to a marked foe: three stabs, then vanish again.',
+      { shape: 'line', range: 200, radius: 24, color: '#a078ff' }, [18, 30], [6, 11], null, assassinate);
     pair('razorwire', 'Razor Wire', 'Razor Web', 'Hook a short wire barricade that cuts and slows foes crossing it.',
       'Three connected wires, longer lasting, that make foes bleed.',
       { shape: 'circle', range: 130, radius: 60, color: WIRE }, [24, 40], [7, 12], wireTap, razorWeb);
-    pair('venom', 'Venom Flask', 'Toxic Deluge', 'Throw a flask that leaves a poison puddle.',
-      'A bigger flask that bursts into five connected poison pools over a wider area.',
-      { shape: 'circle', range: 150, radius: 72, color: VENOM }, [28, 46], [12, 20], p => flask(p), p => flask({ ...p, charged: true }));
+    pair('venom', 'Venom Flask', 'Fuseblade Gambit', 'Throw a flask that leaves a poison puddle.',
+      'Dash onto a foe and stab it with splash, pin four fused bomb daggers on the nearest foes, then snap back. Press ATTACK to detonate them.',
+      { shape: 'line', range: 200, radius: 24, color: '#ff6a5a' }, [28, 46], [12, 20], p => flask(p), fuseGambit);
   }
 
   const shell = CC.SpellCharge;

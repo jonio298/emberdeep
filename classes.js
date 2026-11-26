@@ -633,6 +633,26 @@
     return hits;
   }
 
+  // The perfect shot's mark: the living foe nearest the aim line (distance plus a penalty for being off to the side)
+  function perfectTarget(p, a) {
+    var l = foes(), best = null, bs = 1e9;
+    for (var i = 0; i < l.length; i++) {
+      var e = l[i]; if (!alive(e)) continue;
+      var dx = e.x - p.x, dy = e.y - p.y, d = Math.sqrt(dx * dx + dy * dy); if (d > 320) continue;
+      var da = Math.abs(Math.atan2(Math.sin(Math.atan2(dy, dx) - a), Math.cos(Math.atan2(dy, dx) - a)));
+      var sc = d + da * 160; if (sc < bs) { bs = sc; best = e; }
+    }
+    return best;
+  }
+  // Homing: turn the golden shot hard onto its mark (re-picking if the mark dies) so it always lands
+  function perfectHome(s, dt) {
+    var t = s.homeTarget;
+    if (!t || !alive(t)) { t = s.homeTarget = nearest(s.x, s.y, 260) || null; if (!t) return; }
+    var spd = Math.sqrt(s.vx * s.vx + s.vy * s.vy) || 1, want = Math.atan2(t.y - s.y, t.x - s.x), cur = Math.atan2(s.vy, s.vx);
+    var diff = Math.atan2(Math.sin(want - cur), Math.cos(want - cur)), turn = Math.min(1, dt * 10);
+    var na = cur + diff * turn; s.a = na; s.vx = Math.cos(na) * spd; s.vy = Math.sin(na) * spd;
+  }
+
   function shoot(p, a, speed, life, dmgMul, r, kind, type, col, extra) {
     var sx = p.x + Math.cos(a) * 8, sy = p.y + Math.sin(a) * 8 - 2;
     if (solidAt(sx, sy)) { sx = p.x; sy = p.y; } // muzzle inside a wall (hugging it): start at the caster
@@ -652,6 +672,8 @@
       pr.perfect = !(p.pw && p.pw.rapid > 0) && Math.random() < PERFECT_CHANCE; // a PERFECT shot: known the moment it leaves the staff
       if (pr.perfect) {
         pr.preRolledCrit = true; pr.col = '#ffd34a'; pr.r = (pr.r || 4) * 1.5;
+        pr.vx *= 0.55; pr.vy *= 0.55; pr.life = Math.max(pr.life * 1.8, 3.5); // a slow, deliberate orb...
+        pr.homeTarget = perfectTarget(p, a); // ...that locks onto a foe and cannot miss
         if (CC.PerfectWarp) CC.PerfectWarp.fire(pr); // the world warps round the golden orb, the rest fades dark and back
       }
     }
@@ -917,18 +939,19 @@
       var s = projs[i], end = false, target = null;
       if (s.preRolledCrit) s.critAge = (s.critAge || 0) + dt;
       s.life -= dt;
+      if (s.perfect && !s.visual) perfectHome(s, dt);
       // sub-step so fast shots can't tunnel; on a wall, stop at the last open point (the wall edge)
       var mvx = s.vx * dt, mvy = s.vy * dt, nSub = Math.max(1, Math.ceil(Math.max(Math.abs(mvx), Math.abs(mvy)) / 3));
       for (var q = 0; q < nSub; q++) {
         var nx = s.x + mvx / nSub, ny = s.y + mvy / nSub;
-        if (solidAt(nx, ny)) {
+        if (solidAt(nx, ny) && !(s.perfect && s.homeTarget)) { // a homing perfect shot flies over the rubble on its way to the mark
           end = true;
           addFx({ kind: 'puff', x: s.x, y: s.y, r: s.r + 3, t: 0.18, max: 0.18, col: s.col });
           break;
         }
         s.x = nx; s.y = ny;
         // Basic bolts and shards can shatter the same destructibles as slashes.
-        if (!end && !s.visual && CC.Breakables && CC.Breakables.hitProjectile(s)) {
+        if (!end && !s.visual && !(s.perfect && s.homeTarget) && CC.Breakables && CC.Breakables.hitProjectile(s)) {
           end=true;
           addFx({kind:'puff',x:s.x,y:s.y,r:9,t:.24,max:.24,col:s.col});
           break;
@@ -938,6 +961,7 @@
       var l = foes();
       for (var j = 0; j < l.length && !end; j++) {
         var e = l[j]; if (!alive(e)) continue;
+        if (s.perfect && s.homeTarget && alive(s.homeTarget) && e !== s.homeTarget) continue; // it flies to its mark, nothing else
         var dx = e.x - s.x, dy = e.y - s.y, rr = (e.r || 8) + s.r;
         if (dx * dx + dy * dy <= rr * rr) {
           if (s.pierce && !s.aoe) { // pass through, hitting each monster once

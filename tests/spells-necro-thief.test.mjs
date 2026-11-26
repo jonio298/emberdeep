@@ -29,6 +29,8 @@ function world(file, classId) {
   return { CC, player, list, hits, pairs, minions, enemy, step };
 }
 
+const thiefStep = (CC, seconds, dt = 0.01) => { while (seconds > 1e-9) { CC.ThiefSpells.update(Math.min(dt, seconds)); seconds -= dt; } };
+
 /* ---------------- necromancer ---------------- */
 const necro = () => world('spells_necromancer.js', 'necromancer');
 
@@ -186,32 +188,37 @@ test('Razor Wire cuts a crossing foe at most every 0.45 s; Razor Web is three co
   assert.equal(CC.ThiefSpells.wires.length, 0, 'wires expire');
 });
 
-test('Venom Flask leaves one puddle; Toxic Deluge bursts into five connected pools; both expire', () => {
-  const { player, pairs, enemy, hits, step, CC } = thief();
+test('Venom Flask leaves one puddle that expires', () => {
+  const { player, pairs, CC } = thief();
   pairs.get('venom').tap(player, { dx: 1, dy: 0, x: 100, y: 0 });
   assert.equal(CC.ThiefSpells.flasks.length, 1);
-  step(0.6, CC.ThiefSpells);
+  thiefStep(CC, 0.6);
   assert.equal(CC.ThiefSpells.pools.length, 1);
-  step(5, CC.ThiefSpells);
+  thiefStep(CC, 5);
   assert.equal(CC.ThiefSpells.pools.length, 0);
-  const big = thief();
-  const foe = big.enemy(100);
-  big.pairs.get('venom').charge(big.player, { dx: 1, dy: 0, x: 100, y: 0 }, 1);
-  big.step(0.7, big.CC.ThiefSpells);
-  assert.equal(big.CC.ThiefSpells.pools.length, 5);
-  big.step(1, big.CC.ThiefSpells);
-  assert.ok(big.hits.some(h => h.e === foe && h.type === 'poison'));
-  big.step(8, big.CC.ThiefSpells);
-  assert.equal(big.CC.ThiefSpells.pools.length, 0);
+});
+
+test('Assassination Step (Shadow Step hold) needs a marked foe, stabs three times from behind and leaves the thief protected', () => {
+  const none = thief();
+  assert.equal(none.pairs.get('step').charge(none.player, { dx: 1, dy: 0 }, 1), false, 'no mark: refunded');
+  const { player, pairs, enemy, hits, step, CC } = thief();
+  const mark = enemy(120), off = enemy(100, 120);
+  assert.equal(pairs.get('step').chargeName, 'Assassination Step');
+  assert.equal(pairs.get('step').charge(player, { dx: 1, dy: 0 }, 1), true);
+  assert.ok(player.x > 110 && player.iframes > 0.5);
+  step(1, CC.ThiefSpells);
+  assert.equal(hits.filter(h => h.e === mark).length, 3);
+  assert.equal(hits.filter(h => h.e === off).length, 0, 'only the marked foe is struck');
+  assert.ok(mark.stunT > 0);
 });
 
 test('Fuseblade Gambit: dash on, stab with splash, pin four fused bomb daggers, snap back; ATTACK detonates', () => {
   const none = thief();
-  assert.equal(none.pairs.get('step').charge(none.player, { dx: 1, dy: 0 }, 1), false, 'no target: refunded');
+  assert.equal(none.pairs.get('venom').charge(none.player, { dx: 1, dy: 0 }, 1), false, 'no target: refunded');
   const { player, pairs, enemy, hits, step, CC } = thief();
-  assert.equal(pairs.get('step').chargeName, 'Fuseblade Gambit');
+  assert.equal(pairs.get('venom').chargeName, 'Fuseblade Gambit');
   const mark = enemy(120), side = enemy(135, 20), far = enemy(200, 90), off = enemy(100, 300);
-  assert.equal(pairs.get('step').charge(player, { dx: 1, dy: 0 }, 1), true);
+  assert.equal(pairs.get('venom').charge(player, { dx: 1, dy: 0 }, 1), true);
   assert.ok(player.x > 100, 'dashed onto the target');
   assert.ok(hits.some(h => h.e === mark && h.damage > 20 * 1.5), 'the target takes a decent stab');
   assert.ok(hits.some(h => h.e === side), 'splash reaches foes beside the target');
@@ -233,7 +240,7 @@ test('Fuseblade Gambit: dash on, stab with splash, pin four fused bomb daggers, 
 test('Fuseblade Gambit puts all four daggers on a lone foe, and the fuses burn out by themselves', () => {
   const { player, pairs, enemy, hits, step, CC } = thief();
   const only = enemy(120);
-  pairs.get('step').charge(player, { dx: 1, dy: 0 }, 1);
+  pairs.get('venom').charge(player, { dx: 1, dy: 0 }, 1);
   step(0.3, CC.ThiefSpells);
   assert.equal(CC.ThiefSpells.bombs.filter(b => b.enemy === only).length, 4);
   step(5, CC.ThiefSpells);

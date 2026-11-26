@@ -30,7 +30,7 @@
   var W = 360, H = 640, dpr = 1, zoom = 1.5, titlePage = 'mode', menuPage = 'sp';
   var cam = { x: 0, y: 0, w: 240, h: 420, zoom: 1.5 };
   CC.getCamera = function () { return { x: cam.x, y: cam.y, w: cam.w, h: cam.h, zoom: curZoom || zoom, W: W, H: H }; };
-  var curZoom = 0; // the zoom actually used on the last frame (Town Defense widens and narrows the view)
+  var drawZoom = 0, curZoom = 0; // drawZoom: the full world scale of the last frame, cutscene zoom included; // the zoom actually used on the last frame (Town Defense widens and narrows the view)
   // Player zoom: pinch with two fingers (or the mouse wheel) at any time. The target is set by the gesture and the
   // view eases toward it every frame, so the zoom is smooth. 1 = the normal view; below 1 zooms out.
   var ZOOM_MIN = 0.28, ZOOM_MAX = 2.2, userTarget = 1, userCur = 1, userAt = 0;
@@ -1305,7 +1305,7 @@
     var defMul = defMul0 * userCur;
     var bx = rx, by = ry;
     if (Math.abs(defMul - 1) > 0.0004) { var nw = W / (zoom * defMul), nh = H / (zoom * defMul); bx = rx + rw / 2 - nw / 2; by = ry + rh / 2 - nh / 2; cam.w = nw; cam.h = nh; }
-    var cinematicZoom = v ? v.scale : 1, activeZoom = zoom * defMul * cinematicZoom; curZoom = zoom * defMul;
+    var cinematicZoom = v ? v.scale : 1, activeZoom = zoom * defMul * cinematicZoom; curZoom = zoom * defMul; drawZoom = activeZoom;
     if (v) {
       cam.w = W / activeZoom; cam.h = H / activeZoom;
       cam.x = bx * (1 - v.blend) + (v.x - cam.w / 2) * v.blend + ox;
@@ -1746,7 +1746,7 @@
     drawWorld();
     if (m === 'town' || m === 'dungeon' || m === 'dead') drawScreenFx();
     if (m === 'dungeon') call('Vfx', 'drawScreen', ctx, W, H); // the sky flashes yellow for chain lightning
-    if (m === 'dungeon') call('PerfectWarp', 'drawScreen', ctx, W, H, cam.x, cam.y, curZoom || zoom); // a perfect shot warps the world and dims the rest
+    if (m === 'dungeon') call('PerfectWarp', 'drawScreen', ctx, W, H, cam.x, cam.y, drawZoom || curZoom || zoom); // a perfect shot warps the world and dims the rest
     if (m === 'dungeon') call('CriticalScene', 'drawScreen', ctx, W, H);
     if (m === 'dungeon') call('Wounds', 'drawScreen', ctx, W, H);
     if (!endless && (m === 'dungeon' || m === 'dead') && call('AbandonedVillage', 'drawCinema', ctx, W, H) && m === 'dungeon') return; // the tree's strike covers everything, HUD included

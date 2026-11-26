@@ -22,9 +22,8 @@
       var f = fxs[i];
       if (f.pr !== pr || f.landed) continue;
       f.landed = true; f.lt = 0; f.x = pr.x; f.y = pr.y;
-      if (target && isFinite(target.x) && isFinite(target.y)) { // burst on the foe itself, not on its edge
-        var dx = target.x - pr.x, dy = target.y - pr.y, d = Math.hypot(dx, dy) || 1, k = Math.min(d, (target.r || 8) * 0.6) / d;
-        f.x = pr.x + dx * k; f.y = pr.y + dy * k;
+      if (target && isFinite(target.x) && isFinite(target.y)) { // explode ON the foe: centred on its body and following it
+        f.target = target; f.ox = 0; f.oy = -(target.r || 8) * 0.35; f.x = target.x; f.y = target.y + f.oy;
       }
       if (CC.fx) { if (CC.fx.shake) CC.fx.shake(6); if (CC.fx.burst) CC.fx.burst(f.x, f.y, '#ffd34a', 26, 160); }
       if (CC.Audio && CC.Audio.event) CC.Audio.event('explosion', { x: f.x, y: f.y });
@@ -107,7 +106,7 @@
       var f = fxs[i], inflight = !f.landed;
       f.t += dt;
       if (inflight && f.pr && f.pr.life > 0 && !f.pr.dead) { f.x = f.pr.x; f.y = f.pr.y; }
-      if (f.landed) f.lt += dt;
+      if (f.landed) { f.lt += dt; if (f.target && isFinite(f.target.x) && isFinite(f.target.y)) { f.x = f.target.x; f.y = f.target.y + f.oy; } }
       if ((f.landed && f.lt >= Math.max(LAND, FADE)) || (inflight && f.t > 4)) { fxs.splice(i, 1); continue; }
       var sx = (f.x - cx) * zoom, sy = (f.y - cy) * zoom;
       var dark = inflight ? Math.min(1, f.t / 0.15) : Math.max(0, 1 - f.lt / FADE); // dims quickly, lingers while the shot flies, then lifts
