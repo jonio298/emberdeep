@@ -5,6 +5,8 @@ Every build gets a number `YYYYMMDD.N` (N counts builds made that day). The newe
 
 | Build | Version | Notes |
 |---|---|---|
+| 20261126.12 | 0.3.0 | Fix: the furnace door to the Emberdeep was placed inside the hall's wall and could not be reached; it now stands on open floor in front of the furnace (tested on many seeds). |
+| 20261126.11 | 0.3.0 | Every menu now uses the iron & leather design: the character window (all tabs, with ribbon titles), inventory, skills, quests, map, stats, settings, party, buttons, dialogs, the level-up perk panel and the title menu. |
 | 20261126.10 | 0.3.0 | Settings window redrawn in the iron & leather style (riveted iron frame, stitched leather, ribbon title, red close button, ON pills, chevron steppers, gold sliders, icons) with the same options; Emberdeep chest placement fix. |
 | 20261126.9 | 0.3.0 | The Emberdeep: the Hearthkeeper's furnace door now opens onto the earth's boiling, lava-filled core: the Boiling Descent (lava pools, geysers, stronger Cinderwake creatures) and the Core, a lava-ringed island where the Emberheart boss (three phases) holds the curse. Breaking it lifts the curse, drops a legendary, and updates Verrin and the quest log (The Source of the Curse). |
 | 20261126.8 | 0.3.0 | Day/night cycle (10 min each, sleep in the tent to skip the night); night monsters +15% health +20% damage with scarier glowing eyes (bats red, skeletons purple) and Dire Wolves become Werewolves; fireflies, pond frogs and wind-swept plains grass; the Rocky Pass is now a long mountain maze with dead ends and a nature puzzle (spring, elder oak, sunbeam mirrors, sunpetal, thornwall) guarding the village; NPC speech paints above the controls and a tap moves it on; thief +30% health +25% damage. |

@@ -33,15 +33,15 @@
     var bh = 20 + lines.length * LH + (acts.length ? 8 + acts.length * (BH + gap) : 0) + 10;
     var by = y0 !== undefined ? y0 : Math.max(52, Math.round(Hd * (o.low ? 0.32 : 0.2))); if (by + bh > Hd - 8) by = Math.max(8, Hd - 8 - bh);
     c.shadowColor = 'rgba(0,0,0,0.55)'; c.shadowBlur = 14; c.shadowOffsetY = 3;
-    var g = c.createLinearGradient(0, by, 0, by + bh); g.addColorStop(0, 'rgba(34,24,16,0.96)'); g.addColorStop(1, 'rgba(14,9,6,0.97)');
+    var g = c.createLinearGradient(0, by, 0, by + bh); g.addColorStop(0, 'rgba(58,34,22,0.97)'); g.addColorStop(1, 'rgba(30,16,10,0.98)');
     rr(c, bx, by, bw, bh, 8); c.fillStyle = g; c.fill(); c.shadowColor = 'transparent'; c.shadowBlur = 0; c.shadowOffsetY = 0;
-    rr(c, bx + 0.5, by + 0.5, bw - 1, bh - 1, 8); c.lineWidth = 2; c.strokeStyle = '#8a5a26'; c.stroke();
-    rr(c, bx + 4, by + 4, bw - 8, bh - 8, 5); c.lineWidth = 1; c.strokeStyle = 'rgba(224,180,100,0.55)'; c.stroke();
-    diamond(c, bx + 4, by + 4, 3, '#e0b45a'); diamond(c, bx + bw - 4, by + 4, 3, '#e0b45a'); diamond(c, bx + 4, by + bh - 4, 3, '#e0b45a'); diamond(c, bx + bw - 4, by + bh - 4, 3, '#e0b45a');
+    rr(c, bx + 0.5, by + 0.5, bw - 1, bh - 1, 8); c.lineWidth = 2; c.strokeStyle = '#8b9199'; c.stroke();
+    rr(c, bx + 4, by + 4, bw - 8, bh - 8, 5); c.lineWidth = 1; c.strokeStyle = 'rgba(214,170,112,0.5)'; c.stroke();
+    diamond(c, bx + 4, by + 4, 3, '#9aa1ab'); diamond(c, bx + bw - 4, by + 4, 3, '#9aa1ab'); diamond(c, bx + 4, by + bh - 4, 3, '#9aa1ab'); diamond(c, bx + bw - 4, by + bh - 4, 3, '#9aa1ab');
     if (o.name) { // the name plate straddling the top edge
       c.font = 'bold 12px Georgia, serif'; var nw = Math.min(bw - 40, c.measureText(o.name).width + 30), nx = bx + 16, ny = by - 11;
-      rr(c, nx, ny, nw, 22, 6); var ng = c.createLinearGradient(0, ny, 0, ny + 22); ng.addColorStop(0, '#5a3a1a'); ng.addColorStop(1, '#33200f'); c.fillStyle = ng; c.fill(); c.lineWidth = 1.5; c.strokeStyle = '#e0b45a'; c.stroke();
-      diamond(c, nx + 9, ny + 11, 2.2, '#e0b45a'); c.fillStyle = '#ffe3a0'; c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillText(o.name, nx + 17, ny + 11.5, nw - 22);
+      rr(c, nx, ny, nw, 22, 6); var ng = c.createLinearGradient(0, ny, 0, ny + 22); ng.addColorStop(0, '#6a4430'); ng.addColorStop(1, '#3a2216'); c.fillStyle = ng; c.fill(); c.lineWidth = 1.5; c.strokeStyle = '#9aa1ab'; c.stroke();
+      diamond(c, nx + 9, ny + 11, 2.2, '#9aa1ab'); c.fillStyle = '#ffe3a0'; c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillText(o.name, nx + 17, ny + 11.5, nw - 22);
     }
     c.textBaseline = 'alphabetic'; c.font = FS + 'px Georgia, serif'; c.fillStyle = '#f0e6d0'; c.textAlign = 'left'; var ty = by + 28, i;
     for (i = 0; i < lines.length; i++) c.fillText(lines[i], bx + pad + 2, ty + i * LH);

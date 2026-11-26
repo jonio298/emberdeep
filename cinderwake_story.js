@@ -104,7 +104,7 @@
     if (m.freed) return;
     var last = m.reward || { x: m.spawn.x, y: m.spawn.y - 200 };
     m.freed = { x: last.x - 70, y: last.y + 30, name: 'A freed ghost', line: 'The ash has stopped falling. Listen. It is cold. I had forgotten cold.' };
-    m.sealed = { x: last.x - 20, y: last.y - 150 };
+    m.sealed = { x: last.x - 3 * 32, y: last.y - 16 }; // the furnace door: on open floor in front of the furnace (the reward chest sits 3 tiles right of the hall's centre line)
     m.props.push({ x: m.freed.x, y: m.freed.y, draw: function (c, x, y, time) { ghostArt(c, x, y, time); } });
     m.props.push({ x: m.sealed.x, y: m.sealed.y, draw: function (c, x, y, time) { sealedArt(c, x, y, time); } });
   }

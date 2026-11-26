@@ -1249,6 +1249,7 @@
   }
   function addButton(x, y, w, h, text, color, cb) {
     ui.push({ x: x, y: y, w: w, h: h, cb: cb });
+    if (CC.LeatherUI && CC.LeatherUI.button) { CC.LeatherUI.button(ctx, x, y, w, h, text, true, color, false, Math.min(16, Math.max(10, h * 0.4))); return; } // iron & leather buttons
     var g = ctx.createLinearGradient(0, y, 0, y + h);
     g.addColorStop(0, color); g.addColorStop(1, '#14101a');
     rr(x, y, w, h, 6); ctx.fillStyle = g; ctx.fill();
@@ -1667,7 +1668,7 @@
   }
   function drawTitle() {
     var g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, '#1a0f2e'); g.addColorStop(1, '#07040d');
+    g.addColorStop(0, '#2c1810'); g.addColorStop(1, '#0b0604');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     for (var i = 0; i < 40; i++) { // drifting embers
       var ph = (time * (8 + i % 7) + i * 97) % (H + 20);
@@ -1686,7 +1687,7 @@
       return;
     }
     if (titlePage === 'mode') { // top level: Single player, Co-op, Continue
-      label('CHOOSE YOUR ADVENTURE', W/2, H*.25, 14, '#cfc5ff');
+      label('CHOOSE YOUR ADVENTURE', W/2, H*.25, 14, '#e6d8bc');
       addButton(W/2-125,H*.37,250,58,'SINGLE PLAYER','#645035',function(){menuPage='sp';titlePage='sp';});
       addButton(W/2-125,H*.37+72,250,58,'CO-OP','#47356d',function(){menuPage='coop';titlePage='coop';});
       if(call('SaveGame','exists'))addButton(W/2-125,H*.37+144,250,44,'CONTINUE','#365848',function(){

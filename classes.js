@@ -1498,17 +1498,18 @@
     var dpr = cv && cv.width && root.innerWidth ? cv.width / root.innerWidth : 1;
     c.save();
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    c.fillStyle = 'rgba(8,4,16,0.88)'; c.fillRect(0, 0, W, H);
+    c.fillStyle = 'rgba(12,6,3,0.88)'; c.fillRect(0, 0, W, H);
     c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.font = 'bold 22px "Trebuchet MS", Verdana, sans-serif'; c.fillStyle = '#ffe08a';
-    c.fillText('LEVEL ' + p.level + ' - CHOOSE A PERK', W / 2, Math.max(40, H * 0.16));
+    var LU = CC.LeatherUI;
+    if (LU && LU.ribbon) LU.ribbon(c, W / 2, Math.max(26, H * 0.16 - 15), Math.min(W - 24, 330), 'LEVEL ' + p.level + ' - CHOOSE A PERK');
+    else { c.font = 'bold 22px "Trebuchet MS", Verdana, sans-serif'; c.fillStyle = '#ffe08a'; c.fillText('LEVEL ' + p.level + ' - CHOOSE A PERK', W / 2, Math.max(40, H * 0.16)); }
     var cw = Math.min(W - 32, 340), ch = 74, x = (W - cw) / 2, y0 = Math.max(70, H * 0.16 + 30);
     perkRects = [];
     for (var i = 0; i < p.perkChoices.length; i++) {
       var pk = p.perkChoices[i], y = y0 + i * (ch + 12);
       perkRects.push({ x: x, y: y, w: cw, h: ch });
-      c.fillStyle = '#1b1326'; c.fillRect(x, y, cw, ch); c.fillStyle = 'rgba(255,255,255,0.08)'; c.fillRect(x, y, cw, ch); // solid, so nothing shows through
-      c.strokeStyle = p.color; c.lineWidth = 2; c.strokeRect(x, y, cw, ch);
+      if (LU && LU.plate) { LU.plate(c, x, y, cw, ch, 8, 'raised'); c.strokeStyle = p.color; c.lineWidth = 1.5; c.strokeRect(x + 2.5, y + 2.5, cw - 5, ch - 5); }
+      else { c.fillStyle = '#1b1326'; c.fillRect(x, y, cw, ch); c.fillStyle = 'rgba(255,255,255,0.08)'; c.fillRect(x, y, cw, ch); c.strokeStyle = p.color; c.lineWidth = 2; c.strokeRect(x, y, cw, ch); } // solid, so nothing shows through
       c.font = 'bold 17px "Trebuchet MS", Verdana, sans-serif'; c.fillStyle = p.color; c.fillText(pk.name, W / 2, y + 24);
       c.font = '13px "Trebuchet MS", Verdana, sans-serif'; c.fillStyle = '#e6defa'; c.fillText(pk.desc, W / 2, y + 50);
     }

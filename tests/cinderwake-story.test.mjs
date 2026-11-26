@@ -164,3 +164,27 @@ test('the shell is wired: scripts, area hooks, quest, music, save and the vault 
   assert.match(read('audio.js'), /cinderwake/);
   assert.match(read('save_game.js'), /CinderwakeStory/);
 });
+
+test('the furnace door to the Emberdeep stands on reachable floor, and using it enters the Emberdeep', () => {
+  for (const seed of [1, 5, 7, 12, 19, 33]) {
+    const env = boot(), S = env.CC.CinderwakeStory, E = env.CC.Enemies;
+    const map = env.CC.Cinderwake.generate(3, seed);
+    Object.assign(env.CC.state, { area: 'cinderwake', floor: 3, map });
+    env.CC.Dungeon = map;
+    E.spawnForFloor(3, map.enemySpawns);
+    const keeper = E.list.find(e => e.type === 'hearthkeeper');
+    E.damage(keeper, 99999, 'slash');
+    assert.ok(map.sealed, 'the sealed stair exists once he has fallen');
+    const T = 32, tile = p => [Math.floor(p.x / T), Math.floor(p.y / T)];
+    assert.equal(map.isSolidTile(...tile(map.sealed)), false, 'seed ' + seed + ': the door is not inside a wall');
+    const seen = new Set([tile(map.spawn).join(',')]), q = [tile(map.spawn)];
+    for (let i = 0; i < q.length; i++) { const [x, y] = q[i]; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const k = (x + dx) + ',' + (y + dy); if (seen.has(k) || map.isSolidTile(x + dx, y + dy)) continue; seen.add(k); q.push([x + dx, y + dy]); } }
+    assert.ok(seen.has(tile(map.sealed).join(',')), 'reachable from the start');
+    let entered = 0;
+    env.CC.Emberdeep = { enter() { entered++; return true; }, setCursed() {} };
+    env.player.x = map.sealed.x + 20; env.player.y = map.sealed.y;
+    assert.equal(S.nearAction(), true);
+    assert.equal(S.interact(), true);
+    assert.equal(entered, 1, 'the door opens onto the Emberdeep');
+  }
+});

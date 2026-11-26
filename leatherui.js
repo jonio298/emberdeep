@@ -69,6 +69,26 @@
     c.strokeStyle = '#fff'; c.lineWidth = 2.6; c.lineCap = 'round'; c.beginPath(); var m = Math.min(w, h) * 0.3; c.moveTo(x + w / 2 - m, y + h / 2 - m); c.lineTo(x + w / 2 + m, y + h / 2 + m); c.moveTo(x + w / 2 + m, y + h / 2 - m); c.lineTo(x + w / 2 - m, y + h / 2 + m); c.stroke();
   };
 
+  L.grain = grain;
+  // a leather plate: kind 'raised' (proud, with an iron rim), 'inset' (pressed in), 'flat'
+  L.plate = function (c, x, y, w, h, r, kind, tint) {
+    var raised = kind === 'raised', inset = kind === 'inset', g = c.createLinearGradient(0, y, 0, y + h);
+    if (inset) { g.addColorStop(0, '#1b0e08'); g.addColorStop(1, '#2a160e'); } else if (raised) { g.addColorStop(0, '#6a4430'); g.addColorStop(0.5, '#4a2c1c'); g.addColorStop(1, '#321c12'); } else { g.addColorStop(0, '#4a2c1c'); g.addColorStop(1, '#341c12'); }
+    rr(c, x, y, w, h, r); c.fillStyle = g; c.fill(); grain(c, x, y, w, h, r, inset ? 0.9 : 0.8);
+    if (tint) { rr(c, x, y, w, h, r); c.fillStyle = tint; c.fill(); }
+    var b = c.createLinearGradient(x, y, x + w, y + h);
+    b.addColorStop(0, inset ? 'rgba(0,0,0,0.85)' : 'rgba(255,225,180,0.28)'); b.addColorStop(0.5, 'rgba(0,0,0,0.2)'); b.addColorStop(1, inset ? 'rgba(255,225,180,0.14)' : 'rgba(0,0,0,0.85)');
+    rr(c, x + 0.75, y + 0.75, w - 1.5, h - 1.5, r); c.lineWidth = 1.6; c.strokeStyle = b; c.stroke();
+    if (raised) { rr(c, x + 0.5, y + 0.5, w - 1, h - 1, r); c.lineWidth = 1; c.strokeStyle = '#5a6068'; c.stroke(); } // the iron rim
+  };
+  // a leather button with an iron edge; tint (the old button colour) hints its meaning: green yes, red no, amber warn
+  L.button = function (c, x, y, w, h, label, enabled, tint, hover, px) {
+    L.plate(c, x, y, w, h, 6, enabled ? 'raised' : 'inset', enabled && tint ? tint.replace(/^#([0-9a-f]{6})$/i, function (m, hx) { return 'rgba(' + parseInt(hx.slice(0, 2), 16) + ',' + parseInt(hx.slice(2, 4), 16) + ',' + parseInt(hx.slice(4, 6), 16) + ',0.38)'; }) : null);
+    if (enabled && hover) { rr(c, x, y, w, h, 6); c.fillStyle = 'rgba(255,225,170,0.12)'; c.fill(); }
+    if (enabled) { rr(c, x + 0.5, y + 0.5, w - 1, h - 1, 6); c.lineWidth = 1.4; c.strokeStyle = hover ? '#c8cfd7' : '#8b9199'; c.stroke(); }
+    emboss(c, label, x + w / 2, y + h / 2 + 0.5, px || 12, enabled ? CREAM : '#6f6252', 'center');
+  };
+
   /* ---------- icons: simple pictograms, cream on leather ---------- */
   function icon(c, name, cx, cy, s) {
     c.save(); c.translate(cx, cy); c.strokeStyle = CREAM; c.fillStyle = CREAM; c.lineWidth = 1.7; c.lineCap = 'round'; c.lineJoin = 'round'; var k;

@@ -96,6 +96,7 @@
   }
   // kind: 'raised' (a proud slab), 'inset' (cut into the stone), 'flat'
   function slab(c, x, y, w, h, r, kind, tint) {
+    if (CC.LeatherUI && CC.LeatherUI.plate) { CC.LeatherUI.plate(c, x, y, w, h, r, kind, tint); return; } // iron & leather
     var raised = kind === 'raised', inset = kind === 'inset', g;
     rrPath(c, x, y, w, h, r);
     g = c.createLinearGradient(0, y, 0, y + h);
@@ -204,7 +205,7 @@
     var state = o.state, g, col = o.col || GOLD2, t = o.t || 0, shape = o.shape || 'round';
     c.save();
     c.fillStyle = 'rgba(0,0,0,0.38)'; shapePath(c, cx + 1, cy + 2.5, R + 1.5, shape); c.fill(); // cast shadow
-    g = c.createLinearGradient(cx - R, cy - R, cx + R, cy + R); g.addColorStop(0, '#6b6557'); g.addColorStop(0.5, '#3f3b33'); g.addColorStop(1, '#201d19');
+    g = c.createLinearGradient(cx - R, cy - R, cx + R, cy + R); g.addColorStop(0, '#8d949d'); g.addColorStop(0.5, '#51575f'); g.addColorStop(1, '#25292e');
     shapePath(c, cx, cy, R + 1.5, shape); c.fillStyle = g; c.fill(); // the ring
     c.lineWidth = 1; c.strokeStyle = 'rgba(0,0,0,0.65)'; c.stroke();
     var inner = R * 0.76;
@@ -333,7 +334,7 @@
   function passives(c, hit, U, x, y, w, h, p) {
     var T = ST(), K = SK(), t = now(), cc = classColor(p), list = T.nodes(p.classId), byId = {}, colW = w / 4;
     list.forEach(function (nd) { byId[nd.id] = nd; });
-    var detailH = 98, gap = 6, treeY = y, treeH = h - detailH - gap;
+    var detailH = 86, gap = 5, treeY = y, treeH = h - detailH - gap;
     var titleH = 18, rowsY = treeY + titleH + 4, rowH = clamp((treeH - titleH - 10) / 6, 30, 62), R = clamp(Math.min(colW * 0.3, rowH * 0.36), 11, 19);
     slab(c, x, treeY, w, treeH, 7, 'flat');
     var i;
@@ -408,14 +409,14 @@
     var Sk = SK(), t = now(), cc = classColor(p);
     if (!Sk || !Sk.list) { plain(c, 'Abilities unavailable', x + w / 2, y + h / 2, 12, DIM, 'center'); return; }
     Sk.ensure(p);
-    var lst = Sk.list(p.classId), AB = Sk.AB;
+    var tight = h < 400, lst = Sk.list(p.classId), AB = Sk.AB;
     if (!st.ab || !AB[st.ab] || AB[st.ab].cls !== p.classId) st.ab = lst[0].id;
     var a = AB[st.ab], locked = (p.level || 1) < a.lvl, bound = p.slots.indexOf(a.id), yy = y;
     // the four seals
     carve(c, 'THE FOUR SEALS', x + 4, yy + 6, 9, DIM, 'left', 'bold', 1.2);
     plain(c, locked ? 'This ability is not yet unlocked.' : bound >= 0 ? 'Tap another seal to move ' + a.name + '.' : 'Tap a seal to bind ' + a.name + '.', x + w - 4, yy + 6, 9, locked ? '#b8806c' : GOLD, 'right', 'bold');
     yy += 14;
-    var sw = (w - 3 * 5) / 4, sh = 52;
+    var sw = (w - 3 * 5) / 4, sh = tight ? 42 : 52;
     for (var k = 0; k < 4; k++) (function (k) {
       var sx = x + k * (sw + 5), id = p.slots[k], ab = AB[id], here = id === a.id, canBind = !locked && !here;
       slab(c, sx, yy, sw, sh, 7, 'inset', here ? hex(cc, 0.12) : null);
@@ -436,38 +437,40 @@
       });
       flashRing(c, 'slot' + k, sx + sw / 2, yy + 26, 12);
     })(k);
-    yy += sh + 10;
+    yy += sh + (tight ? 6 : 10);
     // the five abilities
     carve(c, 'KNOWN ABILITIES', x + 4, yy + 5, 9, DIM, 'left', 'bold', 1.2);
     yy += 13;
-    var tw = (w - 4 * 4) / 5, th = 64;
+    var tw = (w - 4 * 4) / 5, th = tight ? 52 : 64;
     lst.forEach(function (ab, i) {
       var tx2 = x + i * (tw + 4), lk = (p.level || 1) < ab.lvl, on = ab.id === st.ab, slot = p.slots.indexOf(ab.id);
       slab(c, tx2, yy + (on ? 0 : 2), tw, on ? th : th - 2, 6, on ? 'raised' : 'inset', hovering(U, tx2, yy, tw, th) && !on ? 'rgba(255,230,160,0.08)' : null);
       if (on) { c.save(); c.fillStyle = cc; c.shadowColor = cc; c.shadowBlur = 8; c.fillRect(tx2 + 6, yy + th - 3, tw - 12, 2); c.restore(); }
       medal(c, tx2 + tw / 2, yy + 20, 11, { state: lk ? 'lock' : on ? 'max' : 'own', rune: runeFor(ab.id), col: ab.col, t: t });
       var sp = ab.name.indexOf(' '), l1 = sp > 0 ? ab.name.slice(0, sp) : ab.name, l2 = sp > 0 ? ab.name.slice(sp + 1) : '';
-      carve(c, fit(c, l1.toUpperCase(), tw - 4, 7.5), tx2 + tw / 2, yy + 38, 7.5, on ? GOLD2 : DIM, 'center', 'bold', 0);
-      if (l2) carve(c, fit(c, l2.toUpperCase(), tw - 4, 7.5), tx2 + tw / 2, yy + 47, 7.5, on ? GOLD2 : DIM, 'center', 'bold', 0);
-      carve(c, lk ? 'LVL ' + roman(ab.lvl) : slot >= 0 ? 'SEAL ' + roman(slot + 1) : 'UNBOUND', tx2 + tw / 2, yy + 57, 7, lk ? '#8a5a4c' : slot >= 0 ? GOOD : '#5e574c', 'center', 'bold', 0);
+      if (tight) carve(c, fit(c, ab.name.toUpperCase(), tw - 2, 7), tx2 + tw / 2, yy + 34, 7, on ? GOLD2 : DIM, 'center', 'bold', 0);
+      else { carve(c, fit(c, l1.toUpperCase(), tw - 4, 7.5), tx2 + tw / 2, yy + 38, 7.5, on ? GOLD2 : DIM, 'center', 'bold', 0);
+        if (l2) carve(c, fit(c, l2.toUpperCase(), tw - 4, 7.5), tx2 + tw / 2, yy + 47, 7.5, on ? GOLD2 : DIM, 'center', 'bold', 0); }
+      carve(c, lk ? 'LVL ' + roman(ab.lvl) : slot >= 0 ? 'SEAL ' + roman(slot + 1) : 'UNBOUND', tx2 + tw / 2, yy + (tight ? 45 : 57), 7, lk ? '#8a5a4c' : slot >= 0 ? GOOD : '#5e574c', 'center', 'bold', 0);
       hit(tx2, yy, tw, th, function () { st.ab = ab.id; });
     });
-    yy += th + 8;
+    yy += th + (tight ? 5 : 8);
     // the chosen ability: tap and hold
     var pr = CC.SpellPairs && CC.SpellPairs.get ? CC.SpellPairs.get(a.id) : null;
     var hi = !pr && a.orig && CC.SpellCharge && CC.SpellCharge.heldInfo ? CC.SpellCharge.heldInfo(p.classId, a.orig) : null;
-    var infoH = 62;
+    var infoH = tight ? 50 : 62;
     slab(c, x, yy, w, infoH, 7, 'inset');
     carve(c, fit(c, a.name.toUpperCase(), w - 150, 13), x + 10, yy + 12, 13, a.col, 'left', 'bold', 1);
     plain(c, a.cost + ' mana  ·  ' + a.cd + 's', x + w - 10, yy + 12, 9.5, DIM, 'right', 'bold');
-    rune(c, 'isa', x + 15, yy + 30, 5, GOLD2, null, 1.6); // tap: a single mark
-    paragraph(c, (pr && pr.tapDesc) || a.desc, x + 28, yy + 30, w - 38, 11, 10, TEXT, 2);
-    c.save(); c.strokeStyle = GOLD2; c.lineWidth = 1.5; c.beginPath(); c.arc(x + 15, yy + 50, 4.2, 0, TAU); c.stroke(); c.restore(); // hold: a ring
+    var tY = tight ? 27 : 30, hY = tight ? 40 : 50, ml = tight ? 1 : 2;
+    rune(c, 'isa', x + 15, yy + tY, 5, GOLD2, null, 1.6); // tap: a single mark
+    paragraph(c, (pr && pr.tapDesc) || a.desc, x + 28, yy + tY, w - 38, 11, 10, TEXT, ml);
+    c.save(); c.strokeStyle = GOLD2; c.lineWidth = 1.5; c.beginPath(); c.arc(x + 15, yy + hY, 4.2, 0, TAU); c.stroke(); c.restore(); // hold: a ring
     var holdTxt = pr ? (pr.chargeName || pr.name) + ': ' + (pr.chargeDesc || 'a stronger version') : hi ? hi.name + ': aim it' + (hi.mult ? ', +' + Math.round((hi.mult - 1) * 100) + '% damage' : '') : 'A stronger version of this ability.';
-    paragraph(c, holdTxt, x + 28, yy + 50, w - 38, 11, 10, a.col, 2);
-    yy += infoH + 6;
+    paragraph(c, holdTxt, x + 28, yy + hY, w - 38, 11, 10, a.col, ml);
+    yy += infoH + (tight ? 3 : 6);
     // upgrade runes
-    var avail = y + h - yy - 16, rh = clamp(avail / 5, 25, 40);
+    var avail = y + h - yy - 14, rh = clamp(avail / 5, 22, 40);
     Sk.KEYS.forEach(function (key, n) {
       var nd = Sk.NODE[key], r = Sk.rank(p, a.id, key), cb = Sk.canBuy(p, a.id, key), ry = yy + n * rh;
       slab(c, x, ry, w, rh - 3, 6, 'inset');
@@ -542,9 +545,9 @@
     if (!ST()) { plain(c, 'Skill tablet unavailable', x + w / 2, y + h / 2, 14, DIM, 'center'); return; }
     c.save();
     hit = hit || function () {}; U = U || {};
-    header(c, hit, U, x, y, w, p);
-    tabs(c, hit, U, x, y + 40, w, p);
-    var by = y + 78, bh = h - 80;
+    header(c, hit, U, x, y - 2, w, p);
+    tabs(c, hit, U, x, y + 36, w, p);
+    var by = y + 72, bh = h - 74;
     c.save();
     if (st.tab === 'abilities') abilities(c, hit, U, x, by, w, bh, p);
     else if (st.tab === 'charges') charges(c, hit, U, x, by, w, bh, p);
@@ -560,6 +563,7 @@
     if (i < 0) return false;
     st.tab = TABS[i % 3][0]; return true;
   };
+  S.title = function () { return st.tab === 'abilities' ? 'ABILITIES' : st.tab === 'charges' ? 'CHARGES' : 'PASSIVES'; };
   S.setTab = function (id) { if (TABS.some(function (t) { return t[0] === id; })) st.tab = id; };
   S.state = function () { return st; };
   S.roman = roman; S.rune = rune; S.RUNE_NAMES = RUNE_NAMES;
