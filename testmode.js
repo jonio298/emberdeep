@@ -100,6 +100,7 @@
     var f = Math.max(1, floor | 0 || 1);
     if (v === 'town') { s.fromForest = false; CC.setMode('town'); }
     else if (v === 'cave') CC.startRun(f, 'cave');
+    else if (v === 'cinderwake') CC.startRun(f, 'cinderwake');
     else if (v === 'tree-ascent') { s.treeFloor = Math.max(1, Math.min(5, f)); CC.startRun(1, 'tree-ascent'); }
     else CC.startRun(1, v);
     say('Map: ' + v + (v === 'cave' || v === 'tree-ascent' ? ' ' + f : ''));
@@ -285,7 +286,10 @@
     { id: 'pass', name: 'The Rocky Pass', x: 335, y: 440, kind: 'mountain', go: function () { goMap('rocky-pass'); } },
     { id: 'village', name: 'The Abandoned Village', x: 150, y: 415, kind: 'village', go: function () { goMap('village'); } },
     { id: 'graveyard', name: 'The Graveyard', x: 185, y: 365, kind: 'grave', go: function () { goMap('village'); var m = st().map, g = m && m.vil && m.vil.ghosts[2]; if (g) TM.teleport(g.x, g.y + 30); } },
-    { id: 'cellar', name: 'The Cellar', x: 120, y: 460, kind: 'cellar', go: function () { goMap('village-cellar'); } }
+    { id: 'cellar', name: 'The Cellar', x: 120, y: 460, kind: 'cellar', go: function () { goMap('village-cellar'); } },
+    { id: 'cinderwake', name: 'The Cinderwake (Ashfall Stair)', x: 95, y: 500, kind: 'cellar', go: function () { goMap('cinderwake', 1); } },
+    { id: 'cinderwake2', name: 'The Cinderwake (Slag Warrens)', x: 130, y: 530, kind: 'cellar', go: function () { goMap('cinderwake', 2); } },
+    { id: 'cinderwake3', name: 'The Cinderwake (The Hearth)', x: 165, y: 505, kind: 'cellar', go: function () { goMap('cinderwake', 3); } }
   ];
   var KNOWN = [[560, 150, 95], [540, 300, 150], [520, 480, 125], [335, 445, 115], [150, 415, 95]]; // the charted lands
   function vh(x, y) { var n = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263)) | 0; n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; }

@@ -28,6 +28,7 @@
   var BAG_MAX = 40, FRACT = { crit: 1, speed: 1, cdr: 1, lifesteal: 1 };
 
   var cur = null, target = false, t = 0, clock = 0, hovering = false;
+  var settingsScroll = 0, settingsMax = 0, settingsAnchor = 0, settingsTouchT = 0; // the Settings page scrolls inside its modal
   var sel = { skill: null, item: null, charge: null };      // item: {src:'bag', i} | {src:'eq', key}
   var toast = { s: '', t: 0, c: COL.text };
   var flash = {};                             // skill id -> seconds of pulse left
@@ -563,6 +564,14 @@
   // SETTINGS tab: options remembered in this browser (see settings.js)
   function drawSettings(c, hit, x, y, w, h) {
     var S = CC.Settings; if (!S) { tx(c, 'Settings unavailable', x + w / 2, y + h / 2, 14, COL.dim, 'center'); return; }
+    // everything below is clipped to the modal and scrolls (wheel, or drag the background); hits and hover follow the scroll
+    var vx = x, vy = y, vw = w, vh = h, outerHit = hit, scr = settingsScroll;
+    hit(vx, vy, vw, vh, function (px, py) { // dragging the background scrolls
+      var t = Date.now(); if (t - settingsTouchT > 250) settingsAnchor = py; settingsTouchT = t;
+      settingsScroll = Math.max(0, Math.min(settingsMax, settingsScroll + settingsAnchor - py)); settingsAnchor = py;
+    }, true);
+    hit = function (hx, hy, hw, hh, cb, drag) { var y1 = Math.max(hy - scr, vy), y2 = Math.min(hy - scr + hh, vy + vh); if (y2 > y1) outerHit(hx, y1, hw, y2 - y1, cb, drag); };
+    var mouseY0 = mouse.y; mouse.y += scr; c.save(); c.beginPath(); c.rect(vx, vy, vw, vh); c.clip(); c.translate(0, -scr);
     var yy = y + 14;
     tx(c, 'SETTINGS', x + w / 2, yy, 16, COL.accent, 'center'); yy += 30;
     function row(title, desc, label, on, cb, color) {
@@ -644,7 +653,15 @@
       yy += 74;
     })();
     row('Movement stick', 'Floating appears under your thumb. Fixed stays in the corner.', S.get('stick') === 'fixed' ? 'FIXED  -  tap for floating' : 'FLOATING  -  tap for fixed', true, function () { S.set('stick', S.get('stick') === 'fixed' ? 'floating' : 'fixed'); }, '#3a5a8a');
+    c.restore(); mouse.y = mouseY0;
+    settingsMax = Math.max(0, yy - y - vh + 6); settingsScroll = Math.max(0, Math.min(settingsMax, settingsScroll));
+    if (settingsMax > 0) { // a scroll track on the right edge, and a hint while there is more below
+      var th = Math.max(24, vh * vh / (vh + settingsMax)), ty = vy + (vh - th) * (settingsScroll / settingsMax);
+      rr(c, vx + vw - 5, vy + 2, 3, vh - 4, 1.5); c.fillStyle = 'rgba(0,0,0,0.45)'; c.fill(); rr(c, vx + vw - 5, ty, 3, th, 1.5); c.fillStyle = COL.accent; c.fill();
+      if (settingsScroll < settingsMax - 4) tx(c, 'scroll for more', vx + vw / 2, vy + vh - 8, 9, COL.dim, 'center');
+    }
   }
+  CC.UISettingsWheel = function (dy) { if (!(target && cur === 'settings')) return false; settingsScroll = Math.max(0, Math.min(settingsMax, settingsScroll + dy * 0.6)); return true; };
 
   // PARTY tab: session options. The host decides whether the guest can be hurt.
   function drawParty(c, hit, x, y, w, h) {

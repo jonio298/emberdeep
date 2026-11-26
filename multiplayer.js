@@ -372,6 +372,10 @@ function reward(r){
   s.inventory=s.inventory||[];
   var L=CC.Loot,it=r.item,say=function(t,c,z){if(CC.fx&&CC.fx.text)CC.fx.text(p.x,p.y-22,t,c,z||11);};
   if(L&&L.autoEquip&&L.autoEquip(p,it))say('Equipped '+it.name,it.color||'#fff',11);
+  else if(L&&L.stash){var sr=L.stash(it,p);
+   if(sr.action==='swapped')say('Swapped for '+it.name+' (sold '+sr.sold.name+' +'+sr.gold+')',it.color||'#fff',10);
+   else if(sr.action==='sold')say('Sold +'+(it.value||0),'#ffd24a');
+   else say(it.name,it.color||'#fff',it.rarity>=3?12:10);}
   else if(s.inventory.length>=40){s.gold=(s.gold||0)+(it.value||0);say('Sold +'+(it.value||0),'#ffd24a');}
   else{s.inventory.push(it);say(it.name,it.color||'#fff',it.rarity>=3?12:10);}
   if(CC.fx&&CC.fx.burst)CC.fx.burst(p.x,p.y,it.color||'#fff',6+(it.rarity||0)*3,80);

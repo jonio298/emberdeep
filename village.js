@@ -560,7 +560,7 @@
     ghostParts(o, ox, oy, a, face, w.sc, t, w.seed, col, aL, aR, bl, noHead);
     o.globalCompositeOperation = 'destination-out'; o.fillStyle = '#000';
     for (i = 0; i < hs.length; i++) { // punch the holes out of the figure
-      var h = hs[i], fade = clamp((h.life) / 1.0, 0, 1), rr = h.r * w.sc * fade; if (rr < 0.4) continue; var hx = ox + h.lx * face * w.sc, hy = oy + h.ly * w.sc;
+      var h = hs[i], fade = clamp((h.life) / 1.0, 0, 1), rr = h.r * w.sc * fade; if (rr < 0.4) continue; var hx = ox + (h.wx !== undefined ? h.wx : h.lx * face) * w.sc, hy = oy + h.ly * w.sc;
       o.beginPath(); for (k = 0; k < 11; k++) { var ang = k / 11 * TAU, rj = rr * (k % 2 ? 0.72 : 1.08) * (0.9 + 0.2 * Math.sin(h.seed + k * 3.1)); k ? o.lineTo(hx + Math.cos(ang) * rj, hy + Math.sin(ang) * rj) : o.moveTo(hx + rj, hy); } o.closePath(); o.fill();
     }
     o.globalCompositeOperation = 'source-over';
@@ -571,7 +571,7 @@
     c.save(); c.globalCompositeOperation = 'lighter'; c.lineJoin = 'miter';
     for (var i = 0; i < hs.length; i++) {
       var h = hs[i], fade = clamp(h.life / 1.0, 0, 1), rr = h.r * w.sc * fade; if (rr < 0.4) continue;
-      var hx = x + h.lx * face * w.sc, hy = y + h.ly * w.sc, k, pulse = 0.75 + 0.25 * Math.sin(Date.now() / 90 + h.seed);
+      var hx = x + (h.wx !== undefined ? h.wx : h.lx * face) * w.sc, hy = y + h.ly * w.sc, k, pulse = 0.75 + 0.25 * Math.sin(Date.now() / 90 + h.seed);
       c.shadowColor = h.col; c.shadowBlur = 9; c.strokeStyle = h.col; c.globalAlpha = 0.9 * fade * pulse; c.lineWidth = 1.5;
       c.beginPath(); for (k = 0; k < 11; k++) { var ang = k / 11 * TAU, rj = rr * (k % 2 ? 0.72 : 1.08) * (0.9 + 0.2 * Math.sin(h.seed + k * 3.1)); k ? c.lineTo(hx + Math.cos(ang) * rj, hy + Math.sin(ang) * rj) : c.moveTo(hx + rj, hy); } c.closePath(); c.stroke();
       c.shadowBlur = 0; c.strokeStyle = '#eafff2'; c.globalAlpha = 0.5 * fade; c.lineWidth = 0.6; c.stroke();
@@ -589,9 +589,13 @@
       var w = v.wisps[i]; if (!w.fx && wispAlpha(w) < 0.06) continue; if (w.fx && w.fx.mode === 'blink') continue;
       pr._wh = pr._wh || []; if (pr._wh.indexOf(w) >= 0) continue; // one hole per shot per ghost
       face = p.x < w.x ? -1 : 1; var lx = (pr.x - w.x) * face / w.sc, ly = (pr.y - w.y) / w.sc;
-      if (Math.abs(lx) > 14 || ly < -38 || ly > 13) continue;
+      if (Math.abs(lx) > 26 || ly < -60 || ly > 34) continue; // near enough to bother working out where the path goes
+      // where the shot's line passes closest to the middle of the figure: that is where it goes THROUGH the body
+      var bcx = w.x, bcy = w.y - 12 * w.sc, sp = Math.hypot(pr.vx || 0, pr.vy || 0) || 1, ux = (pr.vx || 0) / sp, uy = (pr.vy || 0) / sp, tt = (bcx - pr.x) * ux + (bcy - pr.y) * uy;
+      var hx = pr.x + ux * tt, hy = pr.y + uy * tt; lx = (hx - w.x) * face / w.sc; ly = (hy - w.y) / w.sc;
+      if (Math.abs(lx) > 9 || ly < -38 || ly > 13) continue; // the line misses the body
       pr._wh.push(w); var col = p.classId === 'necromancer' ? '#58ff86' : '#4db8ff';
-      w.holes = w.holes || []; if (w.holes.length >= 7) w.holes.shift(); w.holes.push({ lx: lx, ly: ly, r: 4.2 + R() * 2.6, col: col, seed: R() * 50, t: 0, life: 1 });
+      w.holes = w.holes || []; if (w.holes.length >= 7) w.holes.shift(); w.holes.push({ lx: lx, ly: ly, wx: (hx - w.x) / w.sc, r: 4.2 + R() * 2.6, col: col, seed: R() * 50, t: 0, life: 1 });
       w.ko = w.ko || {}; w.koT = w.koT || {}; w.kp = w.kp || [];
       var piece = null, side = lx < 0 ? -1 : 1; // a hit that lands on a part knocks that part off
       if (ly < -24 && !w.ko.head && !(w.fx && w.fx.cut >= 3)) { w.ko.head = true; w.koT.head = 5; piece = { kind: 'head', side: side, oy: -30 }; }
@@ -599,7 +603,7 @@
       else if (ly >= 0 && !w.ko.lower) { w.ko.lower = true; w.koT.lower = 5; piece = { kind: 'tail', side: side, oy: 4 }; }
       if (piece) { var q = newPiece(w, piece.kind, piece.side); q.y = w.y + piece.oy * w.sc; q.vx = piece.side * (18 + R() * 16); q.life = q.max = 1.6; w.kp.push(q); }
       if (CC.Audio) { CC.Audio.fx('plasma' + (1 + Math.floor(R() * 3)), { x: w.x, y: w.y, vol: 0.5, gap: 60 }); CC.Audio.fx('m_ghost_cast', { x: w.x, y: w.y, vol: 0.3, k: 1.5, gap: 80 }); }
-      if (CC.fx && CC.fx.burst) CC.fx.burst(pr.x, pr.y, col, 5, 60);
+      if (CC.fx && CC.fx.burst) CC.fx.burst(hx, hy, col, 5, 60);
     }
   };
   function drawWisps(c, cam, v, t, p) {

@@ -399,6 +399,31 @@
     setRandom: function (fn) { rnd = fn || Math.random; },
     clear: function () { this.drops.length = 0; },
 
+    // Put an item in the pack. Room to spare: it just goes in. Pack full: it is NOT simply sold. If it is better than something of the same kind
+    // already in the pack, the weakest such item is sold in its place; only when it beats nothing is the new item itself sold.
+    // Returns { action: 'added' | 'swapped' | 'sold', sold: item | null, gold }.
+    stash: function (item, player) {
+      var s = CC.state || {}, bag = s.inventory = s.inventory || [], cls = (player || s.player || {}).classId, i, worst = -1, worstScore = Infinity;
+      if (!item) return { action: 'sold', sold: null, gold: 0 };
+      if (bag.length < 40) { bag.push(item); return { action: 'added', sold: null, gold: 0 }; }
+      var usable = this.usableBy(item, cls);
+      for (i = 0; i < bag.length; i++) {
+        var o = bag[i];
+        if (!o || o.slot !== item.slot) continue;
+        if (!usable && this.usableBy(o, cls)) continue; // gear you cannot wear never pushes out gear you can
+        if (!compare(item, o).better) continue; // only something the new item really beats
+        var sc = compare(o, null).score; // how good the old piece is on its own
+        if (sc < worstScore) { worstScore = sc; worst = i; }
+      }
+      if (worst >= 0) {
+        var old = bag[worst]; s.gold = (s.gold || 0) + (old.value || 0);
+        bag[worst] = item;
+        return { action: 'swapped', sold: old, gold: old.value || 0 };
+      }
+      s.gold = (s.gold || 0) + (item.value || 0);
+      return { action: 'sold', sold: item, gold: item.value || 0 };
+    },
+
     // Auto-equip a freshly picked-up item when it beats what is worn in its slot (or the slot is empty).
     // Skips charms, other classes' gear and legendary/set pieces already worn; the old piece goes to the pack
     // (sold when the pack is full). Turn off with CC.state.autoEquip = false. Returns true when it equipped.
@@ -413,8 +438,7 @@
         if (!compare(item, eq).better) return false;
       }
       s.inventory = s.inventory || [];
-      if (eq && s.inventory.length >= 40) { s.gold = (s.gold || 0) + (eq.value || 0); }
-      else if (eq) s.inventory.push(eq);
+      if (eq) this.stash(eq, player); // the piece you were wearing goes to the pack (or replaces a weaker one when the pack is full)
       player.equipment[item.slot] = item;
       var C = CC.Classes;
       if (C && typeof C.applyItemStats === 'function') { try { C.applyItemStats(player); } catch (e) { /* best effort */ } }
@@ -522,8 +546,12 @@
           } else if (d.kind === 'item') {
             s.inventory = s.inventory || [];
             if (this.autoEquip(player, d.item)) { this._text(d.x, d.y, 'Equipped ' + d.item.name, d.item.color, 11); }
-            else if (s.inventory.length >= 40) { s.gold = (s.gold || 0) + d.item.value; this._text(d.x, d.y, 'Sold +' + d.item.value, '#ffd24a'); }
-            else { s.inventory.push(d.item); this._text(d.x, d.y, d.item.name, d.item.color, d.item.rarity >= 3 ? 12 : 10); }
+            else {
+              var st = this.stash(d.item, player);
+              if (st.action === 'swapped') this._text(d.x, d.y, 'Swapped for ' + d.item.name + '  (sold ' + st.sold.name + ' +' + st.gold + ')', d.item.color, 10);
+              else if (st.action === 'sold') this._text(d.x, d.y, 'Sold +' + d.item.value, '#ffd24a');
+              else this._text(d.x, d.y, d.item.name, d.item.color, d.item.rarity >= 3 ? 12 : 10);
+            }
             if (CC.fx && CC.fx.burst) CC.fx.burst(d.x, d.y, d.item.color, 6 + d.item.rarity * 3, 80);
             if (CC.Audio) CC.Audio.event(d.item.rarity >= 4 ? 'legendary' : d.item.rarity >= 2 ? 'rare' : 'pickup', { x: d.x, y: d.y });
           }

@@ -30,7 +30,7 @@
   var W = 360, H = 640, dpr = 1, zoom = 1.5, titlePage = 'mode', menuPage = 'sp';
   var cam = { x: 0, y: 0, w: 240, h: 420, zoom: 1.5 };
   CC.getCamera = function () { return { x: cam.x, y: cam.y, w: cam.w, h: cam.h, zoom: curZoom || zoom, W: W, H: H }; };
-  var drawZoom = 0, curZoom = 0; // drawZoom: the full world scale of the last frame, cutscene zoom included; // the zoom actually used on the last frame (Town Defense widens and narrows the view)
+  var drawCam = { x: 0, y: 0 }, drawZoom = 0, curZoom = 0; // drawZoom: the full world scale of the last frame, cutscene zoom included; // the zoom actually used on the last frame (Town Defense widens and narrows the view)
   // Player zoom: pinch with two fingers (or the mouse wheel) at any time. The target is set by the gesture and the
   // view eases toward it every frame, so the zoom is smooth. 1 = the normal view; below 1 zooms out.
   var ZOOM_MIN = 0.28, ZOOM_MAX = 2.2, userTarget = 1, userCur = 1, userAt = 0;
@@ -937,6 +937,7 @@
   canvas.addEventListener('pointercancel', release);
   canvas.addEventListener('lostpointercapture', release);
   canvas.addEventListener('wheel', function (e) {
+    if (uiOpen() && CC.UISettingsWheel && CC.UISettingsWheel(e.deltaY)) { e.preventDefault(); return; } // the open Settings page scrolls
     if (!playing() || paused || uiOpen()) return;
     e.preventDefault();
     setUserZoom(userTarget * Math.exp(-e.deltaY * (e.ctrlKey ? 0.012 : 0.0016)));
@@ -1419,6 +1420,7 @@
     // The critical scene itself redraws ONLY the hero and struck targets.
     if(s.mode==='dungeon')call('CriticalScene','drawWorld',ctx,cam);
     ctx.restore();
+    drawCam.x = cam.x; drawCam.y = cam.y; // where the world was really drawn this frame (zoom re-centring, cutscene framing and shake included)
     cam.x = rx; cam.y = ry; cam.w = rw; cam.h = rh;
   }
 
@@ -1766,7 +1768,7 @@
     drawWorld();
     if (m === 'town' || m === 'dungeon' || m === 'dead') drawScreenFx();
     if (m === 'dungeon') call('Vfx', 'drawScreen', ctx, W, H); // the sky flashes yellow for chain lightning
-    if (m === 'dungeon') call('PerfectWarp', 'drawScreen', ctx, W, H, cam.x, cam.y, drawZoom || curZoom || zoom); // a perfect shot warps the world and dims the rest
+    if (m === 'dungeon') call('PerfectWarp', 'drawScreen', ctx, W, H, drawCam.x, drawCam.y, drawZoom || curZoom || zoom); // a perfect shot warps the world and dims the rest
     if (m === 'dungeon') call('CriticalScene', 'drawScreen', ctx, W, H);
     if (m === 'dungeon') call('Wounds', 'drawScreen', ctx, W, H);
     if (m === 'dungeon' && CC.state.area === 'cinderwake') call('Cinderwake', 'drawOverlay', ctx, W, H); // the area title and the ghosts' words

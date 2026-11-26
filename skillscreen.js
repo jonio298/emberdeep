@@ -46,37 +46,74 @@
   }
 
   /* ---------- stone: a cached grain tile, bevelled slabs, chiselled lettering ---------- */
-  var grain = null;
+  var grain = null, veins = null;
+  function lcg(seed) { return function () { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }; }
+  function canvasOf(n) { var cv = root.document && root.document.createElement('canvas'); if (!cv) return null; cv.width = cv.height = n; return cv; }
+  // gritty speckle: neutral grey with hard light and dark flecks, blended with 'overlay' so it adds texture without washing the stone out
   function grainTile() {
     if (grain !== null) return grain;
     grain = false;
     try {
-      var cv = root.document && root.document.createElement('canvas'); if (!cv) return grain;
-      cv.width = cv.height = 96; var g = cv.getContext('2d'); if (!g) return grain;
-      var seed = 12345; function rnd() { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }
+      var cv = canvasOf(96), g = cv && cv.getContext('2d'); if (!g) return grain;
+      var rnd = lcg(12345), i;
       g.fillStyle = 'rgb(128,128,128)'; g.fillRect(0, 0, 96, 96);
-      for (var i = 0; i < 520; i++) { var v = rnd() < 0.5 ? 0 : 255; g.fillStyle = 'rgba(' + v + ',' + v + ',' + v + ',' + (0.05 + rnd() * 0.12) + ')'; g.fillRect(rnd() * 96, rnd() * 96, 1 + rnd() * 2.4, 1 + rnd() * 1.6); }
-      g.strokeStyle = 'rgba(0,0,0,0.16)'; g.lineWidth = 1; // hairline cracks
-      for (var k = 0; k < 5; k++) { var px = rnd() * 96, py = rnd() * 96; g.beginPath(); g.moveTo(px, py); for (var s2 = 0; s2 < 4; s2++) { px += (rnd() - 0.5) * 26; py += (rnd() - 0.2) * 20; g.lineTo(px, py); } g.stroke(); }
+      for (i = 0; i < 1100; i++) { var v = rnd() < 0.55 ? 0 : 255; g.fillStyle = 'rgba(' + v + ',' + v + ',' + v + ',' + (0.1 + rnd() * 0.3) + ')'; g.fillRect(rnd() * 96, rnd() * 96, 0.8 + rnd() * 2, 0.8 + rnd() * 1.6); }
+      g.strokeStyle = 'rgba(0,0,0,0.3)'; g.lineWidth = 1;
+      for (i = 0; i < 6; i++) { var px = rnd() * 96, py = rnd() * 96; g.beginPath(); g.moveTo(px, py); for (var s2 = 0; s2 < 4; s2++) { px += (rnd() - 0.5) * 26; py += (rnd() - 0.2) * 20; g.lineTo(px, py); } g.stroke(); }
       grain = cv;
     } catch (e) { grain = false; }
     return grain;
+  }
+  // marble: pale veins that wander and branch (drawn three times shifted so the tile repeats without a seam) over dark cloudy patches
+  function veinTile() {
+    if (veins !== null) return veins;
+    veins = false;
+    try {
+      var N = 192, cv = canvasOf(N), g = cv && cv.getContext('2d'); if (!g) return veins;
+      var rnd = lcg(777), i, ox, oy, k;
+      for (i = 0; i < 9; i++) { // dark cloudy patches
+        var cx = rnd() * N, cy = rnd() * N, r = 28 + rnd() * 46;
+        for (ox = -N; ox <= N; ox += N) for (oy = -N; oy <= N; oy += N) {
+          var gr = g.createRadialGradient(cx + ox, cy + oy, 1, cx + ox, cy + oy, r); gr.addColorStop(0, 'rgba(0,0,0,0.22)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(cx + ox - r, cy + oy - r, r * 2, r * 2);
+        }
+      }
+      function vein(x, y, ang, len, w, a, depth) {
+        var pts = [[x, y]], steps = 9, j;
+        for (j = 0; j < steps; j++) { ang += (rnd() - 0.5) * 0.9; x += Math.cos(ang) * len / steps; y += Math.sin(ang) * len / steps; pts.push([x, y]); }
+        for (ox = -N; ox <= N; ox += N) for (oy = -N; oy <= N; oy += N) {
+          g.lineCap = 'round'; g.lineJoin = 'round';
+          g.strokeStyle = 'rgba(0,0,0,' + a * 0.9 + ')'; g.lineWidth = w + 1.2; g.beginPath(); // a dark shadow edge under the pale vein
+          for (k = 0; k < pts.length; k++) { if (k) g.lineTo(pts[k][0] + ox + 0.8, pts[k][1] + oy + 0.8); else g.moveTo(pts[k][0] + ox + 0.8, pts[k][1] + oy + 0.8); } g.stroke();
+          g.strokeStyle = 'rgba(214,208,196,' + a + ')'; g.lineWidth = w; g.beginPath();
+          for (k = 0; k < pts.length; k++) { if (k) g.lineTo(pts[k][0] + ox, pts[k][1] + oy); else g.moveTo(pts[k][0] + ox, pts[k][1] + oy); } g.stroke();
+        }
+        if (depth < 2) for (j = 2; j < pts.length - 1; j += 3) if (rnd() < 0.8) vein(pts[j][0], pts[j][1], ang + (rnd() < 0.5 ? 1 : -1) * (0.5 + rnd() * 0.8), len * 0.45, w * 0.6, a * 0.8, depth + 1);
+      }
+      for (i = 0; i < 5; i++) vein(rnd() * N, rnd() * N, rnd() * TAU, 150 + rnd() * 90, 0.9 + rnd() * 1.1, 0.16 + rnd() * 0.16, 0);
+      veins = cv;
+    } catch (e) { veins = false; }
+    return veins;
   }
   // kind: 'raised' (a proud slab), 'inset' (cut into the stone), 'flat'
   function slab(c, x, y, w, h, r, kind, tint) {
     var raised = kind === 'raised', inset = kind === 'inset', g;
     rrPath(c, x, y, w, h, r);
     g = c.createLinearGradient(0, y, 0, y + h);
-    if (inset) { g.addColorStop(0, '#171512'); g.addColorStop(1, '#25221d'); }
-    else if (raised) { g.addColorStop(0, '#514b40'); g.addColorStop(0.55, '#3a362e'); g.addColorStop(1, '#2a2722'); }
-    else { g.addColorStop(0, '#3b372f'); g.addColorStop(1, '#27241f'); }
+    if (inset) { g.addColorStop(0, '#0b0a09'); g.addColorStop(1, '#171512'); }
+    else if (raised) { g.addColorStop(0, '#3c3934'); g.addColorStop(0.55, '#262421'); g.addColorStop(1, '#171614'); }
+    else { g.addColorStop(0, '#272521'); g.addColorStop(1, '#161513'); }
     c.fillStyle = g; c.fill();
-    if (tint) { c.fillStyle = tint; c.fill(); }
-    var tile = grainTile();
-    if (tile) { c.save(); rrPath(c, x, y, w, h, r); c.clip(); c.globalAlpha = inset ? 0.5 : 0.4; try { c.fillStyle = c.createPattern(tile, 'repeat'); c.fillRect(x, y, w, h); } catch (e) { /* no pattern: plain slab */ } c.restore(); }
+    var tile = grainTile(), vt = veinTile();
+    if (tile || vt) {
+      c.save(); rrPath(c, x, y, w, h, r); c.clip();
+      if (tile) { try { c.globalCompositeOperation = 'overlay'; c.globalAlpha = inset ? 0.9 : 0.75; c.fillStyle = c.createPattern(tile, 'repeat'); c.fillRect(x, y, w, h); c.globalCompositeOperation = 'source-over'; } catch (e) { /* plain slab */ } }
+      if (vt) { try { c.globalAlpha = inset ? 0.55 : 0.85; c.save(); c.translate(x * 0.37, y * 0.37); c.fillStyle = c.createPattern(vt, 'repeat'); c.fillRect(x - x * 0.37, y - y * 0.37, w, h); c.restore(); } catch (e) { /* no veins */ } }
+      c.restore();
+    }
+    if (tint) { rrPath(c, x, y, w, h, r); c.fillStyle = tint; c.fill(); }
     // bevel: light on the top-left edge, shadow on the bottom-right (reversed for an inset)
     var b = c.createLinearGradient(x, y, x + w, y + h);
-    b.addColorStop(0, inset ? 'rgba(0,0,0,0.75)' : 'rgba(255,240,205,0.34)'); b.addColorStop(0.5, 'rgba(0,0,0,0.15)'); b.addColorStop(1, inset ? 'rgba(255,240,205,0.2)' : 'rgba(0,0,0,0.78)');
+    b.addColorStop(0, inset ? 'rgba(0,0,0,0.8)' : 'rgba(235,228,214,0.26)'); b.addColorStop(0.5, 'rgba(0,0,0,0.15)'); b.addColorStop(1, inset ? 'rgba(235,228,214,0.14)' : 'rgba(0,0,0,0.85)');
     rrPath(c, x + 0.75, y + 0.75, w - 1.5, h - 1.5, r); c.lineWidth = 1.6; c.strokeStyle = b; c.stroke();
   }
   function setSpacing(c, px) { if ('letterSpacing' in c) c.letterSpacing = px ? px + 'px' : '0px'; }
