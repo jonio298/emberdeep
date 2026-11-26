@@ -237,7 +237,7 @@
   CC.startRun = function (floor, area) {
     call('CriticalScene', 'reset');
     var s = CC.state;
-    s.area = area === 'testroom' ? 'testroom' : area === 'village' && has('AbandonedVillage', 'generate') ? 'village' : area === 'village-cellar' && has('AbandonedVillage', 'generateCellar') ? 'village-cellar' : area === 'cinderwake' && has('Cinderwake', 'generate') ? 'cinderwake' : area === 'rocky-pass' && has('RockPass', 'generate') ? 'rocky-pass' : area === 'tree-ascent' && has('TreeAscent', 'generate') ? 'tree-ascent' : area === 'tree-tunnel' && has('TreeTunnel', 'generate') ? 'tree-tunnel' : area === 'defense' && has('Defense', 'generate') ? 'defense' : area === 'plains' && has('Plains', 'generate') ? 'plains' : area === 'forest' && has('Forest', 'generate') ? 'forest' : 'cave'; // 'forest' = the Giant Forest, then the Rolling Plains, in front of floor 1
+    s.area = area === 'testroom' ? 'testroom' : area === 'village' && has('AbandonedVillage', 'generate') ? 'village' : area === 'village-cellar' && has('AbandonedVillage', 'generateCellar') ? 'village-cellar' : area === 'emberdeep' && has('Emberdeep', 'generate') ? 'emberdeep' : area === 'cinderwake' && has('Cinderwake', 'generate') ? 'cinderwake' : area === 'rocky-pass' && has('RockPass', 'generate') ? 'rocky-pass' : area === 'tree-ascent' && has('TreeAscent', 'generate') ? 'tree-ascent' : area === 'tree-tunnel' && has('TreeTunnel', 'generate') ? 'tree-tunnel' : area === 'defense' && has('Defense', 'generate') ? 'defense' : area === 'plains' && has('Plains', 'generate') ? 'plains' : area === 'forest' && has('Forest', 'generate') ? 'forest' : 'cave'; // 'forest' = the Giant Forest, then the Rolling Plains, in front of floor 1
     s.floor = Math.max(1, floor | 0 || 1);
     if(!s.startGold)s.startGold=s.gold;
     s.mode = 'dungeon';
@@ -314,9 +314,27 @@
     var g = CC.AbandonedVillage && CC.AbandonedVillage.cellar && CC.AbandonedVillage.cellar.glass, p = s.player; if (g && p) { p.x = g.x + 36; p.y = g.y - 8; snapCamera(); }
     call('Audio', 'event', 'doorclose'); call('SaveGame', 'save'); return true;
   };
+  CC.enterEmberdeep = function () { // the Hearthkeeper's furnace door, open at last
+    var s = CC.state; if (s.area !== 'cinderwake' || !has('Emberdeep', 'generate')) return false;
+    rememberWorld(); s.area = 'emberdeep'; s.floor = 1; call('CriticalScene', 'reset'); resetInputHeld(); loadFloor();
+    call('Audio', 'event', 'door'); call('SaveGame', 'save'); return true;
+  };
+  CC.leaveEmberdeep = function () {
+    var s = CC.state; if (s.area !== 'emberdeep') return false;
+    var from = s.floor; rememberWorld(); call('CriticalScene', 'reset'); resetInputHeld();
+    if (from >= 2) { s.floor = 1; loadFloor(); var st = s.map && s.map.stairs, p = s.player; if (st && p) { p.x = st.x - 40; p.y = st.y; snapCamera(); } }
+    else { s.area = 'cinderwake'; s.floor = 3; loadFloor(); var sl = s.map && s.map.sealed, p2 = s.player; if (sl && p2) { p2.x = sl.x; p2.y = sl.y + 44; snapCamera(); } }
+    call('Audio', 'event', 'doorclose'); call('SaveGame', 'save'); return true;
+  };
   CC.nextFloor = function () {
     if (CC.Endless?.active()) return CC.Endless.stairs();
     call('CriticalScene', 'reset');
+    if (CC.state.area === 'emberdeep') { // the Boiling Descent leads down to the Core
+      if ((CC.state.floor | 0) >= 2) return;
+      rememberWorld(); CC.state.floor = 2; resetInputHeld(); loadFloor();
+      CC.fx.text(cam.x + cam.w / 2, cam.y + cam.h / 2, 'THE CORE', '#ff9a4a', 16);
+      call('SaveGame', 'save'); return;
+    }
     if (CC.state.area === 'cinderwake') { // the Cinderwake's three floors: Ashfall Stair, Slag Warrens, the Hearth
       if ((CC.state.floor | 0) >= 3) return;
       rememberWorld(); CC.state.floor = (CC.state.floor | 0) + 1; resetInputHeld(); loadFloor();
@@ -379,7 +397,7 @@
   function loadFloor() {
     var s=CC.state,p=s.player,map,E=CC.Enemies,L=CC.Loot,
         cached=worldCache[key(s.area,s.floor,s.treeFloor)];
-    particles.length=0;texts.length=0;decals.length=0;call('Vfx','clear');call('Wounds','clear');call('LevelBurst','clear');call('HeroBlood','clear');call('DrainChain','clear');
+    particles.length=0;texts.length=0;decals.length=0;call('Ambience','clear');call('Vfx','clear');call('Wounds','clear');call('LevelBurst','clear');call('HeroBlood','clear');call('DrainChain','clear');
     if(cached&&cached.map){
       map=cached.map;CC.Dungeon=map;s.map=map;
       if(s.area==='forest'&&CC.Forest)CC.Forest.map=map;
@@ -401,6 +419,7 @@
     else if (s.area === 'rocky-pass') { map = call('RockPass', 'generate', s.resumeSeed); CC.Dungeon = map; }
     else if (s.area === 'village') { map = call('AbandonedVillage', 'generate', s.resumeSeed); CC.Dungeon = map; }
     else if (s.area === 'village-cellar') { map = call('AbandonedVillage', 'generateCellar', s.resumeSeed); CC.Dungeon = map; }
+    else if (s.area === 'emberdeep') { map = call('Emberdeep', 'generate', Math.max(1, Math.min(2, s.floor | 0 || 1)), Number.isFinite(s.resumeSeed) ? s.resumeSeed : undefined); CC.Dungeon = map; }
     else if (s.area === 'cinderwake') { map = call('Cinderwake', 'generate', Math.max(1, Math.min(3, s.floor | 0 || 1)), Number.isFinite(s.resumeSeed) ? s.resumeSeed : undefined); CC.Dungeon = map; }
     else if (s.area === 'testroom') { map = call('TestMode','arena'); CC.Dungeon = map; }
     else if (s.area === 'tree-tunnel') { map = call('TreeTunnel', 'generate', s.resumeSeed); CC.Dungeon = map; }
@@ -428,7 +447,7 @@
     var s = CC.state;
     s.coop = false;
     try { if (navigator.sendBeacon) navigator.sendBeacon('/api/hit?e=start&c=' + encodeURIComponent(classId)); } catch (e) { /* the traffic counter is optional */ } // counts a new game by hero only
-    clearWorldCache();CC.state.testMode=false;call('SaveGame','newGame');call('EggQuest','reset');call('CinderwakeStory','reset');
+    clearWorldCache();CC.state.testMode=false;call('SaveGame','newGame');call('EggQuest','reset');call('CinderwakeStory','reset');call('DayNight','reset');
     s.gold=0;s.inventory=[];s.potions=2;s.manaPotions=1;s.bridgeDown=false;s.treeFloor=1;s.treeBest=1;
     call('Camp', 'clear'); // a fresh hero must not inherit a previous run's fence or checkpoint
     call('Portal','reset');lastWorld=null;
@@ -446,7 +465,7 @@
   function beginRun(classId,scene,character,coop){
     clearWorldCache();
     var s=CC.state;s.testMode=false;
-    call('Camp','clear');call('Portal','reset');call('EggQuest','reset');call('CinderwakeStory','reset');lastWorld=null;
+    call('Camp','clear');call('Portal','reset');call('EggQuest','reset');call('CinderwakeStory','reset');call('DayNight','reset');lastWorld=null;
     s.soloDefense=!coop&&!!(scene&&scene.area==='defense');
     s.coop=!!coop;s.inventory=[];s.potions=2;s.manaPotions=1;s.gold=0;s.kills=0;s.runGold=0;s.coopSlot=0;
     s.classId=classId;s.bestFloor=1;s.treeFloor=Math.max(1,scene&&scene.tf||1);
@@ -577,7 +596,7 @@
     if(!data||!data.player||!data.classId)return false;
     clearWorldCache();
     call('Camp','clear');call('Portal','reset');lastWorld=null;CC.state.testMode=false;call('CriticalScene','reset');call('UI','close');
-    call('Waypoints','reset');call('EggQuest','restore',data.quest);call('CinderwakeStory','restore',data.cinderwake);
+    call('Waypoints','reset');call('EggQuest','restore',data.quest);call('CinderwakeStory','restore',data.cinderwake);call('DayNight','restore',data.day);
     var s=CC.state,p=call('Classes','create',data.classId);
     if(!p)return false;
     Object.assign(p,data.player);
@@ -694,6 +713,7 @@
     if (s.area === 'rocky-pass' && call('RockPass', 'interact')) return;
     if ((s.area === 'village' || s.area === 'village-cellar') && call('AbandonedVillage', 'interact')) return;
     if (s.area === 'cinderwake' && (call('CinderwakeStory', 'interact') || call('Cinderwake', 'interact'))) return;
+    if (s.area === 'emberdeep' && call('Emberdeep', 'interact')) return;
     var st = s.map && s.map.stairs;
     if (st && Math.hypot(p.x - st.x, p.y - st.y) <= 26) { CC.nextFloor(); return; }
     var chests = s.map && s.map.chests || [];
@@ -715,6 +735,7 @@
     if(s.area==='tree-ascent'&&call('TreeAscent','nearAction'))return true;
     if((s.area==='village'||s.area==='village-cellar')&&call('AbandonedVillage','nearAction'))return true;
     if(s.area==='cinderwake'&&(call('CinderwakeStory','nearAction')||call('Cinderwake','nearAction')))return true;
+    if(s.area==='emberdeep'&&call('Emberdeep','nearAction'))return true;
     if(s.area==='rocky-pass'&&call('RockPass','nearAction'))return true; // the ACTION button for the way back and the way on to the village
     if(s.area==='plains'&&map&&map.passGate&&CC.RockPass&&CC.RockPass.isOpen()&&Math.hypot(p.x-map.passGate.x,p.y-map.passGate.y)<=100)return true; // climb the goat trail
     if(s.area==='plains'&&CC.HauntedPond&&CC.HauntedPond.nearAction&&CC.HauntedPond.nearAction())return true;
@@ -799,7 +820,7 @@
     return { x: (e.clientX - r.left) * (W / r.width), y: (e.clientY - r.top) * (H / r.height) };
   }
 
-  var JOY_R = 58;
+  var dlgTap = null, JOY_R = 58;
   function joyHome() { return { x: 84, y: H - 96 }; }
   canvas.addEventListener('pointerdown', function (e) {
     e.preventDefault(); call('CriticalScene', 'skip'); // a tap cuts a kill cutscene short
@@ -810,6 +831,7 @@
       return;
     }
     var u = hitUi(p.x, p.y);
+    dlgTap = !u && CC.DialogBox && CC.DialogBox.hasTap && CC.DialogBox.hasTap() ? { id: e.pointerId, x: p.x, y: p.y, t: Date.now() } : null; // a quick tap while NPC speech is up moves it on
     if (u) { ptrs[e.pointerId] = { kind: 'ui', drag: u.drag || null }; if (!u.drag) call('Audio', 'fx', 'click', { vol: 0.6, gap: 60 }); u.cb(p.x, p.y); return; }
     var mode = CC.state.mode;
     if (paused || uiOpen() || (CC.Waypoints && CC.Waypoints.isOpen && CC.Waypoints.isOpen()) ||
@@ -822,6 +844,7 @@
         // Track this pointer independently so dragging aims without moving.
         if(mode==='dungeon' && isChargeAct(action) &&
            CC.SpellCharge){
+          dlgTap = null;
           if(CC.SpellCharge.begin(action,b.x,b.y,W,H)){
             ptrs[e.pointerId]={kind:'charge',name:action};
             held[action]++;
@@ -829,6 +852,7 @@
           // Never fire another instant spell while one is being aimed.
           return;
         }
+        dlgTap = null;
         ptrs[e.pointerId] = { kind: 'btn', name: action, ax: b.x, ay: b.y };
         if (!held[action]) pressAction(action);
         held[action]++;
@@ -911,6 +935,10 @@
   }, { passive: false });
 
   function release(e) {
+    if (dlgTap && dlgTap.id === e.pointerId) { // a short, still tap: next prompt (or dismiss)
+      var dq = pos(e), dt0 = dlgTap; dlgTap = null;
+      if (e.type === 'pointerup' && Date.now() - dt0.t < 380 && Math.hypot(dq.x - dt0.x, dq.y - dt0.y) < 14 && CC.DialogBox && CC.DialogBox.tap()) call('Audio', 'fx', 'click', { vol: 0.5, gap: 60 });
+    }
     delete worldTouches[e.pointerId];
     if (pinch.on && (e.pointerId === pinch.a || e.pointerId === pinch.b)) {
       pinch.on = false; delete ptrs[e.pointerId];
@@ -1363,6 +1391,7 @@
       call('Loot', 'draw', ctx, cam);
       call('Enemies', 'draw', ctx, cam);
       call('Classes', 'draw', ctx, cam);
+      call('Ambience', 'draw', ctx, cam); // frogs and ripples by the pond
       call('Skills','draw',ctx,cam);
       call('Wounds','draw',ctx,cam);call('LevelBurst','draw',ctx,cam);call('HeroBlood','draw',ctx,cam);call('DrainChain','draw',ctx,cam);
       call('Multiplayer','drawWorld',ctx,cam);
@@ -1375,6 +1404,7 @@
       call('BossArrows', 'draw', ctx, cam); // purple arrows to activated bosses and special monsters that are off screen
       if (CC.Dungeon && typeof CC.Dungeon.drawFront === 'function') CC.Dungeon.drawFront(ctx, dcam); // trees and props in front of the hero redraw over the entities
       if (CC.Dungeon && CC.Dungeon.realm) CC.Dungeon.drawLighting(ctx, dcam); // open-air maps light the whole scene after the entities
+      call('Ambience', 'drawGlow', ctx, cam); // fireflies shine over the darkness
       if (!endless && s.area === 'plains') {
         call('HauntedPond', 'drawBossFocus', ctx, dcam); // visible demon and its mist attack warnings above fog
         call('HauntedPond', 'drawCombatFocus', ctx, dcam); // projectiles and slash arcs above opaque mist
@@ -1772,6 +1802,7 @@
     if (m === 'dungeon') call('CriticalScene', 'drawScreen', ctx, W, H);
     if (m === 'dungeon') call('Wounds', 'drawScreen', ctx, W, H);
     if (m === 'dungeon' && CC.state.area === 'cinderwake') call('Cinderwake', 'drawOverlay', ctx, W, H); // the area title and the ghosts' words
+    if (m === 'dungeon' && CC.state.area === 'emberdeep') call('Emberdeep', 'drawOverlay', ctx, W, H);
     if (!endless && (m === 'dungeon' || m === 'dead') && call('AbandonedVillage', 'drawCinema', ctx, W, H) && m === 'dungeon') return; // the tree's strike covers everything, HUD included
     // No floating HUD/buttons/other overlays during the brief critical close-up.
     if(m==='dungeon'&&call('CriticalScene','isActive'))return;
@@ -1859,6 +1890,7 @@
       if (CC.state.area === 'tree-tunnel') call('TreeTunnel', 'drawHud', ctx, W, H);
       if (CC.state.area === 'tree-ascent') call('TreeAscent','drawHud',ctx,W,H);
       call('MonsterMelee', 'drawStatus', ctx, W, H);
+      call('DayNight', 'drawHud', ctx, W, H); // the little day / night clock
       call('UI', 'drawHud', ctx, W, H, addHit);   // CHAR and QUEST open the same tabbed journal
       call('UI', 'draw', ctx, W, H, addHit);
       if (!endless) {
@@ -1872,6 +1904,7 @@
     if (m === 'town' || m === 'dungeon') call('Classes', 'drawPerkOverlay', ctx); // level-up perk choice: on top of everything
     if (endless && !paused && !uiOpen() && !CC.state.player.perkOpen) CC.Endless.drawOverlay(ctx, W, H, addButton);
     if (endless && CC.Endless.state.retiring) { ui = []; CC.Endless.drawRetire(ctx, W, H, addButton); }
+    if (CC.DialogBox && CC.DialogBox.flush) CC.DialogBox.flush(ctx, function (x, y, w, h, cb) { ui.push({ x: x, y: y, w: w, h: h, cb: cb }); }); // NPC speech is painted last: above the HUD and the player controls
     if (!endless && (m === 'town' || m === 'dungeon')) call('HoldGuide', 'overlay', ctx, W, H, btns, function (x, y, w, h, cb) { ui.push({ x: x, y: y, w: w, h: h, cb: cb }); }); // the tutorial overlays sit above everything
   }
 

@@ -266,7 +266,8 @@ Camp.interact = function() {
   if (room==='tent' && sp) {
     if (sp.id==='bed') {
       p.hp=p.maxHp;p.mana=p.maxMana;
-      note('Well rested - health and mana fully restored.');
+      if (CC.DayNight&&CC.DayNight.skipToMorning&&CC.DayNight.skipToMorning()) note('You sleep through the night. It is morning - health and mana fully restored.');
+      else note('Well rested - health and mana fully restored.');
     } else if (sp.id==='stove') {
       p.mana=p.maxMana;
       note('The little stove crackles. Warm and cozy - mana restored.');
@@ -900,7 +901,7 @@ function drawInterior(c,w,h){
   if(hh){
     var sp=spotNear();
     if(sp){
-      var lab=sp.prompt;
+      var lab=sp.id==='bed'&&CC.DayNight&&CC.DayNight.isNight&&CC.DayNight.isNight()?'F  SLEEP UNTIL MORNING':sp.prompt;
       if(sp.id==='chest'&&visit)lab='F  CHEST (OWNER ONLY)';
       worldPrompt(c,sp.px,sp.py,lab,true);
     }

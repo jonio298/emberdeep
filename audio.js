@@ -405,7 +405,7 @@
     if (mode === 'title') id = 'title'; else if (mode === 'town') id = 'town';
     else if (area === 'forest') id = 'forest'; else if (area === 'tree-tunnel') id = 'tunnel'; else if (area === 'tree-ascent') id = 'ascent';
     else if (area === 'plains') { var pd = s.map && s.map.pond; id = (curId === 'pond' ? pd && pd.h > 0.02 : pd && pd.h > 0.08) ? 'pond' : 'plains'; }
-    else if (area === 'rocky-pass') id = 'pass'; else if (area === 'village') id = 'village'; else if (area === 'village-cellar') id = 'cellar'; else if (area === 'cinderwake') id = 'cinderwake';
+    else if (area === 'rocky-pass') id = 'pass'; else if (area === 'village') id = 'village'; else if (area === 'village-cellar') id = 'cellar'; else if (area === 'cinderwake' || area === 'emberdeep') id = 'cinderwake';
     else if (area === 'defense') id = 'battle'; else if (area === 'testroom') id = null; else id = 'cave';
     if (E && E.bossBar && mode === 'dungeon') id = 'boss';
     if (mode === 'dead') id = null;

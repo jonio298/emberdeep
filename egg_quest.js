@@ -25,9 +25,9 @@ Q.restore=function(o){
  if(CC.Eagle&&CC.Eagle.setName)CC.Eagle.setName(hatched&&o.name?o.name:'');
  if(CC.HauntedPond)CC.HauntedPond.setDone(!!o.pond);
  if(CC.AbandonedVillage)CC.AbandonedVillage.setHook(!!o.vil);
- if(CC.RockPass){CC.RockPass.reset();CC.RockPass.setOpen(!!o.rock);} // the rockslide quest rides along in the quest save
+ if(CC.Emberdeep&&CC.Emberdeep.reset)CC.Emberdeep.reset();if(CC.RockPass){CC.RockPass.reset();CC.RockPass.setOpen(!!o.rock);if(CC.RockPass.restoreZ)CC.RockPass.restoreZ(o.pass);} // the rockslide quest rides along in the quest save
 };
-Q.serialize=function(){return {stage:stage,hatched:hatched,name:CC.Eagle&&CC.Eagle.name?CC.Eagle.name():'',rock:CC.RockPass&&CC.RockPass.isOpen()?1:0,pond:CC.HauntedPond&&CC.HauntedPond.isDone()?1:0,vil:CC.AbandonedVillage&&CC.AbandonedVillage.hook?1:0};};
+Q.serialize=function(){return {stage:stage,hatched:hatched,name:CC.Eagle&&CC.Eagle.name?CC.Eagle.name():'',rock:CC.RockPass&&CC.RockPass.isOpen()?1:0,pass:CC.RockPass&&CC.RockPass.serializeZ?CC.RockPass.serializeZ():null,pond:CC.HauntedPond&&CC.HauntedPond.isDone()?1:0,vil:CC.AbandonedVillage&&CC.AbandonedVillage.hook?1:0};};
 Q.status=function(){return {stage:stage,hatchLevel:HATCH_LEVEL,
  eggCount:stage==='gathered'?3:stage==='nest'?1:stage==='complete'&&!hatched?1:0,
  hatched:hatched,hatching:hatching,complete:stage==='complete',name:CC.Eagle&&CC.Eagle.name?CC.Eagle.name():''};};

@@ -15,7 +15,7 @@
   var CC = root.CC = root.CC || {}, T = CC.TILE || 32, S = CC.CinderwakeStory = {}, E = CC.Enemies;
   var RANGE = 50, st = fresh(), lastX = null, lastY = null, knockT = 8, announced = false;
 
-  function fresh() { return { open: false, done: false, lore: {}, secrets: {}, looted: {}, rewardTaken: false }; }
+  function fresh() { return { open: false, done: false, core: false, lore: {}, secrets: {}, looted: {}, rewardTaken: false }; }
   function hero() { return CC.state && CC.state.player; }
   function cwMap() { var s = CC.state; return s && s.area === 'cinderwake' && s.map && s.map.cinderwake ? s.map : null; }
   function text(x, y, s, c, n) { if (CC.fx && CC.fx.text) CC.fx.text(x, y, s, c || '#ffb04a', n || 12); }
@@ -28,11 +28,14 @@
   S.restore = function (d) {
     st = fresh();
     if (d && typeof d === 'object') {
-      st.open = !!d.open; st.done = !!d.done; st.rewardTaken = !!d.rewardTaken;
+      st.open = !!d.open; st.done = !!d.done; st.core = !!d.core; st.rewardTaken = !!d.rewardTaken;
       ['lore', 'secrets', 'looted'].forEach(function (k) { if (d[k] && typeof d[k] === 'object') for (var id in d[k]) if (d[k][id]) st[k][id] = 1; });
     }
     announced = st.open;
+    if (CC.Emberdeep && CC.Emberdeep.setCursed) CC.Emberdeep.setCursed(st.core);
   };
+  S.markCore = function () { st.core = true; if (CC.Emberdeep && CC.Emberdeep.setCursed) CC.Emberdeep.setCursed(true); save(); };
+  S.isCored = function () { return st.core; };
   S.isOpen = function () { return st.open; };
   S.isDone = function () { return st.done; };
   S.state = function () { return st; };
@@ -149,7 +152,9 @@
     if (t.kind === 'bell') { say('The Bell', 'It is warm to the touch.'); return true; }
     if (t.kind === 'lore') { t.o.taken = true; S.found(t.o.id); return true; }
     if (t.kind === 'freed') { say(m.freed.name, m.freed.line); return true; }
-    if (t.kind === 'sealed') { text(p.x, p.y - 28, 'A COLD DRAUGHT RISES. IT WILL NOT OPEN YET.', '#bcd6f0', 11); say('The Sealed Stair', 'From behind the furnace door comes a slow knocking, answered from far below.'); return true; }
+    if (t.kind === 'sealed') { // the furnace door has swung open: the way down to the Emberdeep
+      text(p.x, p.y - 28, 'HEAT ROLLS UP FROM BELOW', '#ffb04a', 11); say('The Furnace Door', st.core ? 'The furnace door stands open on a cold, dark stair. The Emberdeep is quiet now.' : 'The door groans open. A stair of fused glass drops into the red dark, and the heat of the earth\'s core breathes up it. The knocking has stopped. Something below is waiting.', 5000);
+      if (CC.Emberdeep && CC.Emberdeep.enter) CC.Emberdeep.enter(); return true; }
     var sc = t.o;
     if (sc.id === 'ash') {
       if (!antechamberClear()) { text(p.x, p.y - 28, 'SOMETHING STILL WATCHES. CLEAR THE ROOM FIRST.', '#ffb04a', 11); return true; }
@@ -191,12 +196,13 @@
     (m.secrets || []).forEach(function (sc) { var c = m.chests.filter(function (o) { return o.secretId === sc.id; })[0]; if (c && c.opened && !st.looted[sc.id]) { st.looted[sc.id] = 1; if (sc.id === 'ash') S.found('bowl'); } });
     if (st.done && m.floor === 3) { // the furnace door stays shut: a slow knocking behind it, answered from far below
       knockT -= dt;
-      if (knockT <= 0 && p) { knockT = 14 + Math.random() * 6; if (CC.fx && CC.fx.shake) CC.fx.shake(2); text(p.x, p.y - 40, '...knock...', '#bcd6f0', 10); if (CC.Audio && CC.Audio.fx) CC.Audio.fx('thud', { vol: 0.35, gap: 500 }); }
+      if (knockT <= 0 && p && !st.core) { knockT = 14 + Math.random() * 6; if (CC.fx && CC.fx.shake) CC.fx.shake(2); text(p.x, p.y - 40, '...knock...', '#bcd6f0', 10); if (CC.Audio && CC.Audio.fx) CC.Audio.fx('thud', { vol: 0.35, gap: 500 }); }
     }
   };
 
   /* ---------- Widow Verrin, once the way is open ---------- */
   S.verrin = function () {
+    if (st.core) return ['The ash has stopped falling over the whole valley. You went down into the Emberdeep itself and put out the curse. Rest, traveller. You have earned it.'];
     if (st.done) return ['So you have been below. Halric Vane kept the ledger and the keys. If you put him down, tell him the debt is a lie.',
       'The Emberdeep was never the bottom. Halric\'s furnace was only the first door. Whatever it was warming, it is awake.'];
     if (st.open) return ['The glass stair is open, then. Be careful with warm places, traveller. Warmth is how it asks.'];

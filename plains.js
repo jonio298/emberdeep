@@ -52,15 +52,16 @@
       return;
     }
     if (kind !== 0) return;
-    var isTall = tall && tall[ty * shW + tx], n = isTall ? 5 : hv > 0.45 ? 2 : 0;
-    if (n) { // grass blades lean downwind (east) and ripple with the gusts
-      ctx.lineWidth = 1.1; ctx.beginPath();
+    var isTall = tall && tall[ty * shW + tx], n = isTall ? 6 : hv > 0.3 ? 3 : 0;
+    if (n) { // grass blades lean downwind (east); gusts roll across the field in waves, bending the blades and brightening their crests
+      var gust = Math.pow(Math.max(0, Math.sin(t * 0.55 - tx * 0.13 + ty * 0.05)), 2) * 0.7 + Math.pow(Math.max(0, Math.sin(t * 0.9 - tx * 0.07 - ty * 0.09 + 2)), 3) * 0.4, wave = Math.min(1, gust);
+      ctx.lineWidth = 1.2; ctx.beginPath();
       for (i = 0; i < n; i++) {
         x = sx + ((hv * (i + 3) * 977) % 1) * 28 + 2; y = sy + ((hv * (i + 5) * 313) % 1) * 22 + 9;
-        sw = Math.sin(t * 1.7 + tx * 0.32 + ty * 0.11 + i) * 2.2 + (isTall ? 3 : 1.5);
-        ctx.moveTo(x, y); ctx.quadraticCurveTo(x + sw * 0.4, y - (isTall ? 8 : 4), x + sw, y - (isTall ? 15 : 7));
+        sw = Math.sin(t * 1.9 + tx * 0.32 + ty * 0.11 + i) * (2.2 + wave * 2.4) + (isTall ? 3 : 1.5) + wave * (isTall ? 6.5 : 3.5);
+        ctx.moveTo(x, y); ctx.quadraticCurveTo(x + sw * 0.4, y - (isTall ? 8 : 4) * (1 - wave * 0.18), x + sw, y - (isTall ? 15 : 7) * (1 - wave * 0.18));
       }
-      ctx.strokeStyle = isTall ? 'rgba(104,150,62,0.85)' : 'rgba(86,128,56,0.6)'; ctx.stroke();
+      ctx.strokeStyle = isTall ? 'rgba(' + Math.round(104 + 60 * wave) + ',' + Math.round(150 + 46 * wave) + ',' + Math.round(62 + 24 * wave) + ',0.88)' : 'rgba(' + Math.round(86 + 44 * wave) + ',' + Math.round(128 + 40 * wave) + ',56,0.65)'; ctx.stroke();
       if (isTall) { ctx.fillStyle = 'rgba(214,200,120,0.7)'; ctx.fillRect(sx + ((hv * 91) % 1) * 24 + 4 + Math.sin(t * 1.7 + tx * 0.32 + ty * 0.11) * 2.5, sy + 1 + ((hv * 53) % 1) * 8, 1.6, 2); }
     }
     if (hv > 0.94) { ctx.fillStyle = hv > 0.97 ? '#e8e4d0' : hv > 0.955 ? '#e8c84a' : '#a87ad8'; ctx.fillRect(sx + 10 + (hv * 71 % 1) * 8, sy + 10, 2.2, 2.2); } // wildflowers
@@ -488,7 +489,7 @@
     for (i = 0; i < m.npcs.length; i++) { var n = m.npcs[i], d = Math.hypot(p.x - n.x, p.y - n.y); if (!n.hidden && d < bd) { bd = d; best = n; } }
     if (!best) return false;
     var text = best.talk ? best.talk(best) : best.lines[best.line % best.lines.length]; best.line++;
-    P.speech = { name: best.name, text: text, t0: Date.now() };
+    P.speech = { name: best.name, text: text, t0: Date.now(), more: !best.talk && !!best.lines && best.lines.length > 1 && best.line % best.lines.length !== 0 };
     if (!best.healed) {
       best.healed = true; p.hp = p.maxHp; p.mana = p.maxMana;
       if (CC.fx && CC.fx.text) CC.fx.text(p.x, p.y - 16, 'Warmed by the fire', '#ffb060', 11);
@@ -522,7 +523,8 @@
       var age = (now - sp.t0) / 1000, p = CC.state && CC.state.player;
       if (!sp.modal && (age > 6 || (p && P.map && P.map.npcs.every(function (n) { return Math.hypot(p.x - n.x, p.y - n.y) > 110; })))) { P.speech = null; return; }
       if (CC.DialogBox) CC.DialogBox.draw(ctx, Wd, Hd, function () {}, { name: sp.name,
-        text: sp.text + (sp.modal ? '  TAP / ACTION TO CONTINUE' : ''), low: true });
+        text: sp.text + (sp.modal ? '  TAP / ACTION TO CONTINUE' : ''), low: true,
+        onTap: function () { var cur = P.speech; if (!cur) return; if (cur.modal) { CC.HauntedPond && CC.HauntedPond.interact && CC.HauntedPond.interact(); return; } P.speech = null; if (cur.more) P.interact(); } });
     }
   };
 

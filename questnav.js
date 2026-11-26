@@ -104,6 +104,7 @@
     list.push({ id: 'unhatched', name: 'The Unhatched', color: COLORS.unhatched, done: !!(EQ && EQ.stage && EQ.stage() === 'complete') });
     if ((EQ && EQ.tunnelUnlocked && EQ.tunnelUnlocked()) || (RP && RP.isOpen && RP.isOpen())) list.push({ id: 'rockslide', name: 'The Rockslide', color: COLORS.rockslide, done: !!(RP && RP.isOpen && RP.isOpen()) });
     if (V && V.hook) list.push({ id: 'chapel', name: 'Beneath the Chapel', color: COLORS.chapel, done: false });
+    var CS0 = CC.CinderwakeStory; if (CS0 && CS0.isDone && CS0.isDone()) list.push({ id: 'emberdeep', name: 'The Source of the Curse', color: '#ff5a2a', done: !!(CS0.isCored && CS0.isCored()) });
     var CS = CC.CinderwakeStory; if (CS && (CS.isOpen() || (V && V.hook && CC.state && CC.state.area === 'village-cellar'))) list.push({ id: 'cinderwake', name: 'The Unpaid Debt', color: COLORS.cinderwake, done: CS.isDone() });
     return list;
   };
@@ -116,6 +117,10 @@
     }
     if (ids.rockslide && !ids.rockslide.done && a === 'plains' && m.slide) out.push({ quest: 'rockslide', x: m.slide.x, y: m.slide.y, label: 'The Rockslide' });
     if (ids.chapel && a === 'village') { var V = CC.AbandonedVillage; if (V && V.trap) out.push({ quest: 'chapel', x: V.trap.x, y: V.trap.y, label: 'Beneath the Chapel' }); }
+    if (ids.emberdeep && !ids.emberdeep.done) {
+      if (a === 'cinderwake' && m.sealed) out.push({ quest: 'emberdeep', x: m.sealed.x, y: m.sealed.y, label: 'The Source of the Curse: the furnace door' });
+      if (a === 'emberdeep') { var et = m.stairs && m.stairs.x > -900 ? m.stairs : m.bossPoint || null; if (et) out.push({ quest: 'emberdeep', x: et.x, y: et.y, label: m.floor === 2 ? 'The Emberheart' : 'The way down' }); }
+    }
     if (ids.cinderwake && !ids.cinderwake.done) {
       var CS = CC.CinderwakeStory;
       if (a === 'village-cellar' && m.glass) out.push({ quest: 'cinderwake', x: m.glass.x, y: m.glass.y, label: CS && CS.isOpen() ? 'The Unpaid Debt: the glass stair' : 'The Unpaid Debt: loot the vault' });
@@ -172,6 +177,7 @@
   /* ---------- the quest log ---------- */
   var QL = QN.QuestLog = { sel: 'unhatched' };
   var TEXT = {
+    emberdeep: { title: 'THE SOURCE OF THE CURSE', lines: ['The Hearthkeeper has fallen and the furnace door stands open.', 'Below it lies the Emberdeep: the earth\'s angry, boiling core,', 'and the Emberheart, the molten heart that is the source of the curse.', '', 'Go down, and put it out.'], open: 'The Emberheart is broken. The curse is lifted from the valley.', closed: 'Descend through the Cinderwake\'s furnace door to the Emberdeep.' },
     cinderwake: { title: 'THE UNPAID DEBT', lines: ['The cellar vault hides a stair of fused glass.', 'Below the chapel a furnace still burns, and its keeper', 'still counts the years the village owes.', '', 'Put the Hearthkeeper down and close the book.'], open: 'The Hearthkeeper is down. The furnace door stays shut.', closed: 'Loot the cellar vault to find the way down, then descend the glass stair.' },
     rockslide: { title: 'THE ROCKSLIDE', lines: ['A rockslide blocks the west path of the Rolling Plains.', 'Three travellers argue about how to move it.', '', 'Your eagle can scout above the rocks and find', 'a way round: a hidden goat trail through the pass.'], open: 'The trail is open. The Rocky Pass lies beyond.', closed: 'Find a way past the rockslide. Your eagle may help.' },
     chapel: { title: 'BENEATH THE CHAPEL', lines: ['The ghosts of the ruined village speak of', '"the one beneath the chapel".', '', 'A trapdoor in the village leads down to the cellar,', 'where monsters guard rooms of loot.'], open: '', closed: 'Find the trapdoor and go down into the cellar.' }

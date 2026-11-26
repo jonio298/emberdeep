@@ -362,7 +362,10 @@
     showTitle(map);
     const text = target.lines[target.nextLine];
     target.nextLine = (target.nextLine + 1) % target.lines.length;
-    speech = { name: target.name, text, until: Date.now() + 6500 };
+    target.read = (target.read || 0) + 1;
+    const more = target.read < target.lines.length;
+    if (!more) target.read = 0;
+    speech = { name: target.name, text, until: Date.now() + 6500, more };
     return true;
   }
 
@@ -386,7 +389,7 @@
       c.restore();
     }
     if (speech && now < speech.until && CC.DialogBox) {
-      CC.DialogBox.draw(c, width, height, function () {}, { name: speech.name, text: speech.text, low: true });
+      CC.DialogBox.draw(c, width, height, function () {}, { name: speech.name, text: speech.text, low: true, onTap() { const s = speech; speech = null; if (s && s.more) interact(); } });
     }
   }
 

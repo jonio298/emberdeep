@@ -40,6 +40,7 @@ function assertReachable(seen, point, label) {
 test('Rocky Pass keeps the village road open and marks a separate, walkable cave mouth', () => {
   for (const seed of seeds) {
     const pass = RockPass.generate(seed);
+    RockPass.debugSolve(pass); // the thornwall plugs the last passage until the puzzle is solved
     const seen = reachableTiles(pass);
     assertReachable(seen, pass.passExit, 'village gate for seed ' + seed);
     assertReachable(seen, pass.caveEntrance, 'cave entrance for seed ' + seed);

@@ -130,13 +130,14 @@
     return s;
   }
 
+  var CLASS_BUFF = { thief: { hp: 1.3, dmg: 1.25 } }; // a permanent head start: the thief has +30% health and +25% damage from the very start
   function recalc(p) {
-    var d = DEFS[p.classId], m = p.mods, it = itemSum(p), L = p.level - 1;
+    var d = DEFS[p.classId], m = p.mods, it = itemSum(p), L = p.level - 1, cb = CLASS_BUFF[p.classId] || { hp: 1, dmg: 1 };
     var oldHp = p.maxHp || 0, oldMana = p.maxMana || 0;
-    p.maxHp = Math.round((d.hp + d.hpL * L + it.hp) * (1 + m.hpPct));
+    p.maxHp = Math.round((d.hp + d.hpL * L + it.hp) * (1 + m.hpPct) * cb.hp);
     p.maxMana = Math.round((d.mana + d.manaL * L + it.mana) * (1 + m.manaPct));
     p.stats = {
-      dmg: (d.dmg + d.dmgL * L + it.dmg) * (1 + m.dmgPct),
+      dmg: (d.dmg + d.dmgL * L + it.dmg) * (1 + m.dmgPct) * cb.dmg,
       armor: d.armor + m.armor + it.armor,
       crit: Math.min(0.75, d.crit + m.critPct + it.crit),
       critDmg: 1.75 + m.critDmg + it.critDmg,

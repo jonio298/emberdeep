@@ -47,6 +47,16 @@
   function line(sc, k, txt, col) { if (!sc.said[k]) { sc.said[k] = 1; speech = { txt: txt, col: col || '#f0e6d0', t0: scene ? scene.t : 0, who: sc.who || '' }; } }
   RP.update = function (dt) {
     if (title > 0) title = Math.max(0, title - dt);
+    var s0 = st(), m0 = s0 && s0.area === 'rocky-pass' && s0.map && s0.map.puzzle ? s0.map : null;
+    if (m0) { // the puzzle lives: the elder wakes, the seedling drinks the light, the thorns wither
+      var pz = m0.puzzle, hol = pz.hollow, lit = traceBeam(hol).hit;
+      if (lit && !hol.lit && Z.planted) say('THE SEEDLING STIRS', pz.bedPoint.x, pz.bedPoint.y - 30, '#bff29a', 11);
+      hol.lit = lit;
+      if (Z.elder > 0 && Z.elder < 1) { Z.elder = Math.min(1, Z.elder + dt / 4); if (Z.elder >= 1) say('THE ELDER WAKES', pz.elder.x, pz.elder.y - 60, '#8fe06a', 13); }
+      if (Z.planted && !Z.petal && lit && Z.grow < 1) { Z.grow = Math.min(1, Z.grow + dt / 6); if (Z.grow >= 1) say('A SUNPETAL BLOOMS', pz.bedPoint.x, pz.bedPoint.y - 40, '#ffe27a', 13); }
+      hol.mirrors.forEach(function (mi) { if (mi.glint > 0) mi.glint = Math.max(0, mi.glint - dt * 2.5); });
+      if (Z.thorn > 0 && Z.thorn < 1) { Z.thorn = Math.min(1, Z.thorn + dt / 2.2); if (Z.thorn >= 1) { clearThorns(m0); if (CC.fx) CC.fx.burst(pz.thorn.x, pz.thorn.y, '#6aa04a', 24, 110); say('THE WAY IS OPEN', pz.thorn.x, pz.thorn.y - 30, '#bfe9ff', 13); } }
+    }
     var sc = scene, p = hero(), S = CC.Eagle && CC.Eagle._state && CC.Eagle._state();
     if (!sc || !p) { if (CC.camFocus && !sc) { CC.camFocus.k = Math.max(0, CC.camFocus.k - dt * 2.5); if (CC.camFocus.k <= 0) CC.camFocus = null; } return; }
     sc.t += dt;
@@ -101,6 +111,9 @@
     }
     var s = st(), p = hero(), m = s && s.map;
     if (s && s.area === 'rocky-pass' && m) {
+      if (dlg && CC.DialogBox) { if (Date.now() - dlg.t0 > 9000) dlg = null; else CC.DialogBox.draw(c, W, H, function () {}, { name: dlg.name, text: dlg.text, low: true, onTap: function () { dlg = null; } }); }
+      var carry = carrying();
+      if (carry) { c.save(); c.font = 'bold 11px Georgia, serif'; var cw = c.measureText('Carrying ' + carry).width + 22; c.fillStyle = 'rgba(14,10,8,0.78)'; c.fillRect(W / 2 - cw / 2, 60, cw, 22); c.strokeStyle = '#8a6a3a'; c.strokeRect(W / 2 - cw / 2 + 0.5, 60.5, cw - 1, 21); c.fillStyle = '#ffe3a0'; c.textAlign = 'center'; c.fillText('Carrying ' + carry, W / 2, 75); c.restore(); }
       if (title > 0) { // the golden title
         var a = title > 5 ? (7 - title) / 2 : Math.min(1, title / 2);
         c.save(); c.globalAlpha = a; c.textAlign = 'center'; c.font = 'italic ' + Math.min(44, W / 8.2) + 'px Georgia, serif'; c.shadowColor = 'rgba(190,220,255,0.9)'; c.shadowBlur = 16; c.fillStyle = 'rgba(236,244,255,0.96)';
@@ -118,9 +131,69 @@
     if (!opened || !CC.enterRockyPass) return false;
     CC.enterRockyPass(); return true;
   };
+  /* ---------- the nature puzzle: what you can do where ---------- */
+  var dlg = null; // a line of speech: { name, text, t0 }
+  function talk(name, text) { dlg = { name: name, text: text, t0: Date.now() }; }
+  function carrying() { return Z.petal ? 'a Sunpetal' : Z.acorn ? 'an Elder acorn' : Z.water === 1 ? 'clear spring water' : Z.water === 2 ? 'stagnant water' : ''; }
+  function puzzlePoints(m) {
+    var pz = m && m.puzzle, out = [];
+    if (!pz) return out;
+    out.push({ id: 'tablet', x: pz.tablet.x, y: pz.tablet.y, r: 58 }, { id: 'spring', x: pz.spring.x, y: pz.spring.y, r: 58 }, { id: 'stagnant', x: pz.stagnant.x, y: pz.stagnant.y, r: 58 },
+      { id: 'elder', x: pz.elder.x, y: pz.elder.y, r: 58 }, { id: 'bed', x: pz.hollow.bed.x, y: pz.hollow.bed.y, r: 50 });
+    if (!Z.open) out.push({ id: 'thorn', x: pz.thorn.x, y: pz.thorn.y, r: 92 });
+    pz.hollow.mirrors.forEach(function (mi, i) { out.push({ id: 'mirror', i: i, x: mi.x, y: mi.y, r: 50 }); });
+    return out;
+  }
+  function nearestPoint(m, p) { var best = null, bd = 1e9; puzzlePoints(m).forEach(function (q) { var d = Math.hypot(p.x - q.x, p.y - q.y); if (d <= q.r && d < bd) { bd = d; best = q; } }); return best; }
+  function puzzleInteract(p, m) {
+    var q = nearestPoint(m, p), pz = m.puzzle; if (!q) return false;
+    var beam = traceBeam(pz.hollow);
+    if (q.id === 'tablet') { talk('A Carved Tablet', 'The mountain keeps a garden, and thorns keep the garden. Clear water wakes the Elder. The Elder\'s seed wants the sun, and the sun\'s own flower will part the thorns. (The sun steals in where the rock is open, and polished stone will turn it.)'); Z.riddle = 1; return true; }
+    if (q.id === 'spring') {
+      if (Z.water === 1) talk('The Spring', 'You already carry clear water.');
+      else { Z.water = 1; if (Z.acorn || Z.petal) { talk('The Spring', 'Your hands are full of other things.'); Z.water = 0; } else { talk('The Spring', 'You cup the clear, cold water of the spring. Carry it carefully.'); say('CLEAR WATER', p.x, p.y - 26, '#bfe9ff', 12); } }
+      return true;
+    }
+    if (q.id === 'stagnant') {
+      if (Z.acorn || Z.petal || Z.water === 1) talk('The Pool', 'A green, still pool. It smells of rot. You leave it alone.');
+      else { Z.water = 2; talk('The Pool', 'The water is thick and green, and smells of rot. You scoop some anyway...'); say('STAGNANT WATER', p.x, p.y - 26, '#9aba6a', 12); }
+      return true;
+    }
+    if (q.id === 'elder') {
+      if (Z.elder >= 1) {
+        if (!Z.acornTaken) { Z.acornTaken = 1; Z.acorn = 1; talk('The Elder', 'The Elder\'s leaves whisper. A heavy golden acorn drops into your hand. Plant it where the sun can find it.'); say('ELDER ACORN', p.x, p.y - 26, '#ffd890', 12); }
+        else talk('The Elder', 'The old oak rustles contentedly.');
+      } else if (Z.elder > 0) talk('The Elder', 'The Elder is stirring...');
+      else if (Z.water === 1) { Z.water = 0; Z.elder = 0.001; talk('The Elder', 'You pour the clear water over the roots. The grey bark darkens... buds swell... the withered oak wakes!'); if (CC.fx) CC.fx.burst(q.x, q.y - 30, '#8fe06a', 20, 90); }
+      else if (Z.water === 2) { Z.water = 0; talk('The Elder', 'The stagnant water sinks into the roots, and the oak only sags. Rot will not wake it. You pour out the rest. (Fetch clear water.)'); }
+      else talk('The Elder', 'A withered oak, grey and dry. Its roots are parched. It needs water.');
+      return true;
+    }
+    if (q.id === 'bed') {
+      if (Z.petal) talk('The Hollow', 'The soil is bare now, and warm.');
+      else if (Z.planted && Z.grow >= 1) { Z.petal = 1; Z.planted = 0; talk('The Hollow', 'The sunpetal glows in your hand like a small gold flame. Offer it to the thornwall.'); say('SUNPETAL', p.x, p.y - 26, '#ffe27a', 13); }
+      else if (Z.planted) talk('The Hollow', beam.hit ? 'The seedling drinks the sunlight. It is growing...' : 'The seed waits in the shade. Sunlight must reach this soil: turn the stone mirrors to steer the beam.');
+      else if (Z.acorn) { Z.acorn = 0; Z.planted = 1; talk('The Hollow', 'You press the acorn into the bare soil. It needs sunlight to wake.'); }
+      else talk('The Hollow', 'A bed of bare soil in a chamber the sun never reaches. A beam of light slips in from above... but it goes astray among the mirrors.');
+      return true;
+    }
+    if (q.id === 'mirror') {
+      var mi = pz.hollow.mirrors[q.i]; mi.o = mi.o === '/' ? '\\' : '/'; mi.glint = 1;
+      if (CC.Audio && CC.Audio.fx) CC.Audio.fx('click', { vol: 0.5, gap: 60 });
+      if (traceBeam(pz.hollow).hit && !pz.hollow.lit) say('THE LIGHT REACHES THE SOIL', p.x, p.y - 28, '#ffe27a', 12);
+      return true;
+    }
+    if (q.id === 'thorn') {
+      if (Z.petal) { Z.petal = 0; Z.open = 1; Z.thorn = 0.001; talk('The Thornwall', 'You hold up the sunpetal. The thorns shudder, draw back, and wither away...'); if (CC.fx) CC.fx.shake(5); }
+      else talk('The Thornwall', 'A living wall of thorns blocks the way to the village. Bring it a flower of the sun. (Read the carved tablet by the entrance.)');
+      return true;
+    }
+    return false;
+  }
   RP.interact = function () { // inside the pass
     var s = st(), p = hero(), m = s && s.map;
     if (!s || s.area !== 'rocky-pass' || !p || !m) return false;
+    if (m.puzzle && puzzleInteract(p, m)) return true;
     if (m.passBack && Math.hypot(p.x - m.passBack.x, p.y - m.passBack.y) < 70) { if (CC.leaveRockyPass) CC.leaveRockyPass(); return true; }
     if (m.passExit && Math.hypot(p.x - m.passExit.x, p.y - m.passExit.y) < 80) {
       say('The gate of the abandoned village is just ahead...', p.x, p.y - 26, '#bfe9ff', 12);
@@ -131,6 +204,7 @@
   };
   RP.nearAction = function () {
     var s = st(), p = hero(), m = s && s.map;
+    if (s && s.area === 'rocky-pass' && p && m && m.puzzle && nearestPoint(m, p)) return true;
     return !!(s && s.area === 'rocky-pass' && p && m && ((m.passBack && Math.hypot(p.x - m.passBack.x, p.y - m.passBack.y) < 70) || (m.passExit && Math.hypot(p.x - m.passExit.x, p.y - m.passExit.y) < 80)));
   };
   RP.titleOn = function () { title = 7; };
@@ -200,12 +274,22 @@
     }
   };
 
-  /* ---------- the pass itself ---------- */
-  var PW = 76, PH = 66;
+  /* ---------- the pass itself: a mountain maze of chambers ----------
+   * A perfect maze of 7x7 chambers joined by three-tile passages, on a plateau above the valley. You start in the south-east and the way to the village
+   * lies at the end of the longest dead-end branch, shut by a living THORNWALL. Opening it is a puzzle of nature, spread over dead ends:
+   *   a clear SPRING and a stagnant decoy pool -> water for the withered ELDER oak -> it drops an acorn -> plant it in the BARE HOLLOW, a shaded
+   *   chamber where a shaft of sunlight must be steered onto the soil with turnable stone mirrors -> the seed blooms into a SUNPETAL ->
+   *   offer the sunpetal to the thornwall and the thorns part. A carved tablet at the start tells the riddle. */
+  var MW = 12, MH = 10, CELL = 7, WALL = 3, PITCH = CELL + WALL, OFF = 10, PW = MW * PITCH + WALL + OFF * 2, PH = MH * PITCH + WALL + OFF * 2, GRID = 5;
+  function fresh() { return { water: 0, acorn: 0, acornTaken: 0, planted: 0, grow: 0, elder: 0, petal: 0, open: 0, thorn: 0, riddle: 0 }; }
+  var Z = fresh();
+  RP.puzzle = function () { return Z; };
+  RP.serializeZ = function () { return JSON.parse(JSON.stringify(Z)); };
+  RP.restoreZ = function (d) { Z = fresh(); if (d && typeof d === 'object') for (var k in Z) if (typeof d[k] === 'number' && isFinite(d[k])) Z[k] = d[k]; };
   function hash(x, y) { var n = (Math.imul(x, 374761393) + Math.imul(y, 668265263)) | 0; n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; }
   function ground(k, hv, tx, ty) {
     if (k === 10) return 'rgba(0,0,0,0)'; // the drop: the valley shows through
-    if (k === 2) return hv < 0.5 ? '#a08e72' : '#9a886c'; // the worn goat trail down the middle
+    if (k === 2) return hv < 0.5 ? '#a08e72' : '#9a886c';
     var v = Math.floor(hv * 12);
     return 'rgb(' + (134 + v) + ',' + (118 + v) + ',' + (96 + v) + ')'; // warm dusty ledge
   }
@@ -231,102 +315,240 @@
       c.strokeStyle = 'rgba(30,26,24,.35)'; for (var i = 0; i < 3; i++) { c.beginPath(); c.moveTo(sx + 4 + i * 11, sy + T); c.lineTo(sx + 2 + i * 11 + hv * 6, sy + T + 22 + i * 4); c.stroke(); }
     }
   }
-  function build(rng) {
-    var N = PW * PH, tiles = new Uint8Array(N).fill(1), kind = new Uint8Array(N).fill(9), i, x, y, k;
-    function at(tx, ty) { return ty * PW + tx; }
-    var S = { x: PW - 9, y: PH - 8 }, G = { x: 9, y: 9 }, ph = rng() * 6, samples = [], n = 260;
-    var dxn = G.x - S.x, dyn = G.y - S.y, len = Math.hypot(dxn, dyn), nx = -dyn / len, ny = dxn / len;
-    for (k = 0; k <= n; k++) {
-      var u = k / n, off = Math.sin(u * Math.PI) * 9 * Math.sin(u * 4 + ph) + Math.sin(u * 17 + ph) * 2.2, w = 3.4 + 1.6 * (0.5 + 0.5 * Math.sin(u * 9 + ph));
-      samples.push({ x: S.x + dxn * u + nx * off, y: S.y + dyn * u + ny * off, w: w, u: u, ang: Math.atan2(dyn, dxn) });
+
+  /* ---- the mirror puzzle: a sunbeam enters through the skylight and must be bounced onto the bed ---- */
+  // '/' sends (dx,dy) -> (-dy,-dx); '\' sends (dx,dy) -> (dy,dx)
+  function reflect(o, dx, dy) { return o === '/' ? [-dy, -dx] : [dy, dx]; }
+  function traceBeam(h) { // -> { pts: [[gx,gy]...] (grid cells the light visits; y = -1 is the skylight), hit }
+    var pts = [[h.col, -1]], gx = h.col, gy = 0, dx = 0, dy = 1, hit = false, s, i, m, r;
+    for (s = 0; s < 60; s++) {
+      if (gx < 0 || gy < 0 || gx >= GRID || gy >= GRID) { pts.push([gx - dx * 0.5, gy - dy * 0.5]); break; } // the light leaves the chamber
+      pts.push([gx, gy]);
+      if (gx === h.bed.gx && gy === h.bed.gy) { hit = true; break; }
+      m = null; for (i = 0; i < h.mirrors.length; i++) if (h.mirrors[i].gx === gx && h.mirrors[i].gy === gy) m = h.mirrors[i];
+      if (m) { r = reflect(m.o, dx, dy); dx = r[0]; dy = r[1]; }
+      gx += dx; gy += dy;
     }
-    function carve(cx, cy, r, kd) { for (var yy = Math.floor(cy - r); yy <= cy + r; yy++) for (var xx = Math.floor(cx - r); xx <= cx + r; xx++) if (xx > 1 && yy > 1 && xx < PW - 2 && yy < PH - 2 && (xx - cx) * (xx - cx) + (yy - cy) * (yy - cy) <= r * r) { tiles[at(xx, yy)] = 0; kind[at(xx, yy)] = kd; } }
-    samples.forEach(function (s) { carve(s.x, s.y, s.w, 0); });
-    samples.forEach(function (s) { carve(s.x, s.y, 1.6, 2); });
-    // two wide ledges for the big fights, and three alcoves for chests
-    var arenas = [samples[Math.floor(n * 0.36)], samples[Math.floor(n * 0.68)]], alcoves = [];
-    arenas.forEach(function (s) { carve(s.x, s.y, 7.5, 0); });
-    [0.2, 0.52, 0.84].forEach(function (uu, j) {
-      var s = samples[Math.floor(n * uu)], side = j % 2 ? 1 : -1, ax = s.x + nx * side * 9, ay = s.y + ny * side * 9;
-      carve(ax, ay, 2.6, 0); for (var q = 0; q <= 1; q += 0.1) carve(s.x + (ax - s.x) * q, s.y + (ay - s.y) * q, 1.3, 0);
-      alcoves.push({ x: ax, y: ay });
-    });
-    // classify everything that is not walkable: cliff wall near the path, then valley (a drop) on the south-west, mountain on the north-east
+    return { pts: pts, hit: hit };
+  }
+  RP.traceBeam = traceBeam;
+  function makeHollow(rng, x0, y0) { // tile origin of the chamber interior
+    for (var tries = 0; tries < 200; tries++) {
+      var a = Math.floor(rng() * GRID), b = 1 + Math.floor(rng() * 2), dir1 = rng() < 0.5 ? -1 : 1, k = 1 + Math.floor(rng() * 3), c = a + dir1 * k;
+      var m = 1 + Math.floor(rng() * 2), d = b + m, dir2 = rng() < 0.5 ? -1 : 1, j = 1 + Math.floor(rng() * 3), e = c + dir2 * j;
+      if (c < 0 || c >= GRID || d >= GRID || e < 0 || e >= GRID || e === c) continue;
+      var h = { x0: x0, y0: y0, col: a, bed: { gx: e, gy: d }, mirrors: [] };
+      var need = [[a, b, 0, 1, dir1, 0], [c, b, dir1, 0, 0, 1], [c, d, 0, 1, dir2, 0]]; // [gx, gy, in dx, in dy, out dx, out dy]
+      need.forEach(function (n) { var o = reflect('/', n[2], n[3]); var o1 = o[0] === n[4] && o[1] === n[5] ? '/' : '\\'; h.mirrors.push({ gx: n[0], gy: n[1], o: o1, want: o1, decoy: false }); });
+      var used = {}; h.mirrors.forEach(function (q) { used[q.gx + ',' + q.gy] = 1; }); used[e + ',' + d] = 1;
+      if (Object.keys(used).length < 4) continue; // mirrors and bed on distinct cells
+      var path = traceBeam(h); if (!path.hit) continue;
+      var onPath = {}; path.pts.forEach(function (p) { onPath[Math.round(p[0]) + ',' + Math.round(p[1])] = 1; });
+      for (var dcy = 0; dcy < 2; dcy++) for (var t3 = 0; t3 < 30; t3++) { var qx = Math.floor(rng() * GRID), qy = Math.floor(rng() * GRID), key = qx + ',' + qy; if (used[key] || onPath[key]) continue; used[key] = 1; var oo = rng() < 0.5 ? '/' : '\\'; h.mirrors.push({ gx: qx, gy: qy, o: oo, want: oo, decoy: true }); break; }
+      h.mirrors.forEach(function (q) { if (!q.decoy && rng() < 0.85) q.o = q.o === '/' ? '\\' : '/'; }); // scrambled: turn them until the light reaches the soil
+      if (traceBeam(h).hit) h.mirrors[0].o = h.mirrors[0].o === '/' ? '\\' : '/';
+      if (traceBeam(h).hit) continue;
+      return h;
+    }
+    return null;
+  }
+
+  /* ---- art for the puzzle pieces ---- */
+  function leaf(c, x, y, s, col) { c.fillStyle = col; c.beginPath(); c.ellipse(x, y, s, s * 0.6, 0.5, 0, TAU); c.fill(); }
+  function drawSpring(c, sx, sy, t, stagnant) {
+    c.save(); c.fillStyle = 'rgba(0,0,0,.28)'; c.beginPath(); c.ellipse(sx, sy + 8, 24, 9, 0, 0, TAU); c.fill();
+    c.fillStyle = '#6a6862'; c.beginPath(); c.ellipse(sx, sy + 2, 22, 11, 0, 0, TAU); c.fill(); c.fillStyle = '#85827a'; c.beginPath(); c.ellipse(sx, sy, 22, 10, 0, 0, TAU); c.fill(); // the stone rim
+    c.fillStyle = stagnant ? '#3d5a2e' : '#3e8ab4'; c.beginPath(); c.ellipse(sx, sy + 1, 17, 7.5, 0, 0, TAU); c.fill();
+    c.strokeStyle = stagnant ? 'rgba(150,190,90,.5)' : 'rgba(220,245,255,.7)'; c.lineWidth = 1; for (var i = 0; i < 2; i++) { var u = ((t * 0.5 + i * 0.5) % 1); c.globalAlpha = 1 - u; c.beginPath(); c.ellipse(sx, sy + 1, 4 + u * 12, 1.6 + u * 5, 0, 0, TAU); c.stroke(); } c.globalAlpha = 1;
+    if (stagnant) { c.fillStyle = 'rgba(40,60,20,.8)'; for (var j = 0; j < 5; j++) { c.beginPath(); c.arc(sx - 10 + j * 5, sy + 1 + Math.sin(j * 2) * 2, 2.2, 0, TAU); c.fill(); } c.fillStyle = 'rgba(20,20,10,.8)'; for (var f = 0; f < 3; f++) c.fillRect(sx + Math.sin(t * 3 + f * 2) * 14, sy - 12 - Math.abs(Math.sin(t * 2 + f)) * 6, 1.6, 1.6); }
+    else { c.fillStyle = 'rgba(255,255,255,.5)'; c.fillRect(sx - 12 + ((t * 8) % 24), sy - 1, 3, 1.4); leaf(c, sx - 24, sy + 4, 4, '#4f8a3a'); leaf(c, sx + 25, sy + 3, 4, '#5a9a42'); }
+    c.restore();
+  }
+  function drawElder(c, sx, sy, t) {
+    var g = clamp(Z.elder, 0, 1), sway = Math.sin(t * 1.2) * 1.5 * g;
+    c.save(); c.fillStyle = 'rgba(0,0,0,.3)'; c.beginPath(); c.ellipse(sx, sy + 6, 26, 9, 0, 0, TAU); c.fill();
+    c.strokeStyle = g > 0.3 ? '#5a4030' : '#4a4642'; c.lineCap = 'round'; c.lineWidth = 9; c.beginPath(); c.moveTo(sx, sy + 4); c.quadraticCurveTo(sx - 3, sy - 20, sx + sway, sy - 42); c.stroke();
+    c.lineWidth = 4; var br = [[-26, -52, -12, -32], [24, -56, 10, -36], [-14, -66, -4, -44], [16, -68, 5, -46]];
+    br.forEach(function (b) { c.beginPath(); c.moveTo(sx + sway * 0.6 + b[2] * 0.2, sy - 36); c.quadraticCurveTo(sx + b[2], sy + b[3], sx + b[0] + sway, sy + b[1]); c.stroke(); });
+    if (g > 0.02) { var n = Math.round(26 * g); for (var i = 0; i < n; i++) { var a = i * 2.4, rr = 12 + (i % 5) * 7; leaf(c, sx + Math.cos(a) * rr + sway, sy - 52 + Math.sin(a) * rr * 0.7, 3 + g * 3.5, i % 3 ? '#4f9a3c' : '#6fb446'); } }
+    else { c.strokeStyle = '#3a3633'; c.lineWidth = 1.6; c.beginPath(); c.moveTo(sx - 26, sy - 52); c.lineTo(sx - 31, sy - 56); c.moveTo(sx + 24, sy - 56); c.lineTo(sx + 30, sy - 58); c.stroke(); }
+    if (g >= 1 && !Z.acorn && !Z.planted && !Z.petal && !Z.acornTaken) { c.fillStyle = '#b4843a'; c.beginPath(); c.ellipse(sx + 14, sy + 6, 3.4, 4.4, 0, 0, TAU); c.fill(); c.fillStyle = '#6a4a24'; c.fillRect(sx + 11.5, sy + 1.5, 5, 2.4); c.save(); c.globalAlpha = 0.35 + 0.25 * Math.sin(t * 3); c.fillStyle = '#ffe9a0'; c.beginPath(); c.arc(sx + 14, sy + 6, 8, 0, TAU); c.fill(); c.restore(); }
+    c.restore();
+  }
+  function drawBed(c, sx, sy, t, lit) {
+    c.save(); c.fillStyle = '#3a2c20'; c.beginPath(); c.ellipse(sx, sy + 2, 15, 8, 0, 0, TAU); c.fill(); c.strokeStyle = 'rgba(0,0,0,.45)'; c.lineWidth = 1; c.beginPath(); c.moveTo(sx - 8, sy + 1); c.lineTo(sx - 2, sy + 4); c.lineTo(sx + 5, sy); c.moveTo(sx + 2, sy + 5); c.lineTo(sx + 9, sy + 3); c.stroke();
+    if (lit) { c.globalCompositeOperation = 'lighter'; var gr = c.createRadialGradient(sx, sy, 1, sx, sy, 26); gr.addColorStop(0, 'rgba(255,240,170,' + (0.55 + 0.2 * Math.sin(t * 4)) + ')'); gr.addColorStop(1, 'rgba(255,200,80,0)'); c.fillStyle = gr; c.beginPath(); c.arc(sx, sy, 26, 0, TAU); c.fill(); c.globalCompositeOperation = 'source-over'; }
+    var gro = clamp(Z.grow, 0, 1);
+    if (Z.planted && !Z.petal) {
+      c.strokeStyle = '#5ea83c'; c.lineWidth = 2; c.lineCap = 'round'; c.beginPath(); c.moveTo(sx, sy + 2); c.quadraticCurveTo(sx + 2, sy - 4 - gro * 14, sx + Math.sin(t * 1.5) * 1.5, sy - 6 - gro * 26); c.stroke();
+      leaf(c, sx - 5, sy - 3 - gro * 8, 3 + gro * 3, '#6fc447'); leaf(c, sx + 6, sy - 5 - gro * 10, 3 + gro * 3, '#5ab03a');
+      if (gro >= 1) { var py = sy - 34; c.save(); c.globalCompositeOperation = 'lighter'; var g2 = c.createRadialGradient(sx, py, 1, sx, py, 20); g2.addColorStop(0, 'rgba(255,230,120,.9)'); g2.addColorStop(1, 'rgba(255,190,60,0)'); c.fillStyle = g2; c.beginPath(); c.arc(sx, py, 20, 0, TAU); c.fill(); c.restore(); for (var p2 = 0; p2 < 8; p2++) { var pa = p2 * TAU / 8 + t * 0.4; c.fillStyle = p2 % 2 ? '#ffd24a' : '#fff0a0'; c.beginPath(); c.ellipse(sx + Math.cos(pa) * 7, py + Math.sin(pa) * 5, 4, 2.2, pa, 0, TAU); c.fill(); } c.fillStyle = '#ff9a2a'; c.beginPath(); c.arc(sx, py, 3, 0, TAU); c.fill(); }
+    }
+    c.restore();
+  }
+  function drawMirror(c, sx, sy, t, m) {
+    c.save(); c.fillStyle = 'rgba(0,0,0,.3)'; c.beginPath(); c.ellipse(sx, sy + 9, 12, 5, 0, 0, TAU); c.fill();
+    c.fillStyle = '#6c6962'; c.fillRect(sx - 8, sy - 4, 16, 14); c.fillStyle = '#8a867c'; c.fillRect(sx - 8, sy - 6, 16, 4); // the pedestal
+    var s = m.o === '/' ? 1 : -1; c.strokeStyle = '#dff4ff'; c.lineWidth = 3.2; c.lineCap = 'round'; c.beginPath(); c.moveTo(sx - 8 * s, sy + 8 - 2); c.lineTo(sx + 8 * s, sy - 18); c.stroke(); // the polished mirror face
+    c.strokeStyle = 'rgba(120,180,220,.8)'; c.lineWidth = 1.2; c.stroke();
+    if (m.glint) { c.globalAlpha = m.glint; c.strokeStyle = '#fff'; c.lineWidth = 5; c.beginPath(); c.moveTo(sx - 8 * s, sy + 6); c.lineTo(sx + 8 * s, sy - 18); c.stroke(); }
+    c.restore();
+  }
+  function drawBeam(c, cam, h, t) {
+    var tr = traceBeam(h), pts = tr.pts, gx0 = (h.x0 + 1) * T + T / 2, gy0 = (h.y0 + 1) * T + T / 2, i;
+    c.save(); c.globalCompositeOperation = 'lighter'; c.lineCap = 'round'; c.lineJoin = 'round';
+    function P(p) { return [gx0 + p[0] * T - cam.x, gy0 + p[1] * T - cam.y - 6]; }
+    for (var pass = 0; pass < 3; pass++) {
+      c.strokeStyle = pass === 0 ? 'rgba(255,230,140,0.16)' : pass === 1 ? 'rgba(255,240,170,0.35)' : 'rgba(255,255,230,0.85)'; c.lineWidth = pass === 0 ? 20 : pass === 1 ? 9 : 2.4;
+      c.beginPath(); for (i = 0; i < pts.length; i++) { var q = P(pts[i]); if (i) c.lineTo(q[0], q[1]); else c.moveTo(q[0], q[1]); } c.stroke();
+    }
+    for (i = 0; i < pts.length - 1; i++) { // motes riding the light
+      var a = P(pts[i]), b = P(pts[i + 1]); for (var k = 0; k < 3; k++) { var u = (t * 0.6 + k / 3 + i * 0.17) % 1; c.fillStyle = 'rgba(255,250,210,' + 0.7 * Math.sin(u * Math.PI) + ')'; c.fillRect(a[0] + (b[0] - a[0]) * u - 1, a[1] + (b[1] - a[1]) * u - 1, 2, 2); }
+    }
+    var top = P([h.col, -1]); var g = c.createRadialGradient(top[0], top[1], 2, top[0], top[1], 40); g.addColorStop(0, 'rgba(255,245,200,.7)'); g.addColorStop(1, 'rgba(255,220,120,0)'); c.fillStyle = g; c.beginPath(); c.arc(top[0], top[1], 40, 0, TAU); c.fill(); // the skylight
+    c.restore();
+  }
+  function drawThorns(c, sx, sy, t) {
+    var wither = clamp(Z.thorn, 0, 1); if (wither >= 1) return;
+    c.save(); c.globalAlpha = 1 - wither * 0.9; var w = 3 * T, h = 3 * T;
+    c.fillStyle = 'rgba(20,34,16,.85)'; c.fillRect(sx - w / 2, sy - h / 2 - 6, w, h + 6);
+    for (var i = 0; i < 16; i++) {
+      var x0 = sx - w / 2 + (i % 8) * (w / 8) + 6, y0 = sy + h / 2 - 6, sw = Math.sin(t * 1.3 + i) * 1.5, len = h * (0.7 + (i % 3) * 0.12) * (1 - wither * 0.6);
+      c.strokeStyle = i % 2 ? '#2f5a28' : '#3d7030'; c.lineWidth = 3.4; c.lineCap = 'round'; c.beginPath(); c.moveTo(x0, y0); c.bezierCurveTo(x0 + 12 + sw, y0 - len * 0.35, x0 - 14, y0 - len * 0.6, x0 + 6 + sw, y0 - len); c.stroke();
+      c.fillStyle = '#c8c0a0'; for (var s = 0; s < 4; s++) { var u = 0.2 + s * 0.2, tx = x0 + Math.sin(u * 5 + i) * 9, ty = y0 - len * u; c.beginPath(); c.moveTo(tx, ty); c.lineTo(tx + 5, ty - 4); c.lineTo(tx + 1, ty + 3); c.fill(); }
+    }
+    c.fillStyle = 'rgba(200,60,70,.8)'; for (var r = 0; r < 4; r++) { c.beginPath(); c.arc(sx - 30 + r * 20, sy - 6 + Math.sin(r) * 10, 2.4, 0, TAU); c.fill(); } // red thorn berries
+    c.restore();
+  }
+  function drawTablet(c, sx, sy) {
+    c.save(); c.fillStyle = 'rgba(0,0,0,.3)'; c.beginPath(); c.ellipse(sx, sy + 8, 14, 5, 0, 0, TAU); c.fill();
+    c.fillStyle = '#7a776e'; c.fillRect(sx - 11, sy - 26, 22, 32); c.beginPath(); c.arc(sx, sy - 26, 11, Math.PI, 0); c.fill(); c.fillStyle = '#9a978c'; c.fillRect(sx - 11, sy - 26, 4, 32);
+    c.strokeStyle = '#4a483f'; c.lineWidth = 1.2; c.beginPath(); c.moveTo(sx - 5, sy - 22); c.lineTo(sx + 6, sy - 22); c.moveTo(sx - 5, sy - 16); c.lineTo(sx + 5, sy - 16); c.moveTo(sx - 5, sy - 10); c.lineTo(sx + 6, sy - 10); c.moveTo(sx - 5, sy - 4); c.lineTo(sx + 4, sy - 4); c.stroke();
+    c.restore();
+  }
+
+  function build(rng) {
+    var N = PW * PH, tiles = new Uint8Array(N).fill(1), kind = new Uint8Array(N).fill(9), i, j, x, y, k;
+    function at(tx, ty) { return ty * PW + tx; }
+    function cx0(ci) { return OFF + WALL + (ci % MW) * PITCH; }
+    function cy0(ci) { return OFF + WALL + Math.floor(ci / MW) * PITCH; }
+    function ctrT(ci) { return { tx: cx0(ci) + (CELL >> 1), ty: cy0(ci) + (CELL >> 1) }; }
+    function ctrP(ci) { var c0 = ctrT(ci); return { x: c0.tx * T + T / 2, y: c0.ty * T + T / 2 }; }
+    // the maze: a depth-first carve from the south-east chamber
+    var NC = MW * MH, open = []; for (i = 0; i < NC; i++) open.push([0, 0, 0, 0]); // E S W N
+    var DX = [1, 0, -1, 0], DY = [0, 1, 0, -1], seen = new Uint8Array(NC), start = NC - 1, stack = [start]; seen[start] = 1;
+    while (stack.length) {
+      var cur = stack[stack.length - 1], ci2 = cur % MW, cj2 = Math.floor(cur / MW), opts = [];
+      for (k = 0; k < 4; k++) { var ni2 = ci2 + DX[k], nj2 = cj2 + DY[k]; if (ni2 >= 0 && nj2 >= 0 && ni2 < MW && nj2 < MH && !seen[nj2 * MW + ni2]) opts.push(k); }
+      if (!opts.length) { stack.pop(); continue; }
+      var dk = opts[Math.floor(rng() * opts.length)], nxt = (cj2 + DY[dk]) * MW + ci2 + DX[dk];
+      open[cur][dk] = 1; open[nxt][(dk + 2) % 4] = 1; seen[nxt] = 1; stack.push(nxt);
+    }
+    // carve the chambers and the three-tile passages
+    function floor(x0, y0, w, h, kd) { for (var yy = y0; yy < y0 + h; yy++) for (var xx = x0; xx < x0 + w; xx++) { tiles[at(xx, yy)] = 0; kind[at(xx, yy)] = kd || 0; } }
+    var mid = (CELL - 3) >> 1; // the passage is centred on the chamber's wall
+    for (i = 0; i < NC; i++) {
+      floor(cx0(i), cy0(i), CELL, CELL, 0);
+      if (open[i][0]) floor(cx0(i) + CELL, cy0(i) + mid, WALL, 3, 0);
+      if (open[i][1]) floor(cx0(i) + mid, cy0(i) + CELL, 3, WALL, 0);
+    }
+    // graph distances from a chamber
+    function bfs(from) { var d = new Int16Array(NC).fill(-1), q = [from], qi = 0; d[from] = 0; while (qi < q.length) { var c0 = q[qi++]; for (var kk = 0; kk < 4; kk++) if (open[c0][kk]) { var n3 = (Math.floor(c0 / MW) + DY[kk]) * MW + (c0 % MW) + DX[kk]; if (d[n3] < 0) { d[n3] = d[c0] + 1; q.push(n3); } } } return d; }
+    function degree(c0) { return open[c0][0] + open[c0][1] + open[c0][2] + open[c0][3]; }
+    var fromStart = bfs(start), leaves = [];
+    for (i = 0; i < NC; i++) if (i !== start && degree(i) === 1) leaves.push(i);
+    if (leaves.length < 9) return null;
+    leaves.sort(function (a, b) { return fromStart[b] - fromStart[a]; });
+    var goal = leaves[0], taken = {}, chosen = [start, goal]; taken[goal] = 1;
+    var dists = {}; dists[start] = fromStart; dists[goal] = bfs(goal);
+    function pickLeaf() { // the leaf farthest (in chambers) from everything chosen so far
+      var best = -1, bs = -1;
+      leaves.forEach(function (l) { if (taken[l]) return; var m = 1e9; chosen.forEach(function (c0) { m = Math.min(m, dists[c0][l]); }); if (m > bs) { bs = m; best = l; } });
+      if (best < 0) return -1; taken[best] = 1; chosen.push(best); dists[best] = bfs(best); return best;
+    }
+    var roles = {}; ['hollow', 'spring', 'elder', 'stagnant', 'cave', 'chest1', 'chest2', 'chest3'].forEach(function (r) { roles[r] = pickLeaf(); });
+    for (var rk in roles) if (roles[rk] < 0) return null;
+    // the thornwall plugs the single passage into the goal chamber
+    var gi = goal % MW, gj = Math.floor(goal / MW), gdir = -1; for (k = 0; k < 4; k++) if (open[goal][k]) gdir = k;
+    var thornTiles = [], tx0 = 0, ty0 = 0;
+    if (gdir === 0) { tx0 = cx0(goal) + CELL; ty0 = cy0(goal) + mid; } else if (gdir === 2) { tx0 = cx0(goal) - WALL; ty0 = cy0(goal) + mid; } else if (gdir === 1) { tx0 = cx0(goal) + mid; ty0 = cy0(goal) + CELL; } else { tx0 = cx0(goal) + mid; ty0 = cy0(goal) - WALL; }
+    for (y = ty0; y < ty0 + 3; y++) for (x = tx0; x < tx0 + 3; x++) { if (tiles[at(x, y)] === 0) { tiles[at(x, y)] = 1; kind[at(x, y)] = 9; thornTiles.push(at(x, y)); } }
+    var thorn = { x: (tx0 + 1.5) * T, y: (ty0 + 1.5) * T, tiles: thornTiles, tx0: tx0, ty0: ty0 };
+    // classify rock: the plateau edge drops into the valley, everything else is wall
     var dist = new Int16Array(N).fill(-1), qd = [];
     for (i = 0; i < N; i++) if (!tiles[i]) { dist[i] = 0; qd.push(i); }
-    for (var qi = 0; qi < qd.length; qi++) { var c0 = qd[qi], cx = c0 % PW, cy = (c0 / PW) | 0; [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (d) { var xx = cx + d[0], yy = cy + d[1]; if (xx < 0 || yy < 0 || xx >= PW || yy >= PH) return; var ni = at(xx, yy); if (dist[ni] >= 0) return; dist[ni] = dist[c0] + 1; qd.push(ni); }); }
+    for (var qi = 0; qi < qd.length; qi++) { var c0 = qd[qi], px0 = c0 % PW, py0 = (c0 / PW) | 0; for (k = 0; k < 4; k++) { var xx = px0 + DX[k], yy = py0 + DY[k]; if (xx < 0 || yy < 0 || xx >= PW || yy >= PH) continue; var ni = at(xx, yy); if (dist[ni] >= 0) continue; dist[ni] = dist[c0] + 1; qd.push(ni); } }
     var rockDepth = new Uint8Array(N);
-    for (y = 0; y < PH; y++) for (x = 0; x < PW; x++) {
-      i = at(x, y); if (!tiles[i]) continue;
-      rockDepth[i] = Math.min(9, dist[i]);
-      var bd = 1e9, bs = null; for (k = 0; k < samples.length; k += 3) { var dd = (samples[k].x - x) * (samples[k].x - x) + (samples[k].y - y) * (samples[k].y - y); if (dd < bd) { bd = dd; bs = samples[k]; } }
-      var cross = (x - bs.x) * Math.sin(bs.ang) - (y - bs.y) * Math.cos(bs.ang); // > 0 on the south-west side of the path: the valley
-      kind[i] = dist[i] > 2 && cross > 0 ? 10 : 9; // beyond the cliff lip nothing is drawn, the far valley shows through
+    for (i = 0; i < N; i++) if (tiles[i]) { rockDepth[i] = Math.min(9, Math.max(0, dist[i])); kind[i] = dist[i] > 2 ? 10 : 9; }
+    for (k = 0; k < thornTiles.length; k++) { kind[thornTiles[k]] = 9; rockDepth[thornTiles[k]] = 1; }
+    var props = [], chests = [], lights = [], spawns = [];
+    // scatter boulders in ordinary chambers (never in the puzzle ones, never on the way in)
+    var special = {}; for (var sr in roles) special[roles[sr]] = 1; special[start] = 1; special[goal] = 1;
+    for (i = 0; i < NC; i++) {
+      if (special[i]) continue;
+      var nb = 1 + Math.floor(rng() * 3), ctT = ctrT(i);
+      for (k = 0; k < nb; k++) { var bx = cx0(i) + 1 + Math.floor(rng() * (CELL - 2)), by = cy0(i) + 1 + Math.floor(rng() * (CELL - 2)); if (Math.abs(bx - ctT.tx) <= 1 && Math.abs(by - ctT.ty) <= 1) continue; if (bx < cx0(i) + 1 || by < cy0(i) + 1) continue; tiles[at(bx, by)] = 1; kind[at(bx, by)] = 9; rockDepth[at(bx, by)] = 1; }
     }
-    // boulders scattered on the ledge (kept off the centreline so the way stays open)
-    var props = [], chests = [], lights = [];
-    for (k = 0; k < 90; k++) {
-      var s2 = samples[Math.floor(rng() * samples.length)], ox = (rng() - 0.5) * 2 * s2.w * 0.9, oy = (rng() - 0.5) * 2 * s2.w * 0.9, bx = Math.round(s2.x + ox), by = Math.round(s2.y + oy);
-      if (Math.hypot(bx - s2.x, by - s2.y) < 2.2 || bx < 3 || by < 3 || tiles[at(bx, by)] || Math.hypot(bx - S.x, by - S.y) < 6 || Math.hypot(bx - G.x, by - G.y) < 6) continue;
-      tiles[at(bx, by)] = 1; kind[at(bx, by)] = 9; rockDepth[at(bx, by)] = 1;
-    }
-    alcoves.forEach(function (a) { var ch = { tx: Math.round(a.x), ty: Math.round(a.y), x: Math.round(a.x) * T + 16, y: Math.round(a.y) * T + 16, opened: false, tier: 1 }; if (!tiles[at(ch.tx, ch.ty)]) chests.push(ch); });
-    // A short uphill spur leads off the road to the cave in the mountainside.
-    var junction = samples[Math.floor(n * 0.52)], caveX = Math.round(junction.x + nx * 11), caveY = Math.round(junction.y + ny * 11);
-    for (var step = 0; step <= 20; step++) {
-      var uCave = step / 20;
-      carve(junction.x + (caveX - junction.x) * uCave, junction.y + (caveY - junction.y) * uCave, 1.6, 2);
-    }
-    var caveEntrance = { tx: caveX, ty: caveY, x: (caveX + 0.5) * T, y: (caveY + 0.5) * T };
+    // stations
+    var puzzle = { thorn: thorn, goal: ctrP(goal), start: ctrP(start) };
+    var sp = ctrP(roles.spring), sg = ctrP(roles.stagnant), el = ctrP(roles.elder), hc = ctrP(roles.hollow);
+    puzzle.spring = { x: sp.x, y: sp.y }; puzzle.stagnant = { x: sg.x, y: sg.y }; puzzle.elder = { x: el.x, y: el.y };
+    props.push({ x: sp.x, y: sp.y, sortY: 0, draw: function (c, sx, sy, t) { drawSpring(c, sx, sy, t, false); } });
+    props.push({ x: sg.x, y: sg.y, sortY: 0, draw: function (c, sx, sy, t) { drawSpring(c, sx, sy, t, true); } });
+    props.push({ x: el.x, y: el.y, sortY: 8, draw: function (c, sx, sy, t) { drawElder(c, sx, sy, t); } });
+    lights.push({ x: sp.x, y: sp.y, r: 90, color: '120,200,255', inten: 0.4, flicker: 0.05 });
+    var hollow = makeHollow(rng, cx0(roles.hollow), cy0(roles.hollow));
+    if (!hollow) return null;
+    puzzle.hollow = hollow;
+    hollow.mirrors.forEach(function (m) { var tx = hollow.x0 + 1 + m.gx, ty = hollow.y0 + 1 + m.gy; tiles[at(tx, ty)] = 1; kind[at(tx, ty)] = 9; rockDepth[at(tx, ty)] = 1; m.x = tx * T + T / 2; m.y = ty * T + T / 2; });
+    hollow.bed.x = (hollow.x0 + 1 + hollow.bed.gx) * T + T / 2; hollow.bed.y = (hollow.y0 + 1 + hollow.bed.gy) * T + T / 2;
+    puzzle.bedPoint = { x: hollow.bed.x, y: hollow.bed.y };
+    props.push({ x: hollow.bed.x, y: hollow.bed.y, sortY: 0, draw: function (c, sx, sy, t) { drawBed(c, sx, sy, t, traceBeam(hollow).hit); } });
+    hollow.mirrors.forEach(function (m) { props.push({ x: m.x, y: m.y, sortY: 6, draw: function (c, sx, sy, t) { drawMirror(c, sx, sy, t, m); } }); });
+    props.push({ x: hc.x, y: hc.y, sortY: 90, reveal: false, draw: function (c, sx, sy, t, cam) { drawBeam(c, cam, hollow, t); } });
+    props.push({ x: thorn.x, y: thorn.y, sortY: 20, draw: function (c, sx, sy, t) { drawThorns(c, sx, sy, t); } });
+    var tb = ctrP(start); puzzle.tablet = { x: tb.x - 3 * T, y: tb.y - 2 * T };
+    props.push({ x: puzzle.tablet.x, y: puzzle.tablet.y, sortY: 4, draw: function (c, sx, sy) { drawTablet(c, sx, sy); } });
+    // chests in the quiet dead ends
+    ['chest1', 'chest2', 'chest3'].forEach(function (r, n) { var p = ctrP(roles[r]), tc = ctrT(roles[r]); chests.push({ tx: tc.tx, ty: tc.ty, x: p.x, y: p.y, opened: false, tier: n === 0 ? 2 : 1 }); });
+    // the way into the mountain cave, in its own dead end
+    var cc = ctrT(roles.cave), caveEntrance = { tx: cc.tx, ty: cc.ty, x: (cc.tx + 0.5) * T, y: (cc.ty + 0.5) * T };
     props.push({ x: caveEntrance.x, y: caveEntrance.y, sortY: 20, draw: function (c, sx, sy) {
-      c.save();
-      c.fillStyle = '#595861';
-      c.beginPath();
-      c.moveTo(sx - 34, sy + 5);
-      c.lineTo(sx - 22, sy - 31);
-      c.lineTo(sx - 5, sy - 48);
-      c.lineTo(sx + 18, sy - 42);
-      c.lineTo(sx + 33, sy + 5);
-      c.closePath();
-      c.fill();
-      c.fillStyle = '#17141d';
-      c.beginPath();
-      c.moveTo(sx - 18, sy + 5);
-      c.quadraticCurveTo(sx - 18, sy - 30, sx, sy - 33);
-      c.quadraticCurveTo(sx + 18, sy - 30, sx + 18, sy + 5);
-      c.fill();
-      c.fillStyle = '#ffe0a2';
-      c.font = 'bold 10px Georgia';
-      c.textAlign = 'center';
-      c.fillText('MOUNTAIN CAVE', sx, sy - 54);
-      c.restore();
+      c.save(); c.fillStyle = '#595861'; c.beginPath(); c.moveTo(sx - 34, sy + 5); c.lineTo(sx - 22, sy - 31); c.lineTo(sx - 5, sy - 48); c.lineTo(sx + 18, sy - 42); c.lineTo(sx + 33, sy + 5); c.closePath(); c.fill();
+      c.fillStyle = '#17141d'; c.beginPath(); c.moveTo(sx - 18, sy + 5); c.quadraticCurveTo(sx - 18, sy - 30, sx, sy - 33); c.quadraticCurveTo(sx + 18, sy - 30, sx + 18, sy + 5); c.fill();
+      c.fillStyle = '#ffe0a2'; c.font = 'bold 10px Georgia'; c.textAlign = 'center'; c.fillText('MOUNTAIN CAVE', sx, sy - 54); c.restore();
     } });
-    // Reachability: start must reach both branches and every chest, else rebuild with another seed.
-    var seen = new Uint8Array(N), q = [at(Math.round(S.x), Math.round(S.y))], qi2 = 0; seen[q[0]] = 1;
-    while (qi2 < q.length) { var c1 = q[qi2++], x1 = c1 % PW, y1 = (c1 / PW) | 0; [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (d) { var xx = x1 + d[0], yy = y1 + d[1]; if (xx < 0 || yy < 0 || xx >= PW || yy >= PH) return; var ni = at(xx, yy); if (seen[ni] || tiles[ni]) return; seen[ni] = 1; q.push(ni); }); }
-    var ok = seen[at(Math.round(G.x), Math.round(G.y))] === 1; chests.forEach(function (ch) { if (!seen[at(ch.tx, ch.ty)]) ok = false; });
-    if (!ok || !seen[at(caveX, caveY)] || chests.length < 2) return null;
-    var spawn = { x: Math.round(S.x) * T + 16, y: Math.round(S.y) * T + 16 }, exit = { x: Math.round(G.x) * T + 16, y: Math.round(G.y) * T + 16 };
-    // monsters: harpies on the open stretches, golems and wolves on the two ledges, a few bears and crows between
-    var spawns = [];
-    function spot(s, spread) { for (var t2 = 0; t2 < 14; t2++) { var px = Math.round(s.x + (rng() - 0.5) * spread), py = Math.round(s.y + (rng() - 0.5) * spread); if (px > 2 && py > 2 && px < PW - 2 && py < PH - 2 && !tiles[at(px, py)] && seen[at(px, py)]) return { x: px * T + 16, y: py * T + 16 }; } return null; }
-    for (k = 14; k < samples.length - 8; k += 22) {
-      var s3 = samples[k], pt = spot(s3, s3.w * 1.6); if (!pt || Math.hypot(pt.x - spawn.x, pt.y - spawn.y) < 360 || Math.hypot(pt.x - exit.x, pt.y - exit.y) < 200) continue;
-      var r = rng(), type = r < 0.34 ? 'cragharpy' : r < 0.58 ? 'direwolf' : r < 0.7 ? 'crow' : r < 0.82 ? 'bear' : 'screegolem';
-      spawns.push({ x: pt.x, y: pt.y, type: type });
+    // reachability: with the thornwall open every special place must connect to the start
+    var reach = new Uint8Array(N), q = [at(ctrT(start).tx, ctrT(start).ty)], qi2 = 0; reach[q[0]] = 1;
+    while (qi2 < q.length) { var c1 = q[qi2++], x1 = c1 % PW, y1 = (c1 / PW) | 0; for (k = 0; k < 4; k++) { var xx2 = x1 + DX[k], yy2 = y1 + DY[k]; if (xx2 < 0 || yy2 < 0 || xx2 >= PW || yy2 >= PH) continue; var ni3 = at(xx2, yy2); if (reach[ni3] || (tiles[ni3] && thornTiles.indexOf(ni3) < 0)) continue; reach[ni3] = 1; q.push(ni3); } }
+    var gt = ctrT(goal), ok = reach[at(gt.tx, gt.ty)] === 1 && reach[at(cc.tx, cc.ty)] === 1; chests.forEach(function (ch) { if (!reach[at(ch.tx, ch.ty)]) ok = false; });
+    [sp, sg, el].forEach(function (pt) { if (!reach[at(Math.floor(pt.x / T), Math.floor(pt.y / T))]) ok = false; });
+    if (!ok) return null;
+    // monsters: groups in about half the chambers, ledges of golems where three ways meet
+    function inChamber(ci3, spread) { for (var t2 = 0; t2 < 14; t2++) { var p = ctrT(ci3), px = Math.round(p.tx + (rng() - 0.5) * spread), py = Math.round(p.ty + (rng() - 0.5) * spread); if (px > 1 && py > 1 && px < PW - 2 && py < PH - 2 && !tiles[at(px, py)] && reach[at(px, py)]) return { x: px * T + 16, y: py * T + 16 }; } return null; }
+    for (i = 0; i < NC; i++) {
+      if (special[i] || fromStart[i] < 3 || i === goal) continue;
+      var deg = degree(i), roll = rng();
+      if (deg >= 3 && roll < 0.7) { var a1 = inChamber(i, 4), a2 = inChamber(i, 5), a3 = inChamber(i, 5); if (a1) spawns.push({ x: a1.x, y: a1.y, type: 'screegolem' }); if (a2) spawns.push({ x: a2.x, y: a2.y, type: 'cragharpy', pair: true }); if (a3) spawns.push({ x: a3.x, y: a3.y, type: 'direwolf' }); }
+      else if (roll < 0.42) { var pt2 = inChamber(i, 5); if (!pt2) continue; var r2 = rng(), type = r2 < 0.3 ? 'cragharpy' : r2 < 0.55 ? 'direwolf' : r2 < 0.7 ? 'crow' : r2 < 0.85 ? 'bear' : 'screegolem'; spawns.push({ x: pt2.x, y: pt2.y, type: type }); }
     }
-    arenas.forEach(function (a, j) { // each ledge holds a golem and company
-      var p1 = spot(a, 10), p2 = spot(a, 12), p3 = spot(a, 12);
-      if (p1) spawns.push({ x: p1.x, y: p1.y, type: 'screegolem' }); if (p2) spawns.push({ x: p2.x, y: p2.y, type: j ? 'screegolem' : 'cragharpy', pair: !j }); if (p3) spawns.push({ x: p3.x, y: p3.y, type: 'direwolf' });
-    });
+    var spawnP = ctrP(start), exitP = ctrP(goal);
     function marker(x, y, label, col) { return { x: x, y: y, sortY: -20, draw: function (c, sx, sy, t) { var gl = 0.5 + 0.5 * Math.sin(t * 2.4); c.save(); c.globalAlpha = 0.35 + 0.25 * gl; var g = c.createRadialGradient(sx, sy, 2, sx, sy, 34); g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = g; c.fillRect(sx - 36, sy - 36, 72, 72); c.restore(); c.fillStyle = '#4a4036'; c.fillRect(sx - 20, sy - 30, 5, 34); c.fillRect(sx + 15, sy - 30, 5, 34); c.fillRect(sx - 22, sy - 34, 44, 6); c.fillStyle = '#d8c8a0'; c.font = 'bold 8px Georgia'; c.textAlign = 'center'; c.fillText(label, sx, sy - 38); } }; }
-    props.push(marker(spawn.x, spawn.y - 40, 'THE PLAINS', 'rgba(255,224,150,.6)'));
-    props.push(marker(exit.x, exit.y, 'ABANDONED VILLAGE', 'rgba(150,200,255,.6)'));
-    var map = CC.Realm.create({ name: 'Rocky Pass', w: PW, h: PH, kind: kind, tiles: tiles, spawn: { x: spawn.x, y: spawn.y - 8 }, stairs: { x: -999, y: -999, tx: -1, ty: -1 }, chests: chests, enemySpawns: spawns, props: props, lights: lights,
+    props.push(marker(spawnP.x + 2.5 * T, spawnP.y + 1.5 * T, 'THE PLAINS', 'rgba(255,224,150,.6)'));
+    props.push(marker(exitP.x, exitP.y, 'ABANDONED VILLAGE', 'rgba(150,200,255,.6)'));
+    var spawn = { x: spawnP.x + 2.5 * T, y: spawnP.y + 1.5 * T - 8 }, exit = { x: exitP.x, y: exitP.y };
+    var map = CC.Realm.create({ name: 'Rocky Pass', w: PW, h: PH, kind: kind, tiles: tiles, spawn: spawn, stairs: { x: -999, y: -999, tx: -1, ty: -1 }, chests: chests, enemySpawns: spawns, props: props, lights: lights,
       ambient: '40,54,80,0.14', playerLight: 220, viewR: 300, fog: 0.04, fogColor: '190,205,225', ground: ground, detail: detail, drawSolid: solid, reveal: false, viewBoost: 1.2 });
-    map.rockDepth = rockDepth; map.passBack = { x: spawn.x, y: spawn.y - 8 }; map.passExit = exit; map.caveEntrance = caveEntrance; map.floor = 1;
+    map.rockDepth = rockDepth; map.passBack = { x: spawn.x, y: spawn.y }; map.passExit = exit; map.caveEntrance = caveEntrance; map.floor = 1; map.puzzle = puzzle; map.mazeSize = { w: MW, h: MH };
+    if (Z.open) clearThorns(map, true);
     return map;
   }
+  function clearThorns(map, instant) {
+    var th = map.puzzle && map.puzzle.thorn; if (!th) return;
+    th.tiles.forEach(function (ti) { map.tiles[ti] = 0; map.kind[ti] = 0; });
+    if (instant) Z.thorn = 1;
+  }
+  RP.debugSolve = function (map) { Z.open = 1; Z.thorn = 1; if (map) clearThorns(map, true); }; // tests and the testing tools
   RP.generate = function (fixedSeed) {
     var seed = Number.isFinite(fixedSeed) ? fixedSeed >>> 0 : (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0, map = null, tries = 0;
     while (!map && tries < 24) { map = build(seeded(seed + tries * 7919)); tries++; }
@@ -334,6 +556,6 @@
     map.seed = seed; RP.map = map; RP.titleOn();
     return map;
   };
-  RP.reset = function () { opened = false; scene = null; speech = null; eagleScript(false); if (CC.camFocus) CC.camFocus = null; };
+  RP.reset = function () { opened = false; scene = null; speech = null; Z = fresh(); dlg = null; eagleScript(false); if (CC.camFocus) CC.camFocus = null; };
   RP.serialize = function () { return opened ? 1 : 0; };
 })(window);

@@ -565,13 +565,25 @@
   function drawSettings(c, hit, x, y, w, h) {
     var S = CC.Settings; if (!S) { tx(c, 'Settings unavailable', x + w / 2, y + h / 2, 14, COL.dim, 'center'); return; }
     // everything below is clipped to the modal and scrolls (wheel, or drag the background); hits and hover follow the scroll
-    var vx = x, vy = y, vw = w, vh = h, outerHit = hit, scr = settingsScroll;
+    var leatherOn = !!(CC.LeatherUI && CC.LeatherUI.settings);
+    if (leatherOn) CC.LeatherUI.ribbon(c, x + w / 2, y + 4, Math.min(w - 50, 240), 'SETTINGS'); // the title plaque stays put; the rows scroll under it
+    var vx = x, vy = leatherOn ? y + 42 : y, vw = w, vh = leatherOn ? h - 42 : h, outerHit = hit, scr = settingsScroll;
     hit(vx, vy, vw, vh, function (px, py) { // dragging the background scrolls
       var t = Date.now(); if (t - settingsTouchT > 250) settingsAnchor = py; settingsTouchT = t;
       settingsScroll = Math.max(0, Math.min(settingsMax, settingsScroll + settingsAnchor - py)); settingsAnchor = py;
     }, true);
     hit = function (hx, hy, hw, hh, cb, drag) { var y1 = Math.max(hy - scr, vy), y2 = Math.min(hy - scr + hh, vy + vh); if (y2 > y1) outerHit(hx, y1, hw, y2 - y1, cb, drag); };
     var mouseY0 = mouse.y; mouse.y += scr; c.save(); c.beginPath(); c.rect(vx, vy, vw, vh); c.clip(); c.translate(0, -scr);
+    function finishSettings(endY) {
+      c.restore(); mouse.y = mouseY0;
+      settingsMax = Math.max(0, endY - vy - vh + 6); settingsScroll = Math.max(0, Math.min(settingsMax, settingsScroll));
+      if (settingsMax > 0) { // a scroll track on the right edge, and a hint while there is more below
+        var th = Math.max(24, vh * vh / (vh + settingsMax)), ty = vy + (vh - th) * (settingsScroll / settingsMax);
+        rr(c, vx + vw - 6, vy + 2, 4, vh - 4, 2); c.fillStyle = 'rgba(0,0,0,0.5)'; c.fill(); rr(c, vx + vw - 6, ty, 4, th, 2); c.fillStyle = leatherOn ? '#b8bfc7' : COL.accent; c.fill();
+        if (settingsScroll < settingsMax - 4) tx(c, 'scroll for more', vx + vw / 2, vy + vh - 8, 9, COL.dim, 'center');
+      }
+    }
+    if (leatherOn) { finishSettings(CC.LeatherUI.settings(c, hit, mouse, x, vy + 4, w - 8, S)); return; } // the iron & leather rows (leatherui.js)
     var yy = y + 14;
     tx(c, 'SETTINGS', x + w / 2, yy, 16, COL.accent, 'center'); yy += 30;
     function row(title, desc, label, on, cb, color) {
@@ -653,13 +665,7 @@
       yy += 74;
     })();
     row('Movement stick', 'Floating appears under your thumb. Fixed stays in the corner.', S.get('stick') === 'fixed' ? 'FIXED  -  tap for floating' : 'FLOATING  -  tap for fixed', true, function () { S.set('stick', S.get('stick') === 'fixed' ? 'floating' : 'fixed'); }, '#3a5a8a');
-    c.restore(); mouse.y = mouseY0;
-    settingsMax = Math.max(0, yy - y - vh + 6); settingsScroll = Math.max(0, Math.min(settingsMax, settingsScroll));
-    if (settingsMax > 0) { // a scroll track on the right edge, and a hint while there is more below
-      var th = Math.max(24, vh * vh / (vh + settingsMax)), ty = vy + (vh - th) * (settingsScroll / settingsMax);
-      rr(c, vx + vw - 5, vy + 2, 3, vh - 4, 1.5); c.fillStyle = 'rgba(0,0,0,0.45)'; c.fill(); rr(c, vx + vw - 5, ty, 3, th, 1.5); c.fillStyle = COL.accent; c.fill();
-      if (settingsScroll < settingsMax - 4) tx(c, 'scroll for more', vx + vw / 2, vy + vh - 8, 9, COL.dim, 'center');
-    }
+    finishSettings(yy);
   }
   CC.UISettingsWheel = function (dy) { if (!(target && cur === 'settings')) return false; settingsScroll = Math.max(0, Math.min(settingsMax, settingsScroll + dy * 0.6)); return true; };
 
@@ -695,13 +701,15 @@
         addHit(0, 0, W, H, function () { close(); });
         addHit(px, py, pw, ph, function () { /* absorb taps inside the panel */ });
       }
-      if (CC.SkillScreen && CC.SkillScreen.hubFrame) CC.SkillScreen.hubFrame(c, px, py, pw, ph); else frame(c, px, py, pw, ph);
+      var leather = cur === 'settings' && CC.LeatherUI; // the Settings window is iron & leather
+      if (leather) CC.LeatherUI.frame(c, px, py, pw, ph); else if (CC.SkillScreen && CC.SkillScreen.hubFrame) CC.SkillScreen.hubFrame(c, px, py, pw, ph); else frame(c, px, py, pw, ph);
       var TT = tabs(), tw = (pw - 20 - 36 - (TT.length - 1) * 4) / TT.length;
       if (cur === 'party' && TT.length === TABS.length + 1) cur = 'inv'; // left the session while the tab was open
       TT.forEach(function (tb, i) {
         var bx = px + 10 + i * (tw + 4), by = py + 10, on = tb.id === cur;
         var hov = target && mouse.x >= bx && mouse.x < bx + tw && mouse.y >= by && mouse.y < by + 28, lbl = CC.SkillScreen && CC.SkillScreen.hubTab ? tb.name : pw < 425 || !tb.key ? tb.name : tb.name + ' [' + tb.key.slice(3) + ']';
-        if (CC.SkillScreen && CC.SkillScreen.hubTab) CC.SkillScreen.hubTab(c, bx, by, tw, 28, on, hov, (CC.SkillScreen.roman ? lbl.toUpperCase() : lbl), CC.SkillScreen.roman ? CC.SkillScreen.roman(i + 1) : '');
+        if (leather) CC.LeatherUI.tab(c, bx, by, tw, 28, on, hov, lbl.toUpperCase());
+        else if (CC.SkillScreen && CC.SkillScreen.hubTab) CC.SkillScreen.hubTab(c, bx, by, tw, 28, on, hov, (CC.SkillScreen.roman ? lbl.toUpperCase() : lbl), CC.SkillScreen.roman ? CC.SkillScreen.roman(i + 1) : '');
         else {
           rr(c, bx, by, tw, 28, 6); c.fillStyle = on ? 'rgba(224,168,74,0.2)' : (hov ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.05)'); c.fill();
           c.lineWidth = on ? 2 : 1; c.strokeStyle = on ? COL.accent : COL.line; c.stroke();
@@ -710,8 +718,9 @@
         if (target) addHit(bx, by, tw, 28, function () { open(tb.id); });
       });
       var cx0 = px + pw - 34;
-      rr(c, cx0, py + 10, 24, 28, 8); c.fillStyle = 'rgba(255,90,90,0.25)'; c.fill();
-      tx(c, 'X', cx0 + 12, py + 24.5, 13, '#ff8a8a', 'center');
+      if (leather) CC.LeatherUI.close(c, cx0, py + 10, 24, 28, target && mouse.x >= cx0 && mouse.x < cx0 + 24 && mouse.y >= py + 10 && mouse.y < py + 38);
+      else { rr(c, cx0, py + 10, 24, 28, 8); c.fillStyle = 'rgba(255,90,90,0.25)'; c.fill();
+      tx(c, 'X', cx0 + 12, py + 24.5, 13, '#ff8a8a', 'center'); }
       if (target) addHit(cx0, py + 10, 24, 28, function () { close(); });
       var ax = px + 10, ay = py + 48, aw = pw - 20, ah = ph - 58, noop = function () {};
       var hit = target ? addHit : noop;
@@ -780,7 +789,7 @@
     hudBar(c, px + 10, py + 9, bw, 15, p.hp / (p.maxHp || 1), '#ff6b6b', '#b01e3a', Math.ceil(p.hp) + ' / ' + Math.ceil(p.maxHp));
     hudBar(c, px + 10, py + 27, bw, 11, p.mana / (p.maxMana || 1), '#6bb8ff', '#2a56c8', null);
     hudBar(c, px + 10, py + 41, bw, 8, p.xp / (p.xpNext || 1), '#9be36b', '#4a9a2a', null);
-    var where = s.mode === 'dungeon' ? (s.area === 'forest' ? 'Giant Forest' : s.area === 'plains' ? 'Rolling Plains' : s.area === 'rocky-pass' ? 'Rocky Pass' : s.area === 'village' ? 'Abandoned Village' : s.area === 'village-cellar' ? 'The Cellar' : s.area === 'cinderwake' ? 'Cinderwake ' + (s.floor || 1) : s.area === 'defense' ? 'Defense' : s.area === 'tree-ascent' ? 'Tree Bough '+(s.treeFloor||1) : 'Floor ' + s.floor) : 'Town';
+    var where = s.mode === 'dungeon' ? (s.area === 'forest' ? 'Giant Forest' : s.area === 'plains' ? 'Rolling Plains' : s.area === 'rocky-pass' ? 'Rocky Pass' : s.area === 'village' ? 'Abandoned Village' : s.area === 'village-cellar' ? 'The Cellar' : s.area === 'cinderwake' ? 'Cinderwake ' + (s.floor || 1) : s.area === 'emberdeep' ? (s.floor === 2 ? 'The Core' : 'The Emberdeep') : s.area === 'defense' ? 'Defense' : s.area === 'tree-ascent' ? 'Tree Bough '+(s.treeFloor||1) : 'Floor ' + s.floor) : 'Town';
     tx(c, 'LV ' + (p.level || 1), px + 12, py + 61, 13, COL.accent);
     if (!endless) tx(c, where, px + pw / 2, py + 61, 11, COL.text, 'center');
     tx(c, Math.floor(s.gold || 0) + ' G', px + pw - 12, py + 61, 13, COL.gold, 'right');
