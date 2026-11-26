@@ -207,6 +207,7 @@
 
   /* ---------- panels ---------- */
   function drawSkills(c, addHit, x, y, w, h, p) {
+    if (CC.SkillScreen && CC.SkillScreen.draw) { CC.SkillScreen.draw(c, addHit, x, y, w, h, p, { mouse: mouse, clock: clock, close: close, say: function (s) { say(s, COL.accent); } }); return; } // the Tablet of Ascension (skillscreen.js); the code below is the plain fallback
     var SK = CC.Skills; // sub-tabs: Passives (this tree), Training and Abilities (abilities.js)
     if (SK && SK.uiBar && p) {
       var U = { tx: tx, button: button, COL: COL }, mode = SK.uiBar(c, addHit, x, y, w, p, U);
@@ -677,15 +678,18 @@
         addHit(0, 0, W, H, function () { close(); });
         addHit(px, py, pw, ph, function () { /* absorb taps inside the panel */ });
       }
-      frame(c, px, py, pw, ph);
+      if (CC.SkillScreen && CC.SkillScreen.hubFrame) CC.SkillScreen.hubFrame(c, px, py, pw, ph); else frame(c, px, py, pw, ph);
       var TT = tabs(), tw = (pw - 20 - 36 - (TT.length - 1) * 4) / TT.length;
       if (cur === 'party' && TT.length === TABS.length + 1) cur = 'inv'; // left the session while the tab was open
       TT.forEach(function (tb, i) {
         var bx = px + 10 + i * (tw + 4), by = py + 10, on = tb.id === cur;
-        rr(c, bx, by, tw, 28, 6); c.fillStyle = on ? 'rgba(224,168,74,0.2)' : (target && mouse.x >= bx && mouse.x < bx + tw && mouse.y >= by && mouse.y < by + 28 ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.05)'); c.fill();
-        c.lineWidth = on ? 2 : 1; c.strokeStyle = on ? COL.accent : COL.line; c.stroke();
-        tx(c,pw<425||!tb.key?tb.name:tb.name+' ['+tb.key.slice(3)+']',bx+tw/2,by+14.5,
-           pw<350||TT.length>5&&pw<460?10:12,on?COL.accent:COL.dim,'center');
+        var hov = target && mouse.x >= bx && mouse.x < bx + tw && mouse.y >= by && mouse.y < by + 28, lbl = CC.SkillScreen && CC.SkillScreen.hubTab ? tb.name : pw < 425 || !tb.key ? tb.name : tb.name + ' [' + tb.key.slice(3) + ']';
+        if (CC.SkillScreen && CC.SkillScreen.hubTab) CC.SkillScreen.hubTab(c, bx, by, tw, 28, on, hov, (CC.SkillScreen.roman ? lbl.toUpperCase() : lbl), CC.SkillScreen.roman ? CC.SkillScreen.roman(i + 1) : '');
+        else {
+          rr(c, bx, by, tw, 28, 6); c.fillStyle = on ? 'rgba(224,168,74,0.2)' : (hov ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.05)'); c.fill();
+          c.lineWidth = on ? 2 : 1; c.strokeStyle = on ? COL.accent : COL.line; c.stroke();
+          tx(c, lbl, bx + tw / 2, by + 14.5, pw < 350 || TT.length > 5 && pw < 460 ? 10 : 12, on ? COL.accent : COL.dim, 'center');
+        }
         if (target) addHit(bx, by, tw, 28, function () { open(tb.id); });
       });
       var cx0 = px + pw - 34;
@@ -759,7 +763,7 @@
     hudBar(c, px + 10, py + 9, bw, 15, p.hp / (p.maxHp || 1), '#ff6b6b', '#b01e3a', Math.ceil(p.hp) + ' / ' + Math.ceil(p.maxHp));
     hudBar(c, px + 10, py + 27, bw, 11, p.mana / (p.maxMana || 1), '#6bb8ff', '#2a56c8', null);
     hudBar(c, px + 10, py + 41, bw, 8, p.xp / (p.xpNext || 1), '#9be36b', '#4a9a2a', null);
-    var where = s.mode === 'dungeon' ? (s.area === 'forest' ? 'Giant Forest' : s.area === 'plains' ? 'Rolling Plains' : s.area === 'rocky-pass' ? 'Rocky Pass' : s.area === 'village' ? 'Abandoned Village' : s.area === 'village-cellar' ? 'The Cellar' : s.area === 'defense' ? 'Defense' : s.area === 'tree-ascent' ? 'Tree Bough '+(s.treeFloor||1) : 'Floor ' + s.floor) : 'Town';
+    var where = s.mode === 'dungeon' ? (s.area === 'forest' ? 'Giant Forest' : s.area === 'plains' ? 'Rolling Plains' : s.area === 'rocky-pass' ? 'Rocky Pass' : s.area === 'village' ? 'Abandoned Village' : s.area === 'village-cellar' ? 'The Cellar' : s.area === 'cinderwake' ? 'Cinderwake ' + (s.floor || 1) : s.area === 'defense' ? 'Defense' : s.area === 'tree-ascent' ? 'Tree Bough '+(s.treeFloor||1) : 'Floor ' + s.floor) : 'Town';
     tx(c, 'LV ' + (p.level || 1), px + 12, py + 61, 13, COL.accent);
     if (!endless) tx(c, where, px + pw / 2, py + 61, 11, COL.text, 'center');
     tx(c, Math.floor(s.gold || 0) + ' G', px + pw - 12, py + 61, 13, COL.gold, 'right');
@@ -830,6 +834,7 @@
   function key(code) {
     var p = hero();
     if (code === 'Escape' && target) { close(); return true; }
+    if (target && cur === 'skills' && CC.SkillScreen && CC.SkillScreen.key && CC.SkillScreen.key(code)) return true; // 1 / 2 / 3 switch the three tablets
     for (var i = 0; i < TABS.length; i++) if (TABS[i].key === code) { if (!p || p.perkOpen) return false; toggle(TABS[i].id); return true; }
     return false;
   }

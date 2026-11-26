@@ -343,7 +343,7 @@
 
   /* ---------- recorded music: assets/music/<name>.mp3 plays instead of the generated track for these areas (looped, crossfaded) ---------- */
   // a name plays on a loop; a list plays through in turn (each song fades out as it finishes and the next fades in)
-  var MUS_FILES = { title: 'theme', town: 'foresttown', forest: 'forest', plains: 'plains', cave: 'cave', tunnel: 'insidetree', ascent: 'insidetree', village: ['ghosttown', 'ghosttown2'], boss: 'bossbattle' };
+  var MUS_FILES = { title: 'theme', town: 'foresttown', forest: 'forest', plains: 'plains', cave: 'cave', tunnel: 'insidetree', ascent: 'insidetree', village: ['ghosttown', 'ghosttown2'], boss: 'bossbattle', cinderwake: 'cave' };
   var FILE_GAIN = 2.4; // the recorded songs are louder than the generated ones, so they are trimmed to sit at the same level
   var musBufs = {}, musWait = {}, fileSrc = null, fileGain = null, fileKey = null, fileList = null, fileTimers = [], fileFading = false;
   function loadMusic(name, cb) {
@@ -405,7 +405,7 @@
     if (mode === 'title') id = 'title'; else if (mode === 'town') id = 'town';
     else if (area === 'forest') id = 'forest'; else if (area === 'tree-tunnel') id = 'tunnel'; else if (area === 'tree-ascent') id = 'ascent';
     else if (area === 'plains') { var pd = s.map && s.map.pond; id = (curId === 'pond' ? pd && pd.h > 0.02 : pd && pd.h > 0.08) ? 'pond' : 'plains'; }
-    else if (area === 'rocky-pass') id = 'pass'; else if (area === 'village') id = 'village'; else if (area === 'village-cellar') id = 'cellar';
+    else if (area === 'rocky-pass') id = 'pass'; else if (area === 'village') id = 'village'; else if (area === 'village-cellar') id = 'cellar'; else if (area === 'cinderwake') id = 'cinderwake';
     else if (area === 'defense') id = 'battle'; else if (area === 'testroom') id = null; else id = 'cave';
     if (E && E.bossBar && mode === 'dungeon') id = 'boss';
     if (mode === 'dead') id = null;

@@ -11,7 +11,7 @@
 (function (root) {
   'use strict';
   var CC = root.CC = root.CC || {}, QN = CC.QuestNav = {}, TAU = Math.PI * 2, T = CC.TILE = CC.TILE || 32;
-  var COLORS = { unhatched: '#ffd24a', rockslide: '#ff9a3a', chapel: '#b48aff' };
+  var COLORS = { unhatched: '#ffd24a', rockslide: '#ff9a3a', chapel: '#b48aff', cinderwake: '#ff7a3a' };
   function npc(map, name) { var l = map && map.npcs || [], i; for (i = 0; i < l.length; i++) if (l[i].name === name) return l[i]; return null; }
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 
@@ -104,6 +104,7 @@
     list.push({ id: 'unhatched', name: 'The Unhatched', color: COLORS.unhatched, done: !!(EQ && EQ.stage && EQ.stage() === 'complete') });
     if ((EQ && EQ.tunnelUnlocked && EQ.tunnelUnlocked()) || (RP && RP.isOpen && RP.isOpen())) list.push({ id: 'rockslide', name: 'The Rockslide', color: COLORS.rockslide, done: !!(RP && RP.isOpen && RP.isOpen()) });
     if (V && V.hook) list.push({ id: 'chapel', name: 'Beneath the Chapel', color: COLORS.chapel, done: false });
+    var CS = CC.CinderwakeStory; if (CS && (CS.isOpen() || (V && V.hook && CC.state && CC.state.area === 'village-cellar'))) list.push({ id: 'cinderwake', name: 'The Unpaid Debt', color: COLORS.cinderwake, done: CS.isDone() });
     return list;
   };
   QN.markers = function () {
@@ -115,6 +116,14 @@
     }
     if (ids.rockslide && !ids.rockslide.done && a === 'plains' && m.slide) out.push({ quest: 'rockslide', x: m.slide.x, y: m.slide.y, label: 'The Rockslide' });
     if (ids.chapel && a === 'village') { var V = CC.AbandonedVillage; if (V && V.trap) out.push({ quest: 'chapel', x: V.trap.x, y: V.trap.y, label: 'Beneath the Chapel' }); }
+    if (ids.cinderwake && !ids.cinderwake.done) {
+      var CS = CC.CinderwakeStory;
+      if (a === 'village-cellar' && m.glass) out.push({ quest: 'cinderwake', x: m.glass.x, y: m.glass.y, label: CS && CS.isOpen() ? 'The Unpaid Debt: the glass stair' : 'The Unpaid Debt: loot the vault' });
+      if (a === 'cinderwake') {
+        var tgt = m.stairs && m.stairs.x > -900 ? m.stairs : m.reward || null;
+        if (tgt) out.push({ quest: 'cinderwake', x: tgt.x, y: tgt.y, label: 'The Unpaid Debt' + (m.floor === 3 ? ': the Hearthkeeper' : '') });
+      }
+    }
     return out;
   };
   // the large map's drawing layout: fits a small map to the panel; a big map is centred on the hero at a wide zoom
@@ -163,6 +172,7 @@
   /* ---------- the quest log ---------- */
   var QL = QN.QuestLog = { sel: 'unhatched' };
   var TEXT = {
+    cinderwake: { title: 'THE UNPAID DEBT', lines: ['The cellar vault hides a stair of fused glass.', 'Below the chapel a furnace still burns, and its keeper', 'still counts the years the village owes.', '', 'Put the Hearthkeeper down and close the book.'], open: 'The Hearthkeeper is down. The furnace door stays shut.', closed: 'Loot the cellar vault to find the way down, then descend the glass stair.' },
     rockslide: { title: 'THE ROCKSLIDE', lines: ['A rockslide blocks the west path of the Rolling Plains.', 'Three travellers argue about how to move it.', '', 'Your eagle can scout above the rocks and find', 'a way round: a hidden goat trail through the pass.'], open: 'The trail is open. The Rocky Pass lies beyond.', closed: 'Find a way past the rockslide. Your eagle may help.' },
     chapel: { title: 'BENEATH THE CHAPEL', lines: ['The ghosts of the ruined village speak of', '"the one beneath the chapel".', '', 'A trapdoor in the village leads down to the cellar,', 'where monsters guard rooms of loot.'], open: '', closed: 'Find the trapdoor and go down into the cellar.' }
   };

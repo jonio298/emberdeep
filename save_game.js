@@ -98,7 +98,7 @@ function write(n,data){
  }catch(e){lastError=String(e);}
 })();
 
-var AREA={town:'Town',forest:'Giant Forest','tree-tunnel':'Hollow Tree',plains:'Rolling Plains','tree-ascent':'Eagle Tree',defense:'Town Defense','rocky-pass':'Rocky Pass',village:'Abandoned Village','village-cellar':'The Cellar'};
+var AREA={town:'Town',forest:'Giant Forest','tree-tunnel':'Hollow Tree',plains:'Rolling Plains','tree-ascent':'Eagle Tree',defense:'Town Defense','rocky-pass':'Rocky Pass',village:'Abandoned Village','village-cellar':'The Cellar',cinderwake:'The Cinderwake'};
 function info(d){
  if(!d)return null;
  var p=d.player||{},where=d.area==='cave'?'Cave floor '+(d.floor||1):(AREA[d.area]||'Town');
@@ -147,6 +147,7 @@ S.save=function(){
    bestFloor:s.bestFloor||1,bridgeDown:!!s.bridgeDown,
    potions:s.potions||0,manaPotions:s.manaPotions||0,inventory:Array.isArray(s.inventory)?s.inventory:[],
    quest:CC.EggQuest&&CC.EggQuest.serialize?CC.EggQuest.serialize():null,
+   cinderwake:CC.CinderwakeStory&&CC.CinderwakeStory.serialize?CC.CinderwakeStory.serialize():null,
    waypoints:CC.Waypoints&&CC.Waypoints.status?CC.Waypoints.status():null,
    camp:CC.Camp&&CC.Camp.exportState?CC.Camp.exportState():null
   };

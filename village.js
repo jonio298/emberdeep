@@ -363,7 +363,8 @@
         V.speech = { name: G.name, text: CC.HauntedForest.speakToQuestGiver(), t0: Date.now() };
         return true;
       }
-      var line = G.lines[(best.n = (best.n || 0) + 1) - 1 < G.lines.length ? best.n - 1 : G.lines.length - 1];
+      var gl = best.idx === 4 && CC.CinderwakeStory && CC.CinderwakeStory.verrin ? CC.CinderwakeStory.verrin() : null, lines = gl || G.lines; // Verrin has more to say once the way below is open
+      var line = lines[(best.n = (best.n || 0) + 1) - 1 < lines.length ? best.n - 1 : lines.length - 1];
       V.speech = { name: G.name, text: line, t0: Date.now() }; V.heard[best.idx] = 1; best.face = p.x < best.x ? -1 : 1;
       if (best.idx === 4 && best.n >= 2 && Object.keys(V.heard).length >= 3 && !V.hook) { V.hook = 1; fxText(p.x, p.y - 30, 'A NEW QUEST AWAITS...', '#bfe9ff', 12); if (CC.Audio) CC.Audio.event('newquest'); if (CC.SaveGame && CC.SaveGame.save) CC.SaveGame.save(); }
       return true;
@@ -373,7 +374,7 @@
     return false;
   }
   V.interact = function () { var s = CC.state; if (!s) return false; if (s.area === 'village') return interactVillage(); if (s.area === 'village-cellar') return interactCellar(); return false; };
-  V.nearAction = function () { var s = CC.state, p = hero(); if (!p || !s) return false; if (s.area === 'village' && V.map) { return V.map.vil.ghosts.some(function (g) { return g.a > 0.3 && Math.hypot(p.x - g.x, p.y - g.y) < 60; }) || (V.trap && Math.hypot(p.x - V.trap.x, p.y - V.trap.y) < 54) || Math.hypot(p.x - V.map.backPos.x, p.y - V.map.backPos.y) < 60; } if (s.area === 'village-cellar' && V.cellar) return Math.hypot(p.x - V.cellar.exit.x, p.y - V.cellar.exit.y) < 60; return false; };
+  V.nearAction = function () { var s = CC.state, p = hero(); if (!p || !s) return false; if (s.area === 'village' && V.map) { return V.map.vil.ghosts.some(function (g) { return g.a > 0.3 && Math.hypot(p.x - g.x, p.y - g.y) < 60; }) || (V.trap && Math.hypot(p.x - V.trap.x, p.y - V.trap.y) < 54) || Math.hypot(p.x - V.map.backPos.x, p.y - V.map.backPos.y) < 60; } if (s.area === 'village-cellar' && V.cellar) return Math.hypot(p.x - V.cellar.exit.x, p.y - V.cellar.exit.y) < 60 || !!(CC.CinderwakeStory && CC.CinderwakeStory.nearGlass(V.cellar)); return false; };
   V.nearForestTrail = function () {
     var m = village(), p = hero();
     return !!(m && p && Math.hypot(p.x - m.forestTrail.x, p.y - m.forestTrail.y) < 54);
@@ -411,6 +412,9 @@
     var map = CC.Realm.create({ name: 'The Cellar', w: CW, h: CH, kind: kind, tiles: tiles, spawn: spawn, stairs: { x: -999, y: -999, tx: -1, ty: -1 }, chests: chests, enemySpawns: spawns, props: props, lights: lights,
       ambient: '10,12,22,0.55', playerLight: 190, viewR: 250, fog: 0.1, fogColor: '40,46,60', ground: cellarGround, detail: cellarDetail, drawSolid: cellarSolid, reveal: false, viewBoost: 1.1 });
     map.cellar = true; map.exit = exit; map.art = art; map.vaultRoom = VAULT;
+    var glass = { x: (VAULT.x0 + 1) * T + 16, y: (VAULT.y0 + VAULT.h - 2) * T + 16 }; // the back wall of the vault: a stair of fused glass once BOTH vault chests are open
+    map.glass = glass; map.vaultChests = [chests[6], chests[7]];
+    props.push({ x: glass.x, y: glass.y, sortY: -4, reveal: false, draw: function (c, sx, sy, t) { if (CC.CinderwakeStory) CC.CinderwakeStory.drawGlass(c, sx, sy, t); } });
     // reachability
     var seen = new Uint8Array(N), q = [at(Math.floor(spawn.x / T), Math.floor(spawn.y / T))], qi = 0; seen[q[0]] = 1; while (qi < q.length) { var c0 = q[qi++], x0 = c0 % CW, y0 = (c0 / CW) | 0; [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (d) { var xx = x0 + d[0], yy = y0 + d[1]; if (xx < 0 || yy < 0 || xx >= CW || yy >= CH) return; var ni = at(xx, yy); if (seen[ni] || tiles[ni]) return; seen[ni] = 1; q.push(ni); }); }
     var ok = true; chests.forEach(function (ch) { if (!seen[at(ch.tx, ch.ty)]) ok = false; }); return ok ? map : null;
@@ -443,7 +447,7 @@
     while (!map && tries < 24) { map = buildCellar(seeded(seed + tries * 6151)); tries++; }
     if (!map) throw new Error('Cellar generation failed'); map.seed = seed; V.cellar = map; return map;
   };
-  function interactCellar() { var p = hero(), m = V.cellar; if (p && m && Math.hypot(p.x - m.exit.x, p.y - m.exit.y) < 60) { if (CC.leaveCellar) CC.leaveCellar(); return true; } return false; }
+  function interactCellar() { var p = hero(), m = V.cellar; if (p && m && CC.CinderwakeStory && CC.CinderwakeStory.nearGlass(m)) return CC.CinderwakeStory.enterFromVault(); if (p && m && Math.hypot(p.x - m.exit.x, p.y - m.exit.y) < 60) { if (CC.leaveCellar) CC.leaveCellar(); return true; } return false; }
 
   /* =================== per-frame: weather progress, lightning, apparitions, ghosts, spawns =================== */
   var E = CC.Enemies, oUpdate = E && E.update;

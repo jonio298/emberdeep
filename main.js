@@ -237,7 +237,7 @@
   CC.startRun = function (floor, area) {
     call('CriticalScene', 'reset');
     var s = CC.state;
-    s.area = area === 'testroom' ? 'testroom' : area === 'village' && has('AbandonedVillage', 'generate') ? 'village' : area === 'village-cellar' && has('AbandonedVillage', 'generateCellar') ? 'village-cellar' : area === 'rocky-pass' && has('RockPass', 'generate') ? 'rocky-pass' : area === 'tree-ascent' && has('TreeAscent', 'generate') ? 'tree-ascent' : area === 'tree-tunnel' && has('TreeTunnel', 'generate') ? 'tree-tunnel' : area === 'defense' && has('Defense', 'generate') ? 'defense' : area === 'plains' && has('Plains', 'generate') ? 'plains' : area === 'forest' && has('Forest', 'generate') ? 'forest' : 'cave'; // 'forest' = the Giant Forest, then the Rolling Plains, in front of floor 1
+    s.area = area === 'testroom' ? 'testroom' : area === 'village' && has('AbandonedVillage', 'generate') ? 'village' : area === 'village-cellar' && has('AbandonedVillage', 'generateCellar') ? 'village-cellar' : area === 'cinderwake' && has('Cinderwake', 'generate') ? 'cinderwake' : area === 'rocky-pass' && has('RockPass', 'generate') ? 'rocky-pass' : area === 'tree-ascent' && has('TreeAscent', 'generate') ? 'tree-ascent' : area === 'tree-tunnel' && has('TreeTunnel', 'generate') ? 'tree-tunnel' : area === 'defense' && has('Defense', 'generate') ? 'defense' : area === 'plains' && has('Plains', 'generate') ? 'plains' : area === 'forest' && has('Forest', 'generate') ? 'forest' : 'cave'; // 'forest' = the Giant Forest, then the Rolling Plains, in front of floor 1
     s.floor = Math.max(1, floor | 0 || 1);
     if(!s.startGold)s.startGold=s.gold;
     s.mode = 'dungeon';
@@ -303,9 +303,26 @@
     var tr = CC.AbandonedVillage && CC.AbandonedVillage.trap, p = s.player; if (tr && p) { p.x = tr.x + 30; p.y = tr.y + 8; snapCamera(); } call('Audio', 'event', 'doorclose');
     call('SaveGame', 'save'); return true;
   };
+  CC.enterCinderwake = function () { // the glass stair in the cellar vault
+    var s = CC.state; if (s.area !== 'village-cellar' || !has('Cinderwake', 'generate')) return false;
+    rememberWorld(); s.area = 'cinderwake'; s.floor = 1; call('CriticalScene', 'reset'); resetInputHeld(); loadFloor();
+    call('Audio', 'event', 'door'); call('SaveGame', 'save'); return true;
+  };
+  CC.leaveCinderwake = function () {
+    var s = CC.state; if (s.area !== 'cinderwake') return false;
+    rememberWorld(); s.area = 'village-cellar'; s.floor = 1; call('CriticalScene', 'reset'); resetInputHeld(); loadFloor();
+    var g = CC.AbandonedVillage && CC.AbandonedVillage.cellar && CC.AbandonedVillage.cellar.glass, p = s.player; if (g && p) { p.x = g.x + 36; p.y = g.y - 8; snapCamera(); }
+    call('Audio', 'event', 'doorclose'); call('SaveGame', 'save'); return true;
+  };
   CC.nextFloor = function () {
     if (CC.Endless?.active()) return CC.Endless.stairs();
     call('CriticalScene', 'reset');
+    if (CC.state.area === 'cinderwake') { // the Cinderwake's three floors: Ashfall Stair, Slag Warrens, the Hearth
+      if ((CC.state.floor | 0) >= 3) return;
+      rememberWorld(); CC.state.floor = (CC.state.floor | 0) + 1; resetInputHeld(); loadFloor();
+      CC.fx.text(cam.x + cam.w / 2, cam.y + cam.h / 2, CC.state.floor === 2 ? 'THE SLAG WARRENS' : 'THE HEARTH', '#ffb04a', 16);
+      call('SaveGame', 'save'); return;
+    }
     if(CC.state.area==='tree-ascent'){
       if(!call('TreeAscent','canAdvance'))return;
       if((CC.state.treeFloor||1)<5){
@@ -384,6 +401,7 @@
     else if (s.area === 'rocky-pass') { map = call('RockPass', 'generate', s.resumeSeed); CC.Dungeon = map; }
     else if (s.area === 'village') { map = call('AbandonedVillage', 'generate', s.resumeSeed); CC.Dungeon = map; }
     else if (s.area === 'village-cellar') { map = call('AbandonedVillage', 'generateCellar', s.resumeSeed); CC.Dungeon = map; }
+    else if (s.area === 'cinderwake') { map = call('Cinderwake', 'generate', Math.max(1, Math.min(3, s.floor | 0 || 1)), Number.isFinite(s.resumeSeed) ? s.resumeSeed : undefined); CC.Dungeon = map; }
     else if (s.area === 'testroom') { map = call('TestMode','arena'); CC.Dungeon = map; }
     else if (s.area === 'tree-tunnel') { map = call('TreeTunnel', 'generate', s.resumeSeed); CC.Dungeon = map; }
     else if (s.area === 'defense') { map = call('Defense', 'generate', s.resumeSeed); CC.Dungeon = map; }
@@ -410,7 +428,7 @@
     var s = CC.state;
     s.coop = false;
     try { if (navigator.sendBeacon) navigator.sendBeacon('/api/hit?e=start&c=' + encodeURIComponent(classId)); } catch (e) { /* the traffic counter is optional */ } // counts a new game by hero only
-    clearWorldCache();CC.state.testMode=false;call('SaveGame','newGame');call('EggQuest','reset');
+    clearWorldCache();CC.state.testMode=false;call('SaveGame','newGame');call('EggQuest','reset');call('CinderwakeStory','reset');
     s.gold=0;s.inventory=[];s.potions=2;s.manaPotions=1;s.bridgeDown=false;s.treeFloor=1;s.treeBest=1;
     call('Camp', 'clear'); // a fresh hero must not inherit a previous run's fence or checkpoint
     call('Portal','reset');lastWorld=null;
@@ -428,7 +446,7 @@
   function beginRun(classId,scene,character,coop){
     clearWorldCache();
     var s=CC.state;s.testMode=false;
-    call('Camp','clear');call('Portal','reset');call('EggQuest','reset');lastWorld=null;
+    call('Camp','clear');call('Portal','reset');call('EggQuest','reset');call('CinderwakeStory','reset');lastWorld=null;
     s.soloDefense=!coop&&!!(scene&&scene.area==='defense');
     s.coop=!!coop;s.inventory=[];s.potions=2;s.manaPotions=1;s.gold=0;s.kills=0;s.runGold=0;s.coopSlot=0;
     s.classId=classId;s.bestFloor=1;s.treeFloor=Math.max(1,scene&&scene.tf||1);
@@ -559,7 +577,7 @@
     if(!data||!data.player||!data.classId)return false;
     clearWorldCache();
     call('Camp','clear');call('Portal','reset');lastWorld=null;CC.state.testMode=false;call('CriticalScene','reset');call('UI','close');
-    call('Waypoints','reset');call('EggQuest','restore',data.quest);
+    call('Waypoints','reset');call('EggQuest','restore',data.quest);call('CinderwakeStory','restore',data.cinderwake);
     var s=CC.state,p=call('Classes','create',data.classId);
     if(!p)return false;
     Object.assign(p,data.player);
@@ -675,6 +693,7 @@
     if (s.area === 'plains' && has('Plains', 'interact') && call('Plains', 'interact')) return;
     if (s.area === 'rocky-pass' && call('RockPass', 'interact')) return;
     if ((s.area === 'village' || s.area === 'village-cellar') && call('AbandonedVillage', 'interact')) return;
+    if (s.area === 'cinderwake' && (call('CinderwakeStory', 'interact') || call('Cinderwake', 'interact'))) return;
     var st = s.map && s.map.stairs;
     if (st && Math.hypot(p.x - st.x, p.y - st.y) <= 26) { CC.nextFloor(); return; }
     var chests = s.map && s.map.chests || [];
@@ -695,6 +714,7 @@
     if (CC.Waypoints && CC.Waypoints.isNear && CC.Waypoints.isNear()) return true;
     if(s.area==='tree-ascent'&&call('TreeAscent','nearAction'))return true;
     if((s.area==='village'||s.area==='village-cellar')&&call('AbandonedVillage','nearAction'))return true;
+    if(s.area==='cinderwake'&&(call('CinderwakeStory','nearAction')||call('Cinderwake','nearAction')))return true;
     if(s.area==='rocky-pass'&&call('RockPass','nearAction'))return true; // the ACTION button for the way back and the way on to the village
     if(s.area==='plains'&&map&&map.passGate&&CC.RockPass&&CC.RockPass.isOpen()&&Math.hypot(p.x-map.passGate.x,p.y-map.passGate.y)<=100)return true; // climb the goat trail
     if(s.area==='plains'&&CC.HauntedPond&&CC.HauntedPond.nearAction&&CC.HauntedPond.nearAction())return true;
@@ -1749,6 +1769,7 @@
     if (m === 'dungeon') call('PerfectWarp', 'drawScreen', ctx, W, H, cam.x, cam.y, drawZoom || curZoom || zoom); // a perfect shot warps the world and dims the rest
     if (m === 'dungeon') call('CriticalScene', 'drawScreen', ctx, W, H);
     if (m === 'dungeon') call('Wounds', 'drawScreen', ctx, W, H);
+    if (m === 'dungeon' && CC.state.area === 'cinderwake') call('Cinderwake', 'drawOverlay', ctx, W, H); // the area title and the ghosts' words
     if (!endless && (m === 'dungeon' || m === 'dead') && call('AbandonedVillage', 'drawCinema', ctx, W, H) && m === 'dungeon') return; // the tree's strike covers everything, HUD included
     // No floating HUD/buttons/other overlays during the brief critical close-up.
     if(m==='dungeon'&&call('CriticalScene','isActive'))return;
