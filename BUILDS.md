@@ -5,6 +5,8 @@ Every build gets a number `YYYYMMDD.N` (N counts builds made that day). The newe
 
 | Build | Version | Notes |
 |---|---|---|
+| 20261126.29 | 0.3.0 | Menu leather grain now uses a cheap plain-alpha texture (no overlay blend or clipping), speeding up every menu. |
+| 20261126.28 | 0.3.0 | Item pickup sound 70% quieter; night songs 50% louder; a much lighter inventory screen (no canvas blur, flat cells, the hero panel painted once) with bigger tap areas on items; the night card waits for the area title; "It's coming..." in red after a stalker spawns. |
 | 20261126.27 | 0.3.0 | Night stalkers are far stronger and scale harder with your level; no pointer arrow to them; the night light is 30% smaller; a spawn sound; the night songs skip their long cricket build-up. |
 | 20261126.26 | 0.3.0 | Three feral growl sounds for the night stalkers (as each one appears and as each attack begins). |
 | 20261126.25 | 0.3.0 | The single Icicle Cannon shard auto-aims: a boss in reach first, otherwise the closest monster. |

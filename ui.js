@@ -285,14 +285,10 @@
   function drawItemCell(c, x, y, cs, it, slotName, chosen, info) {
     var hov = !!info && mouse.x >= x && mouse.x < x + cs && mouse.y >= y && mouse.y < y + cs, rc = it ? (it.color || COL.line) : null;
     if (hov) { hoverInfo = it ? { it: it, info: info, x: x, y: y, cs: cs } : hoverInfo; hovering = true; }
-    var g = c.createLinearGradient(0, y, 0, y + cs);
-    g.addColorStop(0, hov ? '#5a3a28' : '#3a2418'); g.addColorStop(1, hov ? '#3a2216' : '#1f1009');
-    rr(c, x, y, cs, cs, 5); c.fillStyle = g; c.fill();
+    rr(c, x, y, cs, cs, 5); c.fillStyle = hov ? '#4a2f20' : '#2e1b11'; c.fill();
     if (it) { c.globalAlpha = hov ? 0.34 : 0.2; c.fillStyle = rc; rr(c, x, y, cs, cs, 5); c.fill(); c.globalAlpha = 1; }
-    c.save();
-    if (it && it.rarity >= 2) { c.shadowColor = rc; c.shadowBlur = 6 + 3 * Math.sin(clock * 3); }
+    if (it && it.rarity >= 2) { c.globalAlpha = 0.3; c.lineWidth = 5; c.strokeStyle = rc; rr(c, x, y, cs, cs, 5); c.stroke(); c.globalAlpha = 1; } // a soft rarity glow, without the costly canvas blur
     c.lineWidth = chosen ? 3 : hov ? 2.5 : 2; c.strokeStyle = chosen ? '#fff' : (it ? rc : (hov ? COL.accent : '#3a2e24')); rr(c, x, y, cs, cs, 5); c.stroke();
-    c.restore();
     rr(c, x + 3, y + 3, cs - 6, cs - 6, 3); c.lineWidth = 1; c.strokeStyle = 'rgba(255,255,255,0.06)'; c.stroke();
     if (CC.ItemArt) CC.ItemArt.draw(c, it, it ? it.slot : slotName, x, y, cs, { ghostAlpha: 0.32 });
     else tx(c, glyph(it ? it.slot : slotName), x + cs / 2, y + cs / 2 + 0.5, Math.round(cs * 0.42), it ? (it.color || '#fff') : 'rgba(143,128,112,0.55)', 'center');
@@ -304,13 +300,11 @@
     var hov = !!info && mouse.x >= x && mouse.x < x + cs && mouse.y >= y && mouse.y < y + cs, rc = it ? (it.color || COL.line) : accent || '#5a4630';
     if (hov) { hoverInfo = it ? { it: it, info: info, x: x, y: y, cs: cs } : hoverInfo; hovering = true; }
     c.save();
-    var g = c.createRadialGradient(x + cs / 2, y + cs / 2, 2, x + cs / 2, y + cs / 2, cs * 0.75);
-    g.addColorStop(0, hov ? '#553626' : '#3a2418'); g.addColorStop(1, '#170b06');
-    rr(c, x, y, cs, cs, 7); c.fillStyle = g; c.fill();
-    if (it) { var a = c.createRadialGradient(x + cs / 2, y + cs / 2, 2, x + cs / 2, y + cs / 2, cs * 0.7); a.addColorStop(0, rc + '66'); a.addColorStop(1, rc + '00'); rr(c, x, y, cs, cs, 7); c.fillStyle = a; c.fill(); }
-    if (it && it.rarity >= 2) { c.shadowColor = rc; c.shadowBlur = 8 + 4 * Math.sin(clock * 3); }
+    rr(c, x, y, cs, cs, 7); c.fillStyle = hov ? '#42291c' : '#2a170e'; c.fill();
+    if (it) { c.globalAlpha = 0.2; c.fillStyle = rc; rr(c, x, y, cs, cs, 7); c.fill(); c.globalAlpha = 1; }
+    if (it && it.rarity >= 2) { c.globalAlpha = 0.3; c.lineWidth = 6; c.strokeStyle = rc; rr(c, x, y, cs, cs, 7); c.stroke(); c.globalAlpha = 1; }
     c.lineWidth = chosen ? 3 : 2.4; c.strokeStyle = chosen ? '#fff6dc' : it ? rc : (hov ? COL.accent : '#7d848d'); rr(c, x, y, cs, cs, 7); c.stroke();
-    c.shadowBlur = 0; c.lineWidth = 1; c.strokeStyle = 'rgba(255,214,150,0.28)'; rr(c, x + 3, y + 3, cs - 6, cs - 6, 5); c.stroke();
+    c.lineWidth = 1; c.strokeStyle = 'rgba(255,214,150,0.28)'; rr(c, x + 3, y + 3, cs - 6, cs - 6, 5); c.stroke();
     c.fillStyle = '#8d949d'; [[x + 2, y + 2], [x + cs - 2, y + 2], [x + 2, y + cs - 2], [x + cs - 2, y + cs - 2]].forEach(function (q) { c.beginPath(); c.arc(q[0], q[1], 1.6, 0, 6.2832); c.fill(); });
     c.restore();
     if (CC.ItemArt) CC.ItemArt.draw(c, it, it ? it.slot : slotName, x + 2, y + 2, cs - 4, { ghostAlpha: 0.34 });
@@ -318,7 +312,20 @@
   }
 
   // The hero paper doll: a runed panel, a glowing sigil, and a detailed armoured figure for the sockets to sit on.
-  function drawPaperDoll(c, px, py, pw, ph, p, cs) {
+  var dollCv = null, dollKey = '';
+  function drawPaperDoll(c, px, py, pw, ph, p, cs) { // painted once into an image (it is static), then just blitted every frame
+    var dpr = 1; try { dpr = Math.max(1, Math.round(c.getTransform().a * 10) / 10); } catch (e) { dpr = 1; }
+    var key = [Math.round(pw), Math.round(ph), p.classId, p.color, cs, dpr].join('|');
+    if (typeof document !== 'undefined' && document.createElement) {
+      if (key !== dollKey || !dollCv) {
+        dollCv = dollCv || document.createElement('canvas'); dollCv.width = Math.ceil(pw * dpr) + 2; dollCv.height = Math.ceil(ph * dpr) + 2; dollKey = key;
+        var dc = dollCv.getContext('2d'), keepClock = clock; clock = 0; dc.setTransform(dpr, 0, 0, dpr, 0, 0); paintPaperDoll(dc, 0, 0, pw, ph, p, cs); clock = keepClock;
+      }
+      c.drawImage(dollCv, 0, 0, dollCv.width, dollCv.height, px, py, dollCv.width / dpr, dollCv.height / dpr); return;
+    }
+    paintPaperDoll(c, px, py, pw, ph, p, cs);
+  }
+  function paintPaperDoll(c, px, py, pw, ph, p, cs) {
     var col = p.color || '#e0a84a', cx = px + pw / 2, cls = p.classId || 'swordsman', i, a;
     c.save();
     var bg = c.createLinearGradient(0, py, 0, py + ph); bg.addColorStop(0, '#4a2c1c'); bg.addColorStop(0.55, '#2c180f'); bg.addColorStop(1, '#180c07');
@@ -463,7 +470,7 @@
       (function (idx) {
         var cx = gx + (idx % COLS) * (cs + gap), cy = yy + Math.floor(idx / COLS) * (cs + gap), it = bag[idx];
         drawItemCell(c, cx, cy, cs, it, null, sel.item && sel.item.src === 'bag' && sel.item.i === idx, it ? { src: 'bag', i: idx } : null);
-        if (it) addHit(cx, cy, cs, cs, function () { sel.item = { src: 'bag', i: idx }; });
+        if (it) addHit(cx - gap / 2, cy - gap / 2, cs + gap, cs + gap, function () { sel.item = { src: 'bag', i: idx }; }); // the gaps between cells count too
       })(i);
     }
     // detail

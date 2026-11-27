@@ -1923,6 +1923,7 @@
       call('MonsterMelee', 'drawStatus', ctx, W, H);
       call('DayNight', 'drawHud', ctx, W, H); // the little day / night clock
       call('DayNight', 'drawBanner', ctx, W, H); // 'Night Falls. Evil walks.'
+      call('NightStalkers', 'drawComing', ctx, W, H); // "It's coming..." after a night stalker appears
       call('UI', 'drawHud', ctx, W, H, addHit);   // CHAR and QUEST open the same tabbed journal
       call('UI', 'draw', ctx, W, H, addHit);
       if (!endless) {

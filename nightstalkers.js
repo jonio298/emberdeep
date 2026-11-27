@@ -338,7 +338,7 @@
   /* ---------- the director: who comes out of the dark, and when ---------- */
   var dir = { t: 40, nightFor: 0, announced: false };
   NS.count = function () { var n = 0; (E && E.list || []).forEach(function (e) { if (e.nightStalker && !e.dead && !e.leaving) n++; }); return n; };
-  NS.clear = function () { if (E && E.list) for (var i = E.list.length - 1; i >= 0; i--) if (E.list[i].nightStalker) E.list.splice(i, 1); NS.burns.length = 0; dir.t = 40; dir.nightFor = 0; dir.announced = false; };
+  NS.clear = function () { if (E && E.list) for (var i = E.list.length - 1; i >= 0; i--) if (E.list[i].nightStalker) E.list.splice(i, 1); NS.burns.length = 0; NS.comingAt = 0; dir.t = 40; dir.nightFor = 0; dir.announced = false; };
   var SPAWN_AREAS = { forest: 1, plains: 1, 'rocky-pass': 1, village: 1 };
   function pickType(area) {
     var w = { grinmask: 3, marionette: 3, scytheweaver: 2, veiledwidow: 3, wailchorus: 2, skullbloom: area === 'plains' ? 3 : 1.5, cinderhound: area === 'plains' ? 3 : 1.5, gloomcrawler: 3, gravemaw: area === 'plains' ? 2.5 : 1 };
@@ -356,9 +356,27 @@
       if (CC.fx && CC.fx.burst) CC.fx.burst(x, y, '#2a1a3a', 18, 70);
       if (CC.Audio && CC.Audio.fx) CC.Audio.fx('ghost_moan', { x: x, y: y, vol: 0.5, gap: 200 });
       if (CC.Audio && CC.Audio.play) CC.Audio.play('stalker_spawn', { x: x, y: y, vol: 0.9, gap: 400, vary: 0 });
+      NS.comingAt = Date.now() + 6000; // once the spawn sound has played out, the words appear
       return e;
     }
     return null;
+  };
+  /* "It's coming..." - creepy blood-red words that fade in and out after the spawn sound */
+  var COMING_LEN = 4600;
+  NS.comingActive = function () { return !!NS.comingAt && Date.now() >= NS.comingAt && Date.now() < NS.comingAt + COMING_LEN; };
+  NS.drawComing = function (ctx, W, H) {
+    if (!NS.comingAt) return; var el = Date.now() - NS.comingAt; if (el < 0) return; if (el > COMING_LEN) { NS.comingAt = 0; return; }
+    var u = el / COMING_LEN, a = u < 0.3 ? u / 0.3 : u > 0.7 ? (1 - u) / 0.3 : 1, now = Date.now() / 1000, txt = "It's coming...", px = Math.min(40, W / 10), cy = H * 0.34, i;
+    ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = 'italic bold ' + px + 'px Georgia, "Palatino Linotype", serif';
+    var letters = txt.split(''), total = ctx.measureText(txt).width + letters.length * 2, x = W / 2 - total / 2;
+    for (i = 0; i < letters.length; i++) {
+      var w = ctx.measureText(letters[i]).width + 2, la = Math.max(0, Math.min(1, a * 1.5 - i * 0.025)) * (0.8 + 0.2 * Math.sin(now * 11 + i * 1.9)), jx = Math.sin(now * 17 + i * 2.1) * 1.6 * a, jy = Math.cos(now * 14 + i * 1.3) * 1.4 * a + u * 6;
+      ctx.globalAlpha = la; ctx.shadowColor = 'rgba(210,10,20,0.95)'; ctx.shadowBlur = 16;
+      ctx.fillStyle = '#2a0306'; ctx.fillText(letters[i], x + w / 2 + jx + 2, cy + jy + 3);
+      ctx.shadowBlur = 8; ctx.fillStyle = '#d4121e'; ctx.fillText(letters[i], x + w / 2 + jx, cy + jy);
+      x += w;
+    }
+    ctx.restore();
   };
   NS.update = function (dt) {
     var s = CC.state, DN = CC.DayNight; if (!s || s.mode !== 'dungeon' || !DN || !E || s.coop) return;

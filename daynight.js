@@ -13,6 +13,7 @@
   'use strict';
   var CC = root.CC = root.CC || {}, D = CC.DayNight = {}, E = CC.Enemies, F = CC.Forest, PI2 = Math.PI * 2;
   var PHASE = 600, FADE = 28, NIGHT_HP = 1.15, NIGHT_DMG = 1.2, OUTDOOR = { forest: 1, plains: 1, 'rocky-pass': 1, village: 1, 'tree-ascent': 1 };
+  var titleHold = 0, lastMapSeen = null; // the area's own title card is on screen for a few seconds after arriving: the night card waits for it
   var clock = 0, n = 0, showT = 0, wasNight = null, banner = -1, bannerPending = false;
   var BANNER_LEN = 7;
   D.PHASE = PHASE; D.NIGHT_HP = NIGHT_HP; D.NIGHT_DMG = NIGHT_DMG;
@@ -77,7 +78,9 @@
     if (wasNight === null) wasNight = tn;
     if (tn && !wasNight) bannerPending = true; // the moment night falls
     wasNight = tn;
-    if (bannerPending && D.outdoors()) { bannerPending = false; banner = 0; if (CC.Audio && CC.Audio.fx) CC.Audio.fx('ghost_moan', { vol: 0.55, gap: 100 }); } // shown as soon as you are out under the sky
+    if (s.map !== lastMapSeen) { lastMapSeen = s.map; titleHold = 8; }
+    if (titleHold > 0) titleHold -= dt;
+    if (bannerPending && D.outdoors() && titleHold <= 0) { bannerPending = false; banner = 0; if (CC.Audio && CC.Audio.fx) CC.Audio.fx('ghost_moan', { vol: 0.55, gap: 100 }); } // shown as soon as you are out under the sky
     if (banner >= 0) { banner += dt; if (banner > BANNER_LEN) banner = -1; }
     var want = tn ? 1 : 0;
     n = n < want ? Math.min(want, n + dt / FADE) : Math.max(want, n - dt / FADE); // the light fades over about half a minute

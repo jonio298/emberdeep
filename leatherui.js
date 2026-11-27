@@ -24,14 +24,21 @@
       var cv = root.document && root.document.createElement('canvas'); if (!cv) return tex;
       cv.width = cv.height = 80; var g = cv.getContext('2d'); if (!g) return tex;
       var seed = 4242; function rnd() { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }
-      g.fillStyle = 'rgb(128,128,128)'; g.fillRect(0, 0, 80, 80);
+      // a transparent grain of light and dark flecks, laid down with plain alpha (the old 'overlay' blend and clip were slow on phones)
       for (var i = 0; i < 900; i++) { var v = rnd() < 0.5 ? 0 : 255; g.fillStyle = 'rgba(' + v + ',' + v + ',' + v + ',' + (0.05 + rnd() * 0.14) + ')'; g.fillRect(rnd() * 80, rnd() * 80, 0.8 + rnd() * 2.2, 0.8 + rnd() * 1.6); }
       g.strokeStyle = 'rgba(0,0,0,0.12)'; g.lineWidth = 1; for (var k = 0; k < 7; k++) { var px = rnd() * 80, py = rnd() * 80; g.beginPath(); g.moveTo(px, py); g.lineTo(px + (rnd() - 0.5) * 30, py + (rnd() - 0.5) * 12); g.stroke(); }
       tex = cv;
     } catch (e) { tex = false; }
     return tex;
   }
-  function grain(c, x, y, w, h, r, a) { var t = leather(); if (!t) return; c.save(); rr(c, x, y, w, h, r); c.clip(); try { c.globalCompositeOperation = 'overlay'; c.globalAlpha = a || 0.8; c.fillStyle = c.createPattern(t, 'repeat'); c.fillRect(x, y, w, h); } catch (e) { /* plain leather */ } c.restore(); }
+  var grainPat = null, grainCtx = null;
+  function grain(c, x, y, w, h, r, a) {
+    var t = leather(); if (!t) return;
+    try {
+      if (grainCtx !== c || !grainPat) { grainPat = c.createPattern(t, 'repeat'); grainCtx = c; }
+      var keep = c.globalAlpha; c.globalAlpha = keep * (a || 0.8) * 0.4; c.fillStyle = grainPat; rr(c, x, y, w, h, r); c.fill(); c.globalAlpha = keep;
+    } catch (e) { /* plain leather */ }
+  }
   function iron(c, x, y, w, h, r) { var g = c.createLinearGradient(x, y, x + w, y + h); g.addColorStop(0, '#7b828b'); g.addColorStop(0.45, '#4d535b'); g.addColorStop(1, '#2b2f35'); rr(c, x, y, w, h, r); c.fillStyle = g; c.fill(); }
   function rivet(c, x, y, r) { c.fillStyle = '#16181c'; c.beginPath(); c.arc(x, y, r + 0.8, 0, TAU); c.fill(); c.fillStyle = '#8d949d'; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill(); c.fillStyle = 'rgba(255,255,255,0.55)'; c.beginPath(); c.arc(x - r * 0.3, y - r * 0.3, r * 0.4, 0, TAU); c.fill(); }
 

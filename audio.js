@@ -366,6 +366,7 @@
   }
   // how loud a recorded song plays right now: normally the full level, but the ghost town starts almost silent and swells as you walk in (never past the full level)
   function fileTarget() {
+    if (fileKey === 'crickets_after_dark' || fileKey === 'midnight_pixel_path') return FILE_GAIN * 1.5; // the night songs are 50% louder
     if (!fileKey || fileKey.indexOf('ghosttown') !== 0) return FILE_GAIN;
     var s = CC.state, vu = s && s.area === 'village' && s.map && s.map.vil ? s.map.vil.u : 0;
     return FILE_GAIN * (0.06 + 0.94 * Math.min(1, Math.max(0, vu)));
@@ -437,7 +438,7 @@
       case 'drawbridge': A.fx('drawbridge', { vol: 1 }); A.play('door_slam', { vol: 0.45, delay: 1.6, dur: 0.9 }); break;
       case 'levelup': A.play('levelup', { vol: 1, gap: 0, vary: 0 }); A.play('levelupvoice', { vol: 1, gap: 0, vary: 0, delay: 1.55 }); break;
       case 'newquest': A.play('newquest', { vol: 1, gap: 0, vary: 0 }); break;
-      case 'pickup': A.play('item_pickup_gen', { vol: 0.8, x: d.x, y: d.y }); break;
+      case 'pickup': A.play('item_pickup_gen', { vol: 0.24, x: d.x, y: d.y }); break;
       case 'gold': A.fx('coin', { x: d.x, y: d.y, vol: 0.6, gap: 70 }); break;
       case 'rare': A.play('special_item', { vol: 0.9 }); break;
       case 'legendary': A.play('legendary', { vol: 1, gap: 0, vary: 0 }); break; // picking up a legendary item
