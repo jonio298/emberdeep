@@ -37,7 +37,7 @@
   var SPURT = { ghoul: { n: 9, pow: 130 }, charger: { n: 7, pow: 110 }, demon: { n: 8, pow: 120 }, spitter: { n: 8, pow: 100 }, scorpion: { n: 6, pow: 100 } };
 
   /* Toughness: every base monster HP is multiplied by HP_MULT (basic enemies took ~2 hits of 10 damage before, ~4 now). */
-  var HP_MULT = 2.46; // was 2.90: everything 15% softer (the forest felt far too beefy)
+  var HP_MULT = 1.72; // was 2.90, then 2.46, now 30% softer again after the balance pass (monsters had too much health)
   // the Giant Forest is eased further: forest monsters had 30% less health and 40% less damage than the original; now another 20% less health and 40% less damage on top
   function areaMul() { var a = CC.state && CC.state.area; return a === 'forest' ? { hp: 0.7 / 0.85 * 0.8, dmg: 0.6 / 0.8 * 0.6 } : { hp: 1, dmg: 1 }; }
   /* Dismemberment: parts that fly off in this order as HP falls (one per equal slice of the HP bar). The enemy keeps fighting. */

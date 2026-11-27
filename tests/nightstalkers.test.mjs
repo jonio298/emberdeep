@@ -41,7 +41,7 @@ test('all nine night stalkers are registered with strong stats and a sprite shee
 test('each stalker runs its whole choreography: telegraph first, then a strike that hurts, then a recovery', () => {
   for (const id of ['grinmask', 'marionette', 'scytheweaver', 'veiledwidow', 'wailchorus', 'skullbloom', 'cinderhound', 'gloomcrawler', 'gravemaw']) {
     const { NS, E, player, shots, list } = boot();
-    const e = E.spawn(id, 140, 0, 12);
+    const e = E.spawn(id, 240, 0, 12);
     e.ns = { frame: 0, alpha: 1 }; e.nightStalker = true; e.asleep = false;
     const used = new Set(), frames = new Set(); let telegraphed = 0, hurtAt = -1, shotsBefore = 0;
     for (let t = 0; t < 60 * 150; t++) {
@@ -96,11 +96,12 @@ test('night: stalkers come out of the dark, at most a few at once, and fade away
   assert.equal(list.filter(e => e.nightStalker).length, 0, 'never in caves');
 });
 
-test('killing a stalker drops boss-grade loot and a message', () => {
+test('killing a stalker drops a mini-boss treasure roll and a message', () => {
   const { CC, E, texts } = boot();
   const e = E.spawn('gravemaw', 10, 10, 10); e.nightStalker = true;
   E._kill(e);
-  assert.ok(CC.Loot.rolls.length >= 2);
+  assert.equal(CC.Loot.rolls.length, 1, 'one mini-boss roll (several items, never nothing)');
+  assert.ok(CC.Loot.rolls[0].miniBoss);
   assert.ok(texts.includes('NIGHTMARE SLAIN'));
 });
 

@@ -596,7 +596,7 @@
     if(!data||!data.player||!data.classId)return false;
     clearWorldCache();
     call('Camp','clear');call('Portal','reset');lastWorld=null;CC.state.testMode=false;call('CriticalScene','reset');call('UI','close');
-    call('Waypoints','reset');call('EggQuest','restore',data.quest);call('CinderwakeStory','restore',data.cinderwake);call('DayNight','restore',data.day);CC.state.cycle=data.cycle|0;CC.state.chapter=data.chapter|0||1;
+    call('Waypoints','reset');call('EggQuest','restore',data.quest);call('CinderwakeStory','restore',data.cinderwake);call('DayNight','restore',data.day);CC.state.cycle=data.cycle|0;CC.state.pity={n:data.pity|0};CC.state.chapter=data.chapter|0||1;
     var s=CC.state,p=call('Classes','create',data.classId);
     if(!p)return false;
     Object.assign(p,data.player);

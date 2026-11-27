@@ -88,6 +88,7 @@
     lifesteal: 'of the Leech', luck: 'of Fortune', cdr: 'of Haste', regen: 'of Mending', magnet: 'of Greed', gold: 'of Plenty' };
 
   // 21 named legendaries; effect ids are data for classes.js / combat to interpret.
+  var LEGEND_QLVL = { 'Gravewhisper': 6, 'Emberfang': 8, 'Stormcaller Rod': 10, 'Dawnbreaker': 12, 'Voidreaver': 14, 'Archmage Focus': 9, 'Deathbinder': 15, 'Nightfang': 7, 'Whisperkiss': 10, "Warlord's Edge": 22 };
   var LEGENDS = [
     { name: 'Emberfang', slot: 'weapon', stats: { dmg: 1.6, crit: 1 }, effect: { id: 'burn_on_hit', desc: 'Hits set enemies ablaze for 3s.' } },
     { name: 'Stormcaller Rod', slot: 'weapon', stats: { dmg: 1.3, cdr: 1.2 }, effect: { id: 'chain_lightning', desc: 'Attacks chain lightning to 2 nearby enemies.' } },
@@ -111,6 +112,7 @@
     { name: 'Wyrm Tooth', slot: 'trinket', stats: { crit: 3, dmg: 1 }, effect: { id: 'crit_bleed', desc: 'Critical hits cause bleeding.' } },
     { name: 'Lantern of Souls', slot: 'trinket', stats: { mana: 2, luck: 2 }, effect: { id: 'light_radius', desc: 'Light radius +30%; slain foes drop soul sparks.' } }
   ];
+
 
   // Affix names per stat: prefix (rare+) and suffix (uncommon+). Legacy SUFFIX/PREFIX stay as fallbacks.
   var PREFIX_STAT = {
@@ -153,6 +155,7 @@
     { name: 'Deathbinder', slot: 'weapon', cls: 'necromancer', stats: { dmg: 1.1, mana: 2, lifesteal: 1 }, effect: { id: 'minion_surge', desc: 'Minions gain +40% damage.' } },
     { name: 'Cloak of Daggers', slot: 'armor', cls: 'thief', stats: { armor: 1, speed: 2, crit: 1 }, effect: { id: 'shadow_step', desc: 'Dashing makes you untargetable briefly.' } }
   );
+  LEGENDS.forEach(function (l, i) { l.qlvl = LEGEND_QLVL[l.name] || [5, 9, 13, 17][i % 4]; }); // the level a monster must reach before this can drop (Diablo II quality level)
 
   // ---------- charms: small passive items with a bonus and a tradeoff ----------
   var CHARM_LIMIT = 3;
@@ -289,19 +292,23 @@
       newEffect: item.effect ? item.effect.desc : null, lostEffect: eq && eq.effect ? eq.effect.desc : null };
   }
   function hydrate(it) {
+    if (it && !it.reqLevel) { if (it.legendary && !it.qlvl) it.qlvl = LEGEND_QLVL[it.name] || null; it.reqLevel = reqLevelOf(it); } // older saves
     if (it && !it.compare) Object.defineProperty(it, 'compare', { value: function (eq) { return compare(this, eq); }, enumerable: false, writable: true, configurable: true });
     return it;
   }
 
+  // the level you must reach to wear it: a legendary's own level, else 80% of the item level (charms: none)
+  function reqLevelOf(it) { if (it.slot === 'charm') return 1; if (it.legendary && it.qlvl) return it.qlvl; return Math.max(1, Math.ceil((it.ilvl || 1) * 0.8)); }
   function finishValue(it) {
     var v = 0, stat;
     for (stat in it.stats) v += Math.abs(it.stats[stat]) * (SCORE[stat] || 1) * (it.stats[stat] < 0 ? 0.3 : 1);
     it.value = Math.max(1, Math.round(v * (1 + it.rarity)));
+    it.reqLevel = reqLevelOf(it);
     return hydrate(it);
   }
 
   // makeItem(floor, rarity, slot, cls): slot may be 'charm'. Optional cls (class id) avoids items restricted to other classes.
-  function makeItem(floor, rarity, slot, cls, level) {
+  function makeItem(floor, rarity, slot, cls, level, forceLegend) {
     floor = Math.max(1, floor | 0 || 1); level = curLevel(level);
     rarity = Math.max(0, Math.min(RARITIES.length - 1, rarity | 0));
     if (slot === 'charm') return makeCharm(floor, rarity);
@@ -327,7 +334,8 @@
     } else if (rarity === 4) {
       var pool = LEGENDS.filter(function (l) { return (!slot || l.slot === slot) && ok(l.cls); });
       if (!pool.length) pool = LEGENDS.filter(function (l) { return ok(l.cls); });
-      var L = pick(pool);
+      var L = forceLegend || pick(pool);
+      it.qlvl = L.qlvl || null;
       it.name = L.name; it.slot = L.slot; it.legendary = true; it.effect = { id: L.effect.id, desc: L.effect.desc };
       if (L.cls) it.classReq = L.cls;
       for (stat in L.stats) it.stats[stat] = statValue(stat, floor, mult * L.stats[stat]);
@@ -336,7 +344,7 @@
     } else {
       var prim = PRIMARY[slot], pl = POOL[slot].slice(), n = rar.affixes, base;
       // class-restricted bases: weapons (incl. thief daggers) and armor
-      var useClass = (slot === 'weapon' && R() < 0.45) || (slot === 'armor' && R() < 0.2);
+      var useClass = (slot === 'weapon' && R() < (CC.DropTables ? CC.DropTables.CLASS_WEAPON_ODDS : 0.45)) || (slot === 'armor' && R() < 0.2);
       if (useClass) {
         var cc = cls || pick(CLASSES);
         it.classReq = cc;
@@ -380,6 +388,11 @@
     var r = pickRarity(floor, luck, 0, tier, level);
     return makeCharm(floor, r);
   }
+  // an item of an already-rolled quality (the drop tables roll the quality themselves)
+  function rollItemOfQuality(ilvl, quality, cls, slot, legend, level) {
+    if (!slot) { slot = pickSlot(); if (quality === 4 && ilvl >= 8 && R() < Math.min(0.75, 0.35 + (ilvl - 8) * 0.04)) slot = 'weapon'; }
+    return makeItem(ilvl, quality, slot, cls, level, legend || undefined);
+  }
   // level: player level (defaults to CC.state.player.level, else 1)
   function rollItem(floor, luck, minRarity, cls, tier, level) {
     var rarity = pickRarity(floor, luck, minRarity, tier, level), slot = pickSlot();
@@ -395,6 +408,9 @@
     WEAPON_TYPES: WEAPON_TYPE_IDS, ELEMENTS: ELEMENT_IDS, rollCharm: rollCharm, CHARM_LIMIT: CHARM_LIMIT, SETS: SETS, CLASSES: CLASSES,
     charmLimit: function () { var p = CC.state && CC.state.player; return CHARM_LIMIT + (p && p.charmSlots | 0); },
     // true when the item may be equipped by the class id (items without classReq fit everyone)
+    rollItemOfQuality: rollItemOfQuality,
+    // strict, Diablo II style: gear above your level can be carried but not worn
+    canWear: function (item, level) { return !item || !item.reqLevel || (level || 1) >= item.reqLevel; },
     usableBy: function (item, cls) { return !item || !item.classReq || !cls || item.classReq === String(cls).toLowerCase(); },
     setRandom: function (fn) { rnd = fn || Math.random; },
     clear: function () { this.drops.length = 0; },
@@ -431,6 +447,7 @@
       var s = CC.state || {};
       if (!player || !item || s.autoEquip === false || item.slot === 'charm' || SLOTS.indexOf(item.slot) < 0) return false;
       if (!this.usableBy(item, player.classId)) return false;
+      if (!this.canWear(item, player.level)) return false;
       player.equipment = player.equipment || {};
       var eq = player.equipment[item.slot] || null;
       if (eq) {
@@ -464,8 +481,11 @@
       function gold(n) {
         for (var i = 0; i < n; i++) add(self._spawn('gold', x, y, { amount: Math.max(1, Math.round((2 + floor * 1.5) * (0.6 + R()) * (boss ? 2 : chest ? 1.5 : 1))), color: '#ffd24a' }));
       }
+      var DTm = CC.DropTables, dtier = DTm ? DTm.tierOf(src) : tier, cyc = (CC.state && CC.state.cycle) || 0, gotLegend = false, forceLeg = false;
       function item(minR, bonusLuck) {
-        var it = rollItem(floor, luck + (bonusLuck || 0), minR, undefined, chest ? 'normal' : tier);
+        var it;
+        if (DTm) { it = DTm.makeDrop({ tier: dtier, level: floor, luck: luck, cls: p && p.classId, minR: minR, cycle: cyc, force: forceLeg }); forceLeg = false; if (it.rarity === 4) gotLegend = true; }
+        else it = rollItem(floor, luck + (bonusLuck || 0), minR, undefined, chest ? 'normal' : tier);
         add(self._spawn('item', x, y, { item: it, rarity: it.rarity, color: it.color }));
       }
       function charm(bonusLuck) {
@@ -480,6 +500,17 @@
         if (R() < 0.5) add(self._spawn('hp', x, y, { amount: 25, color: '#ff4a5a' }));
         if (R() < 0.45) add(self._spawn('potion', x, y, { color: '#ff7ad0' }));
         if (R() < 0.35) add(self._spawn('mpotion', x, y, { color: '#6ab4ff' }));
+      } else if (DTm && (boss || dtier === 'miniboss')) { // bosses and mini-bosses: several items, never nothing, with the bad-luck protection
+        forceLeg = DTm.pity.due();
+        for (var bi = 0, bn = DTm.pickCount(dtier); bi < bn; bi++) item(1);
+        DTm.pity.kill(dtier, gotLegend);
+        if (boss) { if (R() < 0.25) charm(4); } else if (R() < 0.35) charm(6);
+        gold(boss ? ri(4, 6) : ri(2, 4));
+        if (boss) {
+          add(self._spawn('hp', x, y, { amount: 40, color: '#ff4a5a' })); add(self._spawn('mana', x, y, { amount: 30, color: '#4aa8ff' }));
+          add(self._spawn('potion', x, y, { color: '#ff7ad0' })); add(self._spawn('mpotion', x, y, { color: '#6ab4ff' }));
+          if (R() < 0.6) add(self._spawn('potion', x, y, { color: '#ff7ad0' }));
+        } else { add(self._spawn('hp', x, y, { amount: 30, color: '#ff4a5a' })); if (R() < 0.6) add(self._spawn('potion', x, y, { color: '#ff7ad0' })); }
       } else if (boss) {
         item(1, 4); item(1, 4); if (R() < 0.3) item(1, 4);
         if (R() < 0.25) charm(4);
@@ -489,7 +520,8 @@
         if (R() < 0.6) add(self._spawn('potion', x, y, { color: '#ff7ad0' }));
       } else {
         // Elites (the glowing ones) drop real loot: at least Uncommon, luckier, sometimes two pieces
-        if (elite) { item(1, 8); if (R() < 0.35) item(1, 6); if (R() < 0.35) charm(6); }
+        if (DTm) { for (var ci = 0, cn = DTm.pickCount(dtier); ci < cn; ci++) item(elite ? 1 : 0); if (elite && R() < 0.35) charm(6); }
+        else if (elite) { item(1, 8); if (R() < 0.35) item(1, 6); if (R() < 0.35) charm(6); }
         else if (R() < 0.07 + Math.min(luck, LUCK_CAP) * 0.0015) item(0);
         if (!elite && R() < 0.015) charm();
         if (R() < (elite ? 1 : 0.55)) gold(elite ? ri(2, 4) : 1);

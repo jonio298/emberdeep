@@ -5,5 +5,5 @@
 (function (root) {
   'use strict';
   var CC = root.CC = root.CC || {};
-  CC.VERSION = { version: '0.3.0', build: '20261126.35', label: 'v0.3.0 · build 20261126.35' };
+  CC.VERSION = { version: '0.3.0', build: '20261126.37', label: 'v0.3.0 · build 20261126.37' };
 })(typeof window !== 'undefined' ? window : globalThis);

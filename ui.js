@@ -135,6 +135,7 @@
     var bag = inv(), it = bag[idx];
     if (!it) return;
     if (it.classReq && it.classReq !== p.classId) { say('Only for ' + (it.className || it.classReq), COL.bad); return; }
+    if (it.reqLevel && (p.level || 1) < it.reqLevel) { say('Requires level ' + it.reqLevel, COL.bad); return; } // strict, Diablo II style
     var key = it.slot;
     p.equipment = p.equipment || {};
     if (it.slot === 'charm') {
@@ -397,6 +398,7 @@
     L.push({ t: it.name, col: it.color || COL.text, px: 14, h: 18 });
     L.push({ t: (it.rarityName || '') + ' ' + (it.slot || ''), col: COL.dim, px: 11, h: 14 });
     if (it.classReq) L.push({ t: (it.className || it.classReq) + ' only', col: it.classReq !== p.classId ? COL.bad : COL.dim, px: 11, h: 14 });
+    if (it.reqLevel > 1) L.push({ t: 'Requires level ' + it.reqLevel, col: (p.level || 1) < it.reqLevel ? COL.bad : COL.dim, px: 11, h: 14 });
     var keysS = Object.keys(it.stats || {}).concat(other ? Object.keys(other.stats || {}) : []);
     for (q = 0; q < keysS.length; q++) {
       k = keysS[q]; if (seen[k]) continue; seen[k] = 1;
@@ -496,7 +498,7 @@
     if (it.effect && it.effect.desc && it.effect.id !== 'charm' && ly < dy + detailH - 10) wrapText(c, it.effect.desc, x + 10, ly + 2, w - 130, 12, 10, COL.dim);
     var bx = x + w - 100;
     if (sel.item.src === 'bag') {
-      var blocked = !!(it.classReq && it.classReq !== p.classId);
+      var blocked = !!(it.classReq && it.classReq !== p.classId) || !!(it.reqLevel && (p.level || 1) < it.reqLevel);
       button(c, addHit, bx, dy + 5, 90, 25, 'Equip', !blocked, function () { equip(p, sel.item.i); });
       button(c, addHit, bx, dy + 34, 90, 25, 'Drop', true, function () { dropItem('bag', sel.item.i); }, '#5a3a3a');
       button(c, addHit, bx, dy + 63, 90, 25, 'Sell ' + (it.value || 0) + 'G', true, function () { sell(sel.item.i); }, '#6a4a2a');

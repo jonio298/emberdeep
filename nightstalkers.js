@@ -29,6 +29,12 @@
   var D = NS.DEFS;
   D.grinmask = { name: 'The Grinning Mask', hp: 330, dmg: 22, spd: 96, r: 8, xp: 170, size: 50, native: 'front', fly: true, hover: 10, color: '#c8c4cc', blood: '#8e213c',
     idle: [0, 1, 2, 3], F: { tele: 4, tele2: 5, lunge: 6, sweep: 7, atk: 8, recoil: 9, hover: 10, fade: 11 }, moves: {
+      rush: { range: [150, 440], w: 2, cd: 7, steps: [
+        { d: 0.3, f: 'tele', lock: 1, tele: { k: 'line', len: 400, w: 42 } },
+        { d: 0.4, f: 'lunge', dash: 940, hit: { k: 'line', len: 52, w: 46, dmg: 1.4, kb: 40, path: 1 }, fx: 'dust' },
+        { d: 0.22, f: 'tele', lock: 1, tele: { k: 'line', len: 400, w: 42 } },
+        { d: 0.4, f: 'lunge', dash: 940, hit: { k: 'line', len: 52, w: 46, dmg: 1.5, kb: 40, path: 1 }, fx: 'dust' },
+        { d: 0.9, f: 'recoil' }] },
       lunge: { range: [60, 270], w: 3, cd: 2.2, steps: [
         { d: 0.55, f: 'tele', lock: 1, tele: { k: 'line', len: 210, w: 34 } },
         { d: 0.24, f: 'lunge', dash: 560, hit: { k: 'line', len: 46, w: 34, dmg: 1.0, kb: 30, path: 1 } },
@@ -53,6 +59,12 @@
         { d: 0.5, f: 'big', dash: 430, hit: { k: 'line', len: 50, w: 40, dmg: 1.3, kb: 40, path: 1 }, fx: 'dust' }, { d: 0.7, f: 'recoil' }] } } };
   D.scytheweaver = { name: 'The Scythe Weaver', hp: 480, dmg: 28, spd: 84, r: 11, xp: 240, size: 72, native: 'front', color: '#a8402a', blood: '#7a1818',
     idle: [0, 1, 2, 3], F: { raise: 3, spread: 4, wind: 5, sweep: 6, dbl: 7, spin: 8, recoil: 9, rage: 10, down: 11 }, moves: {
+      rush: { range: [150, 440], w: 2, cd: 7, steps: [
+        { d: 0.3, f: 'wind', lock: 1, tele: { k: 'line', len: 400, w: 42 } },
+        { d: 0.4, f: 'sweep', dash: 940, hit: { k: 'line', len: 52, w: 46, dmg: 1.4, kb: 40, path: 1 }, fx: 'dust' },
+        { d: 0.22, f: 'wind', lock: 1, tele: { k: 'line', len: 400, w: 42 } },
+        { d: 0.4, f: 'sweep', dash: 940, hit: { k: 'line', len: 52, w: 46, dmg: 1.5, kb: 40, path: 1 }, fx: 'dust' },
+        { d: 0.9, f: 'recoil' }] },
       harvest: { range: [0, 120], w: 3, cd: 1.8, steps: [
         { d: 0.5, f: 'wind', lock: 1, tele: { k: 'cone', len: 112, half: 1.1 } }, { d: 0.24, f: 'sweep', hit: { k: 'cone', len: 112, half: 1.1, dmg: 1.0, at: 0.3 } },
         { d: 0.3, f: 'wind', lock: 1, tele: { k: 'cone', len: 112, half: 1.1 } }, { d: 0.24, f: 'dbl', hit: { k: 'cone', len: 112, half: 1.1, dmg: 1.1, at: 0.3 } },
@@ -97,6 +109,12 @@
         { d: 0.6, f: 'drool', lock: 1 }, { d: 0.3, f: 'bite', shots: { n: 3, spread: 0.4, spd: 150, dmg: 0.65, col: '#b6c84a', life: 2.2 } }, { d: 0.8, f: 'drool' }] } } };
   D.cinderhound = { name: 'The Cinderhound', hp: 380, dmg: 25, spd: 150, r: 9, xp: 210, size: 60, native: 'left', color: '#c8501a', blood: '#ff7a1a',
     idle: [0, 1, 0, 1], F: { stalk: 1, stance: 2, eyes: 3, flames: 4, snarl: 5, crouch: 6, claw: 7, lunge: 8, recoil: 9, tired: 10, down: 11 }, moves: {
+      rush: { range: [150, 440], w: 2, cd: 7, steps: [
+        { d: 0.3, f: 'crouch', lock: 1, tele: { k: 'line', len: 400, w: 42 } },
+        { d: 0.4, f: 'lunge', dash: 940, hit: { k: 'line', len: 52, w: 46, dmg: 1.4, kb: 40, path: 1 }, fx: 'dust' },
+        { d: 0.22, f: 'crouch', lock: 1, tele: { k: 'line', len: 400, w: 42 } },
+        { d: 0.4, f: 'lunge', dash: 940, hit: { k: 'line', len: 52, w: 46, dmg: 1.5, kb: 40, path: 1 }, fx: 'dust' },
+        { d: 0.9, f: 'tired' }] },
       pounce: { range: [110, 330], w: 3, cd: 2.5, steps: [
         { d: 0.7, f: 'crouch', lock: 1, tele: { k: 'line', len: 300, w: 38 } },
         { d: 0.34, f: 'lunge', dash: 680, hit: { k: 'line', len: 48, w: 40, dmg: 1.3, burn: 3, kb: 30, path: 1 }, fx: 'dust' }, { d: 0.85, f: 'tired' }] },
@@ -107,6 +125,12 @@
       circle: { range: [130, 360], w: 1.2, cd: 5, steps: [{ d: 1.1, f: 'stalk', orbit: 1 }] } } };
   D.gloomcrawler = { name: 'The Gloom Crawler', hp: 420, dmg: 24, spd: 104, r: 10, xp: 220, size: 62, native: 'front', stealth: true, color: '#6a3a8a', blood: '#6a2a8a',
     idle: [0, 1, 0, 2], F: { creep: 1, stalk: 2, dim: 3, glow: 4, flare: 5, wind: 6, slash: 7, lunge: 8, recoil: 9, pose: 10, melt: 11 }, moves: {
+      rush: { range: [150, 440], w: 2, cd: 7, steps: [
+        { d: 0.3, f: 'wind', lock: 1, tele: { k: 'line', len: 400, w: 42 } },
+        { d: 0.4, f: 'lunge', dash: 940, hit: { k: 'line', len: 52, w: 46, dmg: 1.4, kb: 40, path: 1 }, fx: 'dust' },
+        { d: 0.22, f: 'wind', lock: 1, tele: { k: 'line', len: 400, w: 42 } },
+        { d: 0.4, f: 'lunge', dash: 940, hit: { k: 'line', len: 52, w: 46, dmg: 1.5, kb: 40, path: 1 }, fx: 'dust' },
+        { d: 0.9, f: 'recoil' }] },
       slash: { range: [0, 125], w: 3, cd: 1.6, steps: [
         { d: 0.5, f: 'wind', lock: 1, tele: { k: 'cone', len: 118, half: 1.25 } }, { d: 0.22, f: 'slash', hit: { k: 'cone', len: 118, half: 1.25, dmg: 1.1, at: 0.3 }, fx: 'dust' },
         { d: 0.3, f: 'wind', lock: 1, tele: { k: 'cone', len: 118, half: 1.25 } }, { d: 0.22, f: 'slash', hit: { k: 'cone', len: 118, half: 1.25, dmg: 1.2, at: 0.3 } }, { d: 0.65, f: 'recoil' }] },
@@ -125,7 +149,7 @@
       quake: { range: [0, 400], w: 1.5, cd: 8, steps: [
         { d: 0.9, f: 'power', tele: { k: 'circle', rad: 165 } }, { d: 0.28, f: 'power', hit: { k: 'circle', rad: 165, dmg: 1.1, slow: 1.6, kb: 55, at: 0.2 }, fx: 'shake' }, { d: 0.7, f: 'slump' }] } } };
   // the sprites are drawn small, to sit with the ordinary monsters, so every reach, telegraph and dash is scaled down with them
-  var BIG = 1.3, K = 0.72 * BIG; // the stalkers are drawn 30% larger, with their reach, telegraphs and hit circles
+  var BIG = 1.69, K = 0.72 * BIG; // the stalkers are drawn 69% larger than first (30% and then 30% more), with their reach, telegraphs and hit circles
   Object.keys(D).forEach(function (id) {
     var def = D[id]; if (def.scaled) return; def.scaled = 1; def.size = Math.round(def.size * BIG); def.r = Math.round(def.r * BIG * 10) / 10; if (def.hover) def.hover *= BIG;
     Object.keys(def.moves).forEach(function (mk) {
@@ -259,14 +283,14 @@
     var prevThink = E._think;
     E._think = function (e, dt, p, d, ang, f) { if (e.type && D[e.type]) { think(e, dt, p, d, ang, f); return; } return prevThink.apply(this, arguments); };
     var prevSpawn = E.spawn;
-    E.spawn = function (type) { var e = prevSpawn.apply(this, arguments); if (e && D[type]) { var def = D[type]; e.miniBoss = true; e.noKnock = true; var lv = e.lvl || 3; e.maxHp = e.hp = def.hp * (1.6 + lv * 0.45) * 3; e.dmg = def.dmg * (1.2 + lv * 0.14) * 1.5; /* nightmares: they grow much faster than you do, so every level is a hard fight */ e.r = def.r; e.ghost = !!def.fly; e.spd = def.spd; e.nightStalker = true; } return e; };
+    E.spawn = function (type) { var e = prevSpawn.apply(this, arguments); if (e && D[type]) { var def = D[type]; e.miniBoss = true; e.noKnock = true; var lv = e.lvl || 3; e.maxHp = e.hp = def.hp * (1.6 + lv * 0.45) * 2.1; e.dmg = def.dmg * (1.2 + lv * 0.14) * 1.5; /* nightmares: they grow much faster than you do, so every level is a hard fight */ e.r = def.r; e.ghost = !!def.fly; e.spd = def.spd; e.nightStalker = true; } return e; };
     var prevKill = E._kill;
     E._kill = function (e) { var was = !!(e && e.dead), r = prevKill.apply(this, arguments); if (e && e.dead && !was && e.nightStalker && !e.leaving) { try { slain(e); } catch (x) { if (root.console) console.error(x); } } return r; };
   }
   function slain(e) {
     var p = hero(); NS.slain = (NS.slain || 0) + 1;
     if (CC.fx) { CC.fx.text(e.x, e.y - 30, 'NIGHTMARE SLAIN', '#ffb0a0', 13); CC.fx.shake && CC.fx.shake(6); }
-    if (CC.Loot && CC.Loot.roll) { var lv = Math.max(3, Math.round(((p && p.level) || 3) * 0.7)); CC.Loot.roll({ x: e.x, y: e.y, boss: true }, lv, 4); CC.Loot.roll({ x: e.x, y: e.y, elite: true }, lv, 6); }
+    if (CC.Loot && CC.Loot.roll) { var lv = Math.max(3, Math.round((p && p.level) || 3)); /* a stalker is as high level as you are */ CC.Loot.roll({ x: e.x, y: e.y, miniBoss: true }, lv, 0); }
   }
 
   /* ---------- severed parts: a torn, bleeding gap is cut out of the sprite where the limb was (the part itself flies off via Enemies._detach) ---------- */
