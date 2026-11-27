@@ -795,7 +795,7 @@
 
   function layout() {
     // 15% smaller than the original, packed into the corner around the attack button (ax, ay)
-    var m = 10, ax = W - m - 34, ay = H - m - 34;
+    var m = 10, ax = W - m - 34, ay = H - m - 34 - 27; // lifted so the bottom of Spell I lines up with the bottom of the joystick base (H - 38)
     btns.attack = { x: ax, y: ay, r: 34, label: 'ATK' };
     btns.spell1 = { x: ax - 80, y: ay + 8, r: 25, label: 'S1' };
     btns.spell2 = { x: ax - 62, y: ay - 56, r: 25, label: 'S2' };

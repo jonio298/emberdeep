@@ -5,6 +5,7 @@ Every build gets a number `YYYYMMDD.N` (N counts builds made that day). The newe
 
 | Build | Version | Notes |
 |---|---|---|
+| 20261126.41 | 0.3.0 | Touch buttons lifted so Spell I lines up with the bottom of the joystick base. |
 | 20261126.40 | 0.3.0 | Touch buttons 15% smaller and packed into the bottom-right corner around the attack button. |
 | 20261126.39 | 0.3.0 | Art for all 70 legendary weapons (legendart.js: blade and head shapes, metals, accent glows and motifs such as flames, frost, lightning, skulls, eyes, webs; ItemArt asks it first), and the Legendary Index: its own tab (key L) listing every legendary by level in a paged grid with class filters, undiscovered ones shown as a faint outline shadow with ???? until found. Replaces the inventory Codex button. |
 | 20261126.38 | 0.3.0 | Gear update steps 2-4: the 70 legendary weapons (legendary_weapons.js; 56 class weapons, 5 boss-bound, 9 stalker-bound) with a real ability engine (legendary.js hooks hits, kills, casts, dashes, charges, hurt and ticks; every hit in classes.js now goes through wrapHit layers), bound weapons drop only from their own boss or stalker, the Legendary Codex (inventory button) remembers what you found, test-mode Give legendary, tests for all 70. |
