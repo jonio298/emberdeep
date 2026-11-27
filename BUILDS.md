@@ -5,6 +5,9 @@ Every build gets a number `YYYYMMDD.N` (N counts builds made that day). The newe
 
 | Build | Version | Notes |
 |---|---|---|
+| 20261126.15 | 0.3.0 | Night Stalkers drawn at ordinary-monster scale (about 50-76 px, reaches and dashes scaled to match) and their sprite sheets halved in size (4.5 MB to 2.1 MB). |
+| 20261126.14 | 0.3.0 | The nine Night Stalkers (Grinning Mask, Puppet Butcher, Scythe Weaver, Veiled Widow, Wailing Chorus, Skull Bloom, Cinderhound, Gloom Crawler, Gravemaw) hunt you out of the dark at night with telegraphed choreographed attacks, strong stats and boss-grade loot; class-coloured night light around each hero (swordsman blue/white, necromancer green/white, thief red/white, wizard deep blue/white). Sprite sheets in assets/night, originals in art_source/night_monsters. |
+| 20261126.13 | 0.3.0 | Endless modes (Survival, Catacombs, Town Defense) play Warfront Ascension and Struggle for the Throne back and forth on a loop. |
 | 20261126.12 | 0.3.0 | Fix: the furnace door to the Emberdeep was placed inside the hall's wall and could not be reached; it now stands on open floor in front of the furnace (tested on many seeds). |
 | 20261126.11 | 0.3.0 | Every menu now uses the iron & leather design: the character window (all tabs, with ribbon titles), inventory, skills, quests, map, stats, settings, party, buttons, dialogs, the level-up perk panel and the title menu. |
 | 20261126.10 | 0.3.0 | Settings window redrawn in the iron & leather style (riveted iron frame, stitched leather, ribbon title, red close button, ON pills, chevron steppers, gold sliders, icons) with the same options; Emberdeep chest placement fix. |

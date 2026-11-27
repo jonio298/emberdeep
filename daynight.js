@@ -46,6 +46,18 @@
     map.playerLight = map._dnLight * (1 + 0.1 * k); // your own light reaches a little further in the dark
   }
 
+  /* ---------- your own light: at night every hero carries a lantern-glow in their class colour ---------- */
+  var LIGHT = { swordsman: '110,170,255', wizard: '60,90,225', necromancer: '110,255,150', thief: '255,85,75' }; // blue/white, darker blue/white, green/white, red/white
+  D.lightColor = function (cls) { return LIGHT[cls] || '255,230,180'; };
+  function playerLight(map, p) {
+    if (!map || !map.lights || !p) return;
+    if (!map._dnPl) { map._dnPl = [{ x: 0, y: 0, r: 0, color: '255,255,255', inten: 0, flicker: 0.05 }, { x: 0, y: 0, r: 0, color: '255,255,255', inten: 0, flicker: 0.03 }]; map.lights.push(map._dnPl[0], map._dnPl[1]); }
+    var k = D.outdoors() ? n : 0, tint = map._dnPl[0], core = map._dnPl[1];
+    tint.x = core.x = p.x; tint.y = core.y = p.y - 4;
+    tint.color = LIGHT[p.classId] || '255,230,180'; tint.r = 175 * k; tint.inten = 0.9 * k;      // a wide pool of coloured light that lights the ground and the world about you
+    core.r = 70 * k; core.inten = 0.55 * k;                                                      // with a white-hot heart
+  }
+
   /* ---------- the monsters at night ---------- */
   function buff(e, on) {
     if (on && !e._nb) { e._nb = 1; e.maxHp = (e.maxHp || e.hp) * NIGHT_HP; e.hp *= NIGHT_HP; e.dmg = (e.dmg || 0) * NIGHT_DMG; if (e.contactDmg) e.contactDmg *= NIGHT_DMG; }
@@ -59,6 +71,7 @@
     var want = targetNight() ? 1 : 0;
     n = n < want ? Math.min(want, n + dt / FADE) : Math.max(want, n - dt / FADE); // the light fades over about half a minute
     lighting(s.map);
+    playerLight(s.map, CC.state.player);
     var night = D.outdoors() && n > 0.5, list = CC.Enemies && CC.Enemies.list, i;
     if (list) for (i = 0; i < list.length; i++) { var e = list[i]; if (e && !e.dead) buff(e, night); }
     if (showT > 0) showT -= dt;
@@ -79,7 +92,7 @@
     if (!list || !D.outdoors() || n < 0.05) return;
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
     for (i = 0; i < list.length; i++) {
-      e = list[i]; if (!e || e.dead || e.collapsed || e._cine || e.asleep) continue;
+      e = list[i]; if (!e || e.dead || e.collapsed || e._cine || e.asleep || e.nightStalker) continue;
       var sx = e.x - cam.x, sy = e.y - cam.y; if (sx < -30 || sy < -30 || sx > w + 30 || sy > h + 30) continue;
       d = EYE[e.type]; var r = e.r || 8, face = e.face || 1;
       if (e.type === 'direwolf') { pts = [[r * 0.62, -r * 0.28], [r * 0.9, -r * 0.2]]; col = '#ffd23a'; } // the werewolf's eyes (see its art below)

@@ -1,7 +1,8 @@
 # THE CINDERWAKE - area design and lore bible
 
-The area after the Abandoned Village (`village.js`, `CC.AbandonedVillage`). It is the "one beneath the chapel" that the ghosts keep
-mentioning. Planned module `cinderwake.js` (`CC.Cinderwake`), monsters in `cinderwake_monsters.js`. This file is design only.
+The Cinderwake is the area after the Abandoned Village (`village.js`, `CC.AbandonedVillage`). It lies under the ruined chapel and is entered
+through the village cellar vault. The "one beneath the chapel" is Warden Halric Vane, now the Hearthkeeper. The area is in
+`cinderwake.js` (`CC.Cinderwake`), with combat in `cinderwake_monsters.js` and quest progression in `cinderwake_story.js`.
 
 Stat numbers below are calibrated against `enemies.js` (Bone Warrior hp 26 / spd 58 / dmg 9, Ghoul hp 34 / dmg 9, Wailing Ghost hp 18,
 Cinder Demon hp 52 / dmg 12, Drake hp 210 / dmg 18). Treat them as ranges for the implementer to tune.
@@ -9,9 +10,8 @@ Cinder Demon hp 52 / dmg 12, Drake hp 210 / dmg 18). Treat them as ranges for th
 ## 1. Lore (canon)
 
 Long before the village had a name, the founders settled a cold valley where nothing would grow. Under the hill (where the chapel now
-stands) they found a buried furnace older than the valley, still warm. They called it the **Emberdeep**. It offered warmth, harvests and
-winters that never came, and asked for years. Not coin, not blood: years of life, a little from every household, paid at the chapel on
-the first frost.
+stands) they found a buried furnace older than the valley, still warm. They called it the **Emberdeep**. The founders fed the Emberdeep years of their lives in exchange for warmth. On each first frost, every household paid a little more
+at the chapel. The valley stayed warm enough to grow food through winter.
 
 The founders built the chapel over the furnace door so the bargain would look like worship. **Warden Halric Vane**, first of the founders,
 became its keeper and kept the ledger of years. For three generations the village was the warmest place in the world and nobody asked why
@@ -21,8 +21,8 @@ Then the village stopped paying. Brother Aldous refused the tithe, the families 
 go. The chapel bell tolled by itself, three times (the ghosts remember this). Everyone went to the chapel. The furnace collected the whole
 debt at once, and the village burned from the inside without a flame in the sky.
 
-- The **ghosts** in the village are the unpaid debt: years the Emberdeep was owed and never finished taking. They cannot move on until the
-  furnace is cold.
+- The **ghosts** in the village are the unpaid debt: years the Emberdeep was owed and never finished taking. Halric's death releases the ghost in the Hearth. Lifting the curse over the rest of the valley takes the journey through the furnace
+  door.
 - **Halric Vane** did not die. He bound himself to the furnace door as the **Hearthkeeper**, so the debt could still be collected and the
   ledger closed. He believes he is protecting the village.
 - Rain in the village is the last weather the valley had. Below, the rain turns to **ash**: the village's years, burning slowly.
@@ -84,7 +84,8 @@ Mood: still, almost beautiful. A great round hall, warm gold light, the Emberdee
   room, the founders' tithe room, with a tier-3 chest and a readable line: "First frost. Forty-one years paid." The chest holds a
   second lore item (the founders' tithe-bowl) and does not depend on the boss. Its existence is hinted by a faint draught of cold
   air and a gap in the ash on the floor in front of the lectern.
-- Exit: a return stair at the antechamber (`map.exit`). The furnace door stays closed (see teaser).
+- Exit: a return stair at the antechamber (`map.exit`). After the fight, the furnace door becomes the entrance to the follow-up quest
+  (section 7).
 
 ## 3. Monsters
 
@@ -124,7 +125,8 @@ All are hostile and use the existing enemy framework; new ids are `sootwretch`, 
 - Lore: "She lit a candle for every year she was owed. She is still counting."
 
 ### The Hearthkeeper (`hearthkeeper`) - boss
-- Who: Warden Halric Vane, bound to the furnace door.
+- Role and behaviour: three-phase gatekeeper. Warden Halric Vane holds the furnace door with ranged volleys, then pursues the player
+  with charges before holding his ground for the Collection.
 - Look: a tall figure of black iron and ash, a coal-red cavity for a chest, a ledger chained to one hand.
 - Stats: hp 380-460, spd 40-48, dmg 14-16 (melee), radius 20, xp 220-260. Gets a boss bar like existing bosses (`bossbattle` music).
 - Phase 1 (100-60% hp), **Ember Ring**: fires a ring of 10-12 ember shots that expand outward, with a gap that rotates each cast.
@@ -133,9 +135,8 @@ All are hostile and use the existing enemy framework; new ids are `sootwretch`, 
   every 12s.
 - Phase 3 (below 30%), **Collection**: the ledger opens and the hall's floor fills with slow, spreading ember seams that damage on
   contact; the Hearthkeeper stops moving and fires rings faster. The player must stand on the safe gaps.
-- Weakness: his chest cavity (the "coal") is exposed for 2s after each charge; hits to it take bonus damage. Candles and moths are
-  not needed.
-- Death: he kneels, the ledger burns, and a last line plays (section 4). The furnace door does NOT open.
+- Weakness: his chest cavity (the "coal") is exposed for 2s after each charge. He takes 50% more damage during that opening.
+- Death: he kneels, the ledger burns, and a last line plays (section 4). The furnace door becomes usable for the next quest.
 - Lore: "He is not guarding the furnace. He is keeping the village's accounts open, so that someday it might be paid in full."
 
 ## 4. Ghosts and NPCs (dialogue in the style of `village.js`)
@@ -144,7 +145,7 @@ Same format as `GHOSTS` in `village.js`: `{ name, lines: [...] }`. Ghosts are fr
 
 ```
 { name: 'Sister Imre', lines: [
-  'I climbed to the belfry to still the bell, but it tolled three times with no hand on the rope, as Brother Aldous says. Mine were already warm.' ] }
+  'I went up to still the bell. Three times it rang, and the rope never moved. It was warm in my hands.' ] }
 { name: 'Tomas Reeve', lines: [
   'Count the marks, traveller. Every one is a year. I scratched my own last, and it did not feel like a choice.' ] }
 { name: 'The Ledger-Clerk', lines: [
@@ -161,14 +162,14 @@ Same format as `GHOSTS` in `village.js`: `{ name, lines: [...] }`. Ghosts are fr
   'The ash has stopped falling. Listen. It is cold. I had forgotten cold.' ] }
 ```
 
-That is 8 spoken lines in total (six ghosts and NPCs at one line each, plus the boss death speech and the closing ghost). Canon note on
-the bell: the three tolls were unassisted, exactly as Brother Aldous says in `village.js`. Sister Imre went up to stop it and failed; she
-did not ring it.
+These eight dialogue lines follow the short exchanges in `village.js`. Sister Imre reaches the belfry and hears the same three unassisted
+tolls that Brother Aldous remembers.
 
 ## 5. Quest hook (for `questnav.js`)
 
 The existing quest is `chapel` ("Beneath the Chapel") with the hint "Find the trapdoor and go down into the cellar." Extend it into a
-chain with the same shape as the existing `{ title, lines, open, closed }` entries:
+chain with the existing `{ title, lines, open, closed }` entries. The journal shows `closed` while the quest is active and `open`
+after completion.
 
 ```
 chapel (existing, kept): title 'BENEATH THE CHAPEL', closed: 'Find the trapdoor and go down into the cellar.'
@@ -178,25 +179,29 @@ cinderwake (new): { title: 'THE UNPAID DEBT',
           'still counts the years the village owes.',
           '',
           'Put the Hearthkeeper down and close the book.'],
-  open: 'Descend the glass stair in the vault and defeat the Hearthkeeper.',
-  closed: 'Loot the cellar vault to find the way down.' }
+  open: 'The Hearthkeeper is down. The knocking comes from beyond the furnace door.',
+  closed: 'Loot the cellar vault to find the way down, then descend the glass stair.' }
 ```
 
-Marker: points at the cellar vault until both chests are opened, then at the revealed stair, then at the area exit once the boss is dead. Quest completes when the Hearthkeeper dies.
+The marker points to the cellar vault until both chests are opened, then to the glass stair. Inside the Cinderwake it points to the
+next descent and finally to the Hearthkeeper. His death completes the quest and enables the furnace-door marker for **The Source of
+the Curse**.
 
 ## 6. Reward
 
-- **Heartcoal** (unique): a still-warm coal from the Hearthkeeper. Passive: a small bonus to fire-type spells and a slow health
-  regeneration while standing still. Drawn as an ember-orange gem; name and tooltip: "Warm. It should not be."
+- **Heartcoal** (unique legendary trinket): a still-warm coal from the Hearthkeeper, drawn as an ember-orange gem. While equipped,
+  it adds 12% fire damage and heals 1.2% of maximum health per second while standing still. Tooltip copy: "Warm. It should not be."
 - Plus a large xp / loot drop (a tier-3 chest on floor 3), and the quest completion toast.
 - Lore keepsake: **Vane's Ledger Page** (no stat effect), a readable item: "Balance carried forward: all of them."
 
 ## 7. Where the story goes next (teaser)
 
-With the Hearthkeeper dead the ash stops falling, but the furnace door stays closed, and from behind it the player can hear a very
-slow, deliberate knocking, answered from far below. The Widow Verrin: "The Emberdeep was never the bottom. Halric's furnace was only the
-first door. Whatever it was warming, it is awake." The last line of the area: a deeper stair, sealed, with the same fused glass as the
-first and a faint cold draught coming up. The next area (not designed here) is the thing the furnace was built to warm.
+When the Hearthkeeper falls, ash stops falling in the Hearth. The hall is quiet long enough for the player to hear a deliberate knock
+behind the iron door and an answer from much farther below. The Widow Verrin hears it too. "Halric's furnace was only the first door.
+Whatever it was warming, it is awake."
+
+The furnace stays shut until the player approaches and uses the door. It opens onto another stair of fused glass. Heat rises from
+the red dark as the knocking stops. **The Source of the Curse** leads into the Emberdeep itself, where the Emberheart still burns.
 
 ## 8. Implementation notes (for other tasks)
 

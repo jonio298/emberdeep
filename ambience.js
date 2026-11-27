@@ -34,7 +34,20 @@
     }
     if (flies.length > want + 6) flies.splice(0, flies.length - want - 6);
   }
+  // the hero's own light at night, in the class colour with a white heart, on the ground and in the air around them
+  function playerGlow(ctx, cam) {
+    var DN = CC.DayNight, p = CC.state && CC.state.player; if (!DN || !p || !DN.outdoors || !DN.outdoors()) return;
+    var k = DN.nightness(); if (k < 0.03) return;
+    var col = DN.lightColor(p.classId), x = p.x - cam.x, y = p.y - cam.y - 4, g;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    g = ctx.createRadialGradient(x, y, 4, x, y, 190); g.addColorStop(0, 'rgba(' + col + ',' + 0.26 * k + ')'); g.addColorStop(0.45, 'rgba(' + col + ',' + 0.11 * k + ')'); g.addColorStop(1, 'rgba(' + col + ',0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 190, 0, PI2); ctx.fill();
+    ctx.save(); ctx.translate(x, y + 12); ctx.scale(1, 0.55); g = ctx.createRadialGradient(0, 0, 4, 0, 0, 130); g.addColorStop(0, 'rgba(' + col + ',' + 0.3 * k + ')'); g.addColorStop(1, 'rgba(' + col + ',0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 130, 0, PI2); ctx.fill(); ctx.restore(); // pooled on the ground
+    g = ctx.createRadialGradient(x, y, 2, x, y, 64); g.addColorStop(0, 'rgba(255,255,255,' + 0.16 * k + ')'); g.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 64, 0, PI2); ctx.fill();
+    ctx.restore();
+  }
   A.drawGlow = function (ctx, cam) {
+    playerGlow(ctx, cam);
     var a = area(); if (a !== 'forest' && a !== 'plains') return;
     var now = Date.now() / 1000, dt = Math.min(0.1, now - last || 0); if (dt > 0) { last = now; stepFlies(dt, cam); }
     var n = night(), i, f;

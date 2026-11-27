@@ -343,7 +343,7 @@
 
   /* ---------- recorded music: assets/music/<name>.mp3 plays instead of the generated track for these areas (looped, crossfaded) ---------- */
   // a name plays on a loop; a list plays through in turn (each song fades out as it finishes and the next fades in)
-  var MUS_FILES = { title: 'theme', town: 'foresttown', forest: 'forest', plains: 'plains', cave: 'cave', tunnel: 'insidetree', ascent: 'insidetree', village: ['ghosttown', 'ghosttown2'], boss: 'bossbattle', cinderwake: 'cave' };
+  var MUS_FILES = { title: 'theme', town: 'foresttown', forest: 'forest', plains: 'plains', cave: 'cave', tunnel: 'insidetree', ascent: 'insidetree', village: ['ghosttown', 'ghosttown2'], boss: 'bossbattle', cinderwake: 'cave', endless: ['warfront_ascension', 'struggle_for_the_throne'] };
   var FILE_GAIN = 2.4; // the recorded songs are louder than the generated ones, so they are trimmed to sit at the same level
   var musBufs = {}, musWait = {}, fileSrc = null, fileGain = null, fileKey = null, fileList = null, fileTimers = [], fileFading = false;
   function loadMusic(name, cb) {
@@ -407,7 +407,9 @@
     else if (area === 'plains') { var pd = s.map && s.map.pond; id = (curId === 'pond' ? pd && pd.h > 0.02 : pd && pd.h > 0.08) ? 'pond' : 'plains'; }
     else if (area === 'rocky-pass') id = 'pass'; else if (area === 'village') id = 'village'; else if (area === 'village-cellar') id = 'cellar'; else if (area === 'cinderwake' || area === 'emberdeep') id = 'cinderwake';
     else if (area === 'defense') id = 'battle'; else if (area === 'testroom') id = null; else id = 'cave';
-    if (E && E.bossBar && mode === 'dungeon') id = 'boss';
+    var inEndless = mode === 'dungeon' && ((CC.Endless && CC.Endless.active && CC.Endless.active()) || area === 'defense'); // Survival, Catacombs and Town Defense
+    if (inEndless) id = 'endless'; // the two Endless songs play back and forth, boss fights included
+    else if (E && E.bossBar && mode === 'dungeon') id = 'boss';
     if (mode === 'dead') id = null;
     if (id) A.music(id); else if (curId) A.stopMusic();
     if (fileGain && !fileFading) fileGain.gain.setTargetAtTime(fileTarget(), ctx.currentTime, 0.8); // the ghost town swells as you walk in
