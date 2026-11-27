@@ -332,7 +332,7 @@
     for (i = NS.burns.length - 1; i >= 0; i--) { var b = NS.burns[i]; b.t -= dt; b.acc += b.dps * dt; if (b.acc >= 1 && p && p.hp > 0) { var n = Math.floor(b.acc); b.acc -= n; p.hp -= n; if (CC.fx && CC.fx.text && Math.random() < 0.5) CC.fx.text(p.x, p.y - 10, '-' + n, '#ff9a3a', 10); } if (b.t <= 0) NS.burns.splice(i, 1); }
     // dawn, or leaving the outdoors: the stalkers slip away
     var keep = out && night;
-    for (i = E.list.length - 1; i >= 0; i--) { e = E.list[i]; if (!e.nightStalker) continue; if (!keep && !e.leaving && !e.dead) e.leaving = 1; if (e.leaving && e.ns && e.ns.alpha <= 0.02) E.list.splice(i, 1); }
+    for (i = E.list.length - 1; i >= 0; i--) { e = E.list[i]; if (!e.nightStalker) continue; if (!keep && !e.leaving && !e.dead && !e.testSpawn) e.leaving = 1; if (e.leaving && e.ns && e.ns.alpha <= 0.02) E.list.splice(i, 1); }
     if (!keep || !p || p.hp <= 0) { dir.nightFor = 0; dir.announced = false; if (!out) dir.t = 40; return; }
     dir.nightFor += dt; dir.t -= dt;
     var cap = dir.nightFor > 150 ? 3 : dir.nightFor > 60 ? 2 : 1;

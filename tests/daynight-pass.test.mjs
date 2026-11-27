@@ -39,8 +39,8 @@ test('night darkens the forest map and the monsters get +15% health and +20% dam
   D.restore({ t: 600 });
   step(40);
   assert.ok(Math.abs(wolf.maxHp - 46) < 1e-9 && Math.abs(wolf.hp - 46) < 1e-9 && Math.abs(wolf.dmg - 12) < 1e-9);
-  assert.equal(CC.state.map.ambient.split(',')[3], '0.800');
-  assert.ok(CC.state.map.playerLight > 200);
+  assert.ok(Math.abs(+CC.state.map.ambient.split(',')[3] - 0.66) < 0.04, 'night is deep but the world beyond your light stays faintly visible');
+  assert.ok(CC.state.map.playerLight < 200 && CC.state.map.playerLight > 90, 'a modest lit circle at night');
   D.restore({ t: 1200 });
   step(40);
   assert.ok(Math.abs(wolf.maxHp - 40) < 1e-9 && Math.abs(wolf.dmg - 10) < 1e-9);
@@ -133,4 +133,25 @@ test('the Rocky Pass is a long maze with dead ends and a solvable sunbeam puzzle
     assert.ok(open.get(gk) > 400, 'a long way: ' + open.get(gk) + ' steps');
     RP.reset();
   }
+});
+
+test('when night falls the title card fades in and out; none at game start in daylight or when loading into the night', () => {
+  const { D, step } = dayNight('forest');
+  step(10);
+  assert.equal(D.bannerActive(), false);
+  step(595);
+  assert.equal(D.bannerActive(), true, 'the card appears the moment night falls');
+  D.drawBanner(proxyCtx(), 360, 640);
+  step(8);
+  assert.equal(D.bannerActive(), false, 'and fades away');
+  const again = dayNight('forest');
+  again.D.restore({ t: 700 });
+  again.step(5);
+  assert.equal(again.D.bannerActive(), false, 'loading a save already at night does not replay it');
+  const cave = dayNight('cave');
+  cave.step(605);
+  assert.equal(cave.D.bannerActive(), false, 'not shown down in a cave');
+  cave.CC.state.area = 'forest';
+  cave.step(1);
+  assert.equal(cave.D.bannerActive(), true, 'but shown once you climb back under the night sky');
 });

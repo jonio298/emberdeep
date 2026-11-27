@@ -234,7 +234,8 @@
           if (!L.color || L.x < cam.x - L.r || L.x > cam.x + w + L.r || L.y < cam.y - L.r || L.y > cam.y + h + L.r) continue;
           var sx = L.x - cam.x, sy = L.y - cam.y, rr = L.r * 0.7 * (1 + (L.flicker || 0) * Math.sin(t * 11 + i));
           g = ctx.createRadialGradient(sx, sy, 0, sx, sy, rr);
-          g.addColorStop(0, 'rgba(' + L.color + ',0.22)'); g.addColorStop(1, 'rgba(' + L.color + ',0)');
+          if (L.flat) { g.addColorStop(0, 'rgba(' + L.color + ',' + (L.glow || 0.2) * 0.85 + ')'); g.addColorStop(0.5, 'rgba(' + L.color + ',' + (L.glow || 0.2) * 0.55 + ')'); g.addColorStop(1, 'rgba(' + L.color + ',0)'); } // an even, soft wash (no bright centre)
+          else { g.addColorStop(0, 'rgba(' + L.color + ',' + (L.glow || 0.22) + ')'); g.addColorStop(1, 'rgba(' + L.color + ',0)'); }
           ctx.fillStyle = g; ctx.fillRect(sx - rr, sy - rr, rr * 2, rr * 2);
         }
         ctx.restore();

@@ -13,7 +13,8 @@
   'use strict';
   var CC = root.CC = root.CC || {}, D = CC.DayNight = {}, E = CC.Enemies, F = CC.Forest, PI2 = Math.PI * 2;
   var PHASE = 600, FADE = 28, NIGHT_HP = 1.15, NIGHT_DMG = 1.2, OUTDOOR = { forest: 1, plains: 1, 'rocky-pass': 1, village: 1, 'tree-ascent': 1 };
-  var clock = 0, n = 0, showT = 0;
+  var clock = 0, n = 0, showT = 0, wasNight = null, banner = -1, bannerPending = false;
+  var BANNER_LEN = 7;
   D.PHASE = PHASE; D.NIGHT_HP = NIGHT_HP; D.NIGHT_DMG = NIGHT_DMG;
 
   function area() { return CC.state && CC.state.area; }
@@ -23,7 +24,10 @@
   D.isNight = function () { return n > 0.5; };
   D.nightness = function () { return n; };
   D.secondsLeft = function () { return PHASE - (clock % PHASE); };
-  D.reset = function () { clock = 0; n = 0; };
+  D.frozen = false;
+  // test mode: jump straight to day or night (night shows the 'Night Falls' card); the clock can be frozen
+  D.setNight = function (on) { clock = on ? PHASE + 5 : 5; n = on ? 1 : 0; wasNight = !on ? true : false; if (on) bannerPending = true; };
+  D.reset = function () { clock = 0; n = 0; wasNight = null; banner = -1; bannerPending = false; };
   D.serialize = function () { return { t: Math.round(clock) }; };
   D.restore = function (d) { clock = d && isFinite(d.t) ? Math.max(0, +d.t) : 0; n = targetNight() ? 1 : 0; };
   // sleep until morning: jump to the start of the next day phase; the light comes back up over a few seconds
@@ -40,22 +44,23 @@
     if (!map) return;
     if (!map._dnReady) { map._dnReady = true; map._dnAmb = parse(map.ambient); map._dnLight = map.playerLight; }
     if (!map._dnAmb) return;
-    var a = map._dnAmb, k = D.outdoors() ? n : 0, NI = [7, 11, 40, 0.8];
-    var c0 = Math.round(a[0] + (NI[0] - a[0]) * k), c1 = Math.round(a[1] + (NI[1] - a[1]) * k), c2 = Math.round(a[2] + (NI[2] - a[2]) * k), al = a[3] + (Math.max(a[3], NI[3]) - a[3]) * k;
+    var a = map._dnAmb, k = D.outdoors() ? n : 0, NI = [10, 14, 34, 0.66]; // the night is deep but not black: beyond your light the world lies half-seen
+    var c0 = Math.round(a[0] + (NI[0] - a[0]) * k), c1 = Math.round(a[1] + (NI[1] - a[1]) * k), c2 = Math.round(a[2] + (NI[2] - a[2]) * k), al = a[3] + (Math.max(a[3], NI[3]) - a[3]) * k + 0.035 * k * Math.sin(Date.now() / 1400); // the dark slowly breathes
     map.ambient = c0 + ',' + c1 + ',' + c2 + ',' + al.toFixed(3);
-    map.playerLight = map._dnLight * (1 + 0.1 * k); // your own light reaches a little further in the dark
+    map.playerLight = map._dnLight * (1 - 0.4 * k); // at night you see only a modest circle around you
   }
 
-  /* ---------- your own light: at night every hero carries a lantern-glow in their class colour ---------- */
-  var LIGHT = { swordsman: '110,170,255', wizard: '60,90,225', necromancer: '110,255,150', thief: '255,85,75' }; // blue/white, darker blue/white, green/white, red/white
+  /* ---------- your own light: at night every hero lights the ground around them in their class colour ---------- */
+  var LIGHT = { swordsman: '150,200,255', wizard: '85,115,235', necromancer: '140,255,170', thief: '255,115,100' }; // blue/white, darker blue/white, green/white, red/white
   D.lightColor = function (cls) { return LIGHT[cls] || '255,230,180'; };
+  // ambient light, like a torch in a dark room: the dark is cut away around you in a soft falloff and a wide wash of class-coloured light spills over the ground and everything near you
   function playerLight(map, p) {
     if (!map || !map.lights || !p) return;
-    if (!map._dnPl) { map._dnPl = [{ x: 0, y: 0, r: 0, color: '255,255,255', inten: 0, flicker: 0.05 }, { x: 0, y: 0, r: 0, color: '255,255,255', inten: 0, flicker: 0.03 }]; map.lights.push(map._dnPl[0], map._dnPl[1]); }
-    var k = D.outdoors() ? n : 0, tint = map._dnPl[0], core = map._dnPl[1];
-    tint.x = core.x = p.x; tint.y = core.y = p.y - 4;
-    tint.color = LIGHT[p.classId] || '255,230,180'; tint.r = 175 * k; tint.inten = 0.9 * k;      // a wide pool of coloured light that lights the ground and the world about you
-    core.r = 70 * k; core.inten = 0.55 * k;                                                      // with a white-hot heart
+    if (!map._dnPl) { map._dnPl = [{ x: 0, y: 0, r: 0, color: '255,255,255', inten: 0, flicker: 0.035, flat: 1, glow: 0.18 }, { x: 0, y: 0, r: 0, color: '255,255,255', inten: 0, flicker: 0.05, flat: 1, glow: 0.14 }]; map.lights.push(map._dnPl[0], map._dnPl[1]); }
+    var k = D.outdoors() ? n : 0, wide = map._dnPl[0], near = map._dnPl[1], col = LIGHT[p.classId] || '255,235,200';
+    wide.x = near.x = p.x; wide.y = near.y = p.y - 2; wide.color = near.color = col;
+    wide.r = 215 * k; wide.inten = 0.5 * k;   // the faint outer spill of light (a modest circle, not a huge one)
+    near.r = 130 * k; near.inten = 0.9 * k;    // the brighter pool around you
   }
 
   /* ---------- the monsters at night ---------- */
@@ -67,8 +72,14 @@
 
   function update(dt) {
     var s = CC.state; if (!s || s.mode !== 'dungeon') return;
-    clock += dt;
-    var want = targetNight() ? 1 : 0;
+    if (!D.frozen) clock += dt;
+    var tn = targetNight();
+    if (wasNight === null) wasNight = tn;
+    if (tn && !wasNight) bannerPending = true; // the moment night falls
+    wasNight = tn;
+    if (bannerPending && D.outdoors()) { bannerPending = false; banner = 0; if (CC.Audio && CC.Audio.fx) CC.Audio.fx('ghost_moan', { vol: 0.55, gap: 100 }); } // shown as soon as you are out under the sky
+    if (banner >= 0) { banner += dt; if (banner > BANNER_LEN) banner = -1; }
+    var want = tn ? 1 : 0;
     n = n < want ? Math.min(want, n + dt / FADE) : Math.max(want, n - dt / FADE); // the light fades over about half a minute
     lighting(s.map);
     playerLight(s.map, CC.state.player);
@@ -150,5 +161,32 @@
     ctx.fillStyle = night ? '#cfd8ff' : '#ffe9a8'; ctx.font = 'bold 10px Georgia, serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     ctx.fillText((night ? 'NIGHT ' : 'DAY ') + mm + ':' + ss, x - 20, y + 0.5); ctx.restore();
   };
+  // 'Night Falls. Evil walks.': creepy blood-red lettering that fades in out of the dark, shivers, and fades away
+  D.drawBanner = function (ctx, W, H) {
+    if (banner < 0) return;
+    var t = banner, a = t < 1.8 ? t / 1.8 : t < 4.6 ? 1 : Math.max(0, 1 - (t - 4.6) / (BANNER_LEN - 4.6));
+    if (a <= 0.01) return;
+    var size = Math.min(54, W / 8.2), cy = H * 0.3, now = Date.now() / 1000;
+    ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    var vg = ctx.createRadialGradient(W / 2, cy, 10, W / 2, cy, Math.max(W, H) * 0.7); vg.addColorStop(0, 'rgba(60,0,10,' + 0.28 * a + ')'); vg.addColorStop(1, 'rgba(0,0,0,' + 0.18 * a + ')'); ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H); // the world darkens a little
+    var lines = [['Night Falls.', size, 0], ['Evil walks.', size * 0.78, size * 1.15]], i, j;
+    for (i = 0; i < lines.length; i++) {
+      var txt = lines[i][0], px = lines[i][1], y = cy + lines[i][2], font = 'italic bold ' + px + 'px Georgia, "Palatino Linotype", serif';
+      ctx.font = font;
+      var letters = txt.split(''), total = ctx.measureText(txt).width + letters.length * 3, x = W / 2 - total / 2;
+      for (j = 0; j < letters.length; j++) { // each letter shivers on its own and fades in one after another
+        var w = ctx.measureText(letters[j]).width + 3, la = clamp01(a * 1.4 - j * 0.03 - i * 0.25) * (0.88 + 0.12 * Math.sin(now * 9 + j * 1.7 + i)), jx = Math.sin(now * 13 + j * 2.3) * 1.2 * a, jy = Math.cos(now * 11 + j * 1.9) * 1.4 * a;
+        ctx.globalAlpha = la;
+        ctx.shadowColor = 'rgba(200,20,30,0.95)'; ctx.shadowBlur = 18 + 8 * Math.sin(now * 3 + j);
+        ctx.fillStyle = '#3a0509'; ctx.fillText(letters[j], x + w / 2 + jx + 2, y + jy + 3); // a dark drip of shadow under the blood-red letter
+        ctx.shadowBlur = 10; ctx.fillStyle = i === 0 ? '#e0202c' : '#c01a28'; ctx.fillText(letters[j], x + w / 2 + jx, y + jy);
+        ctx.shadowBlur = 0; ctx.globalAlpha = la * 0.35; ctx.fillStyle = '#ffb0a8'; ctx.fillText(letters[j], x + w / 2 + jx - 0.6, y + jy - 0.8);
+        x += w;
+      }
+    }
+    ctx.restore();
+  };
+  function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+  D.bannerActive = function () { return banner >= 0; };
   D.update = update;
 })(window);

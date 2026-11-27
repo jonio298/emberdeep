@@ -33,7 +33,7 @@
   var drawCam = { x: 0, y: 0 }, drawZoom = 0, curZoom = 0; // drawZoom: the full world scale of the last frame, cutscene zoom included; // the zoom actually used on the last frame (Town Defense widens and narrows the view)
   // Player zoom: pinch with two fingers (or the mouse wheel) at any time. The target is set by the gesture and the
   // view eases toward it every frame, so the zoom is smooth. 1 = the normal view; below 1 zooms out.
-  var ZOOM_MIN = 0.28, ZOOM_MAX = 2.2, userTarget = 1, userCur = 1, userAt = 0;
+  var ZOOM_MIN = 0.28, ZOOM_MAX = 2.2, userTarget = 0.92, userCur = 0.92, userAt = 0; // the game loads at 92% zoom
   try { var savedZoom = parseFloat(localStorage.getItem('emberdeep-zoom')); if (savedZoom >= ZOOM_MIN && savedZoom <= ZOOM_MAX) userTarget = userCur = savedZoom; } catch (_) { /* storage may be blocked */ }
   function setUserZoom(z) {
     userTarget = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
@@ -645,7 +645,7 @@
   var pending = {};
   var actionKeys = { Space: 'attack', KeyQ: 'spell1', KeyE: 'spell2', KeyR: 'spell3', KeyT: 'spell4',
     ShiftLeft: 'dash', ShiftRight: 'dash', KeyF: 'interact', Enter: 'interact', KeyH: 'potion', KeyN: 'mpotion' };
-  var paused = false, uiWas = false;
+  var paused = false, uiWas = false, exitConfirm = false;
   function playing() { return CC.state.mode === 'town' || CC.state.mode === 'dungeon'; }
   function pressAction(name) {
     if (playing() && !paused && !uiOpen() && !(CC.state.player && CC.state.player.perkOpen)) { pending[name] = true; call('HoldGuide', 'onAction', name); if (name === 'attack') call('ThiefSpells', 'onAttack'); }
@@ -675,15 +675,45 @@
   };
   var pauseSaved = 0;
   function exitToTitle() { // back to the title screen (progress since the last save is kept only if you saved)
-    paused = false; resetInputHeld(); call('SpellCharge', 'clear'); if (CC.Audio) CC.Audio.chargeEnd(false);
+    paused = false; exitConfirm = false; resetInputHeld(); call('SpellCharge', 'clear'); if (CC.Audio) CC.Audio.chargeEnd(false);
     if (CC.state.coop && CC.Multiplayer && CC.Multiplayer.leave) { try { CC.Multiplayer.leave(); } catch (e) { /* offline */ } }
     CC.state.mode = 'title'; titlePage = 'mode';
   }
   function togglePause() {
     if (!playing()) return;
+    exitConfirm = false;
     paused = !paused;
     resetInputHeld();
   }
+  /* ---------- the phone's back button: it steps back through the menus instead of leaving the page ----------
+   * title pages go back a level; in the game it closes whatever is open, then opens the pause menu, then asks 'Really save and exit?'
+   * (at the very top of the title screen it is left alone, so the browser can leave as usual) */
+  CC.handleBack = function () {
+    var s = CC.state, lobby = typeof document !== 'undefined' && document.getElementById('mp-lobby');
+    if (lobby && !lobby.classList.contains('mp-hidden')) { var mb = document.getElementById('mp-back'); if (mb) mb.click(); return true; }
+    var tmp = typeof document !== 'undefined' && document.getElementById('tm-panel');
+    if (tmp && CC.TestMode && CC.TestMode.close) { CC.TestMode.close(); return true; }
+    if (s.mode === 'title') {
+      if (titlePage === 'endless') { titlePage = menuPage; return true; }
+      if (titlePage === 'sp' || titlePage === 'coop' || titlePage === 'single' || titlePage === 'continue') { titlePage = 'mode'; return true; }
+      return false;
+    }
+    if (!playing()) return true; // the death screen, the Endless summary: nothing to go back to
+    if (s.player && s.player.perkOpen) return true; // a level-up perk has to be chosen
+    if (exitConfirm) { exitConfirm = false; return true; } // back again: "No"
+    if (CC.UI && CC.UI.isOpen && CC.UI.isOpen()) { CC.UI.close(); return true; }
+    if (CC.Waypoints && CC.Waypoints.isOpen && CC.Waypoints.isOpen()) { CC.Waypoints.close(); return true; }
+    if (CC.Camp && CC.Camp.isOpen && CC.Camp.isOpen()) { CC.Camp.cancel(); return true; }
+    if (CC.Endless && CC.Endless.active && CC.Endless.active() && CC.Endless.state && CC.Endless.state.retiring) return true;
+    if (!paused) { paused = true; resetInputHeld(); return true; } // the main screen: the pause menu
+    if (CC.Endless && CC.Endless.active && CC.Endless.active()) { CC.Endless.retire(); return true; } // an Endless run has its own "Retire?" prompt
+    exitConfirm = true; return true; // on the pause menu: "Really save and exit?"
+  };
+  try {
+    history.replaceState({ eb: 0 }, '');
+    history.pushState({ eb: 1 }, '');
+    window.addEventListener('popstate', function () { if (CC.handleBack()) history.pushState({ eb: 1 }, ''); });
+  } catch (e) { /* no history API: the browser's own back button is left alone */ }
   function interact() {
     var s = CC.state, p = s.player;
     if (!p) return;
@@ -1892,6 +1922,7 @@
       if (CC.state.area === 'tree-ascent') call('TreeAscent','drawHud',ctx,W,H);
       call('MonsterMelee', 'drawStatus', ctx, W, H);
       call('DayNight', 'drawHud', ctx, W, H); // the little day / night clock
+      call('DayNight', 'drawBanner', ctx, W, H); // 'Night Falls. Evil walks.'
       call('UI', 'drawHud', ctx, W, H, addHit);   // CHAR and QUEST open the same tabbed journal
       call('UI', 'draw', ctx, W, H, addHit);
       if (!endless) {
@@ -1905,6 +1936,13 @@
     if (m === 'town' || m === 'dungeon') call('Classes', 'drawPerkOverlay', ctx); // level-up perk choice: on top of everything
     if (endless && !paused && !uiOpen() && !CC.state.player.perkOpen) CC.Endless.drawOverlay(ctx, W, H, addButton);
     if (endless && CC.Endless.state.retiring) { ui = []; CC.Endless.drawRetire(ctx, W, H, addButton); }
+    if (paused && exitConfirm && (m === 'town' || m === 'dungeon')) { // "Really save and exit?"
+      ui = []; ctx.fillStyle = 'rgba(8,4,2,0.8)'; ctx.fillRect(0, 0, W, H);
+      var cfY = Math.max(60, H * 0.5 - 90);
+      label('Really save and exit?', W / 2, cfY, 22, '#ffe08a');
+      addButton(W / 2 - 100, cfY + 34, 200, 44, 'Yes, save and exit', '#466b53', function () { if (!CC.state.coop && !CC.state.testMode) call('SaveGame', 'save'); exitConfirm = false; exitToTitle(); });
+      addButton(W / 2 - 100, cfY + 88, 200, 44, 'No, keep playing', '#6a3030', function () { exitConfirm = false; });
+    }
     if (CC.DialogBox && CC.DialogBox.flush) CC.DialogBox.flush(ctx, function (x, y, w, h, cb) { ui.push({ x: x, y: y, w: w, h: h, cb: cb }); }); // NPC speech is painted last: above the HUD and the player controls
     if (!endless && (m === 'town' || m === 'dungeon')) call('HoldGuide', 'overlay', ctx, W, H, btns, function (x, y, w, h, cb) { ui.push({ x: x, y: y, w: w, h: h, cb: cb }); }); // the tutorial overlays sit above everything
   }

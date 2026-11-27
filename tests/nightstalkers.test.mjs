@@ -44,7 +44,7 @@ test('each stalker runs its whole choreography: telegraph first, then a strike t
     const e = E.spawn(id, 140, 0, 12);
     e.ns = { frame: 0, alpha: 1 }; e.nightStalker = true; e.asleep = false;
     const used = new Set(), frames = new Set(); let telegraphed = 0, hurtAt = -1, shotsBefore = 0;
-    for (let t = 0; t < 60 * 60; t++) {
+    for (let t = 0; t < 60 * 150; t++) {
       const dx = player.x - e.x, dy = player.y - e.y, d = Math.hypot(dx, dy), ang = Math.atan2(dy, dx), hp = player.hp;
       player.invuln = Math.max(0, player.invuln - 1 / 60);
       E._think = E._think; // (the stalker brain replaces it)
@@ -104,25 +104,26 @@ test('killing a stalker drops boss-grade loot and a message', () => {
   assert.ok(texts.includes('NIGHTMARE SLAIN'));
 });
 
-test('night lights: each class carries its own colour of light', () => {
+test('night light: ambient class-coloured light around the hero, like a torch in a dark room', () => {
   const world = { console };
   world.window = world;
   world.CC = { state: { mode: 'dungeon', area: 'forest', map: { ambient: '17,25,21,0.4', playerLight: 200, lights: [] }, player: { x: 5, y: 9, classId: 'thief' } }, Enemies: { list: [], update() {}, draw() {} }, Forest: { drawMonster: () => false } };
   new Function('window', read('daynight.js'))(world);
-  const D = world.CC.DayNight;
-  assert.equal(D.lightColor('swordsman'), '110,170,255');
-  assert.equal(D.lightColor('necromancer'), '110,255,150');
-  assert.equal(D.lightColor('thief'), '255,85,75');
-  assert.equal(D.lightColor('wizard'), '60,90,225');
+  const CC = world.CC, D = CC.DayNight;
+  assert.equal(D.lightColor('swordsman'), '150,200,255');
+  assert.equal(D.lightColor('necromancer'), '140,255,170');
+  assert.equal(D.lightColor('thief'), '255,115,100');
+  assert.equal(D.lightColor('wizard'), '85,115,235');
   D.restore({ t: 610 });
-  for (let t = 0; t < 40; t++) world.CC.Enemies.update(1);
-  const lights = world.CC.state.map.lights;
-  assert.equal(lights.length, 2, 'a coloured pool and a white core');
-  assert.equal(lights[0].color, '255,85,75');
-  assert.equal(lights[1].color, '255,255,255');
-  assert.ok(lights[0].r > 150 && lights[0].inten > 0.8, 'strong at night');
+  for (let t = 0; t < 40; t++) CC.Enemies.update(1);
+  const lights = CC.state.map.lights;
+  assert.equal(lights.length, 2, 'a wide soft spill and a nearer pool, both tinted');
+  assert.ok(lights.every(l => l.color === '255,115,100' && l.flat && l.inten >= 0.5), 'the thief light is red-tinted with an even falloff');
+  assert.ok(lights[0].r > lights[1].r && lights[1].r > 100 && lights[0].r < 260, 'a modest spill around a pool, not a huge radius');
+  assert.ok(CC.state.map.playerLight < 200 && CC.state.map.playerLight > 90, 'the lit circle at night is modest');
   assert.equal(lights[0].x, 5);
   D.restore({ t: 1200 });
-  for (let t = 0; t < 40; t++) world.CC.Enemies.update(1);
+  for (let t = 0; t < 40; t++) CC.Enemies.update(1);
   assert.equal(lights[0].inten, 0, 'off by day');
+  assert.doesNotMatch(read('main.js'), /Ambience', 'drawGround'/, 'nothing is painted over or under the hero as a ring');
 });

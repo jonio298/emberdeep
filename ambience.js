@@ -15,10 +15,11 @@
   function solid(x, y) { return !!(CC.Dungeon && CC.Dungeon.isSolid && CC.Dungeon.isSolid(x, y)); }
   function kindAt(m, x, y) { var tx = Math.floor(x / T), ty = Math.floor(y / T); return m && tx >= 0 && ty >= 0 && tx < m.w && ty < m.h ? m.kind[ty * m.w + tx] : 9; }
   function inView(o, cam, pad) { return o.x > cam.x - pad && o.x < cam.x + cam.w + pad && o.y > cam.y - pad && o.y < cam.y + cam.h + pad; }
-  A.clear = function () { flies.length = frogs.length = ripples.length = 0; };
+  A.clear = function () { flies.length = frogs.length = ripples.length = 0; watchers.length = 0; };
 
   /* ---------- fireflies ---------- */
-  function wantFlies() { var a = area(), n = night(); return a === 'forest' ? Math.round(9 + 34 * n) : a === 'plains' ? Math.round(6 + 28 * n) : 0; }
+  function wantFlies() { var a = area(), n = night(), cut = 1 - 0.4 * n; // 40% fewer fireflies at night
+    return a === 'forest' ? Math.round((9 + 34 * n) * cut) : a === 'plains' ? Math.round((6 + 28 * n) * cut) : 0; }
   function stepFlies(dt, cam) {
     var want = wantFlies(), i, f;
     for (i = flies.length - 1; i >= 0; i--) {
@@ -34,20 +35,34 @@
     }
     if (flies.length > want + 6) flies.splice(0, flies.length - want - 6);
   }
-  // the hero's own light at night, in the class colour with a white heart, on the ground and in the air around them
-  function playerGlow(ctx, cam) {
-    var DN = CC.DayNight, p = CC.state && CC.state.player; if (!DN || !p || !DN.outdoors || !DN.outdoors()) return;
-    var k = DN.nightness(); if (k < 0.03) return;
-    var col = DN.lightColor(p.classId), x = p.x - cam.x, y = p.y - cam.y - 4, g;
+  /* ---------- the dark beyond your light: pale eyes that open and close out in the gloom ---------- */
+  var watchers = [];
+  function stepWatchers(dt, cam) {
+    var p = CC.state && CC.state.player, n = night(), want = (CC.DayNight && CC.DayNight.outdoors && CC.DayNight.outdoors()) ? Math.round(7 * n) : 0, i, w;
+    for (i = watchers.length - 1; i >= 0; i--) { w = watchers[i]; w.t += dt; if (w.t >= w.life || !p || Math.hypot(w.x - p.x, w.y - p.y) < 190) watchers.splice(i, 1); }
+    if (!p) return;
+    if (watchers.length < want && Math.random() < dt * 1.2) {
+      var a = Math.random() * PI2, d = 230 + Math.random() * 190, x = p.x + Math.cos(a) * d, y = p.y + Math.sin(a) * d;
+      if (!solid(x, y)) watchers.push({ x: x, y: y, t: 0, life: 3.5 + Math.random() * 3.5, sep: 4.5 + Math.random() * 3, col: Math.random() < 0.7 ? '255,70,55' : '200,225,255', blink: Math.random() * 6 });
+    }
+  }
+  function drawWatchers(ctx, cam) {
+    var n = night(); if (n < 0.1 || !watchers.length) return;
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    g = ctx.createRadialGradient(x, y, 4, x, y, 190); g.addColorStop(0, 'rgba(' + col + ',' + 0.26 * k + ')'); g.addColorStop(0.45, 'rgba(' + col + ',' + 0.11 * k + ')'); g.addColorStop(1, 'rgba(' + col + ',0)');
-    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 190, 0, PI2); ctx.fill();
-    ctx.save(); ctx.translate(x, y + 12); ctx.scale(1, 0.55); g = ctx.createRadialGradient(0, 0, 4, 0, 0, 130); g.addColorStop(0, 'rgba(' + col + ',' + 0.3 * k + ')'); g.addColorStop(1, 'rgba(' + col + ',0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 130, 0, PI2); ctx.fill(); ctx.restore(); // pooled on the ground
-    g = ctx.createRadialGradient(x, y, 2, x, y, 64); g.addColorStop(0, 'rgba(255,255,255,' + 0.16 * k + ')'); g.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 64, 0, PI2); ctx.fill();
+    for (var i = 0; i < watchers.length; i++) {
+      var w = watchers[i], u = w.t / w.life, a = Math.sin(Math.PI * u) * 0.6 * n, x = w.x - cam.x, y = w.y - cam.y;
+      if ((w.t + w.blink) % 2.6 < 0.16) a = 0; // a slow blink
+      if (a <= 0.01) continue;
+      for (var k = -1; k <= 1; k += 2) {
+        var g = ctx.createRadialGradient(x + k * w.sep, y, 0, x + k * w.sep, y, 7); g.addColorStop(0, 'rgba(' + w.col + ',' + a + ')'); g.addColorStop(1, 'rgba(' + w.col + ',0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x + k * w.sep, y, 7, 0, PI2); ctx.fill();
+        ctx.fillStyle = 'rgba(255,240,230,' + a + ')'; ctx.fillRect(x + k * w.sep - 0.7, y - 1.6, 1.4, 3.2);
+      }
+    }
     ctx.restore();
   }
   A.drawGlow = function (ctx, cam) {
-    playerGlow(ctx, cam);
+    var nowW = Date.now() / 1000, dtW = Math.min(0.1, nowW - (A._wt || nowW)); A._wt = nowW; stepWatchers(dtW, cam); drawWatchers(ctx, cam);
     var a = area(); if (a !== 'forest' && a !== 'plains') return;
     var now = Date.now() / 1000, dt = Math.min(0.1, now - last || 0); if (dt > 0) { last = now; stepFlies(dt, cam); }
     var n = night(), i, f;

@@ -229,6 +229,14 @@
 
     // --- cheats
     inn.appendChild(el('div', { cls: 'row' }, [el('span', { cls: 'chk' }, [el('input', { id: 'tm-eagle', type: 'checkbox', checked: TM.eagleOn(), onchange: function () { TM.setEagle(this.checked); } }), el('span', { text: 'Eagle companion (hatched, follows you)' })])]));
+    inn.appendChild(el('h3', { text: 'TIME OF DAY' }));
+    inn.appendChild(el('div', { cls: 'row' }, [
+      btn('Night', function () { if (CC.DayNight) { CC.DayNight.setNight(true); say('It is night'); } }, 'go'),
+      btn('Day', function () { if (CC.DayNight) { CC.DayNight.setNight(false); say('It is day'); } }),
+      el('span', { cls: 'chk' }, [el('input', { id: 'tm-freeze', type: 'checkbox', checked: !!(CC.DayNight && CC.DayNight.frozen), onchange: function () { if (CC.DayNight) CC.DayNight.frozen = this.checked; } }), el('span', { text: 'Freeze time' })])]));
+    inn.appendChild(el('div', { cls: 'row' }, [
+      select('tm-ns', (CC.NightStalkers ? CC.NightStalkers.ids : []).map(function (id) { return [id, CC.NightStalkers.DEFS[id].name]; })),
+      btn('Spawn night stalker', function () { var NS = CC.NightStalkers, id = val('tm-ns'), e = NS && NS.spawn(id, true); if (e) { e.testSpawn = true; say('Spawned ' + NS.DEFS[id].name); } else say('Could not spawn it here'); }, 'go')]));
     inn.appendChild(el('h3', { text: 'CHEATS' }));
     inn.appendChild(el('div', { cls: 'row' }, [
       el('span', { cls: 'chk' }, [el('input', { id: 'tm-god', type: 'checkbox', checked: cheats.god, onchange: function () { cheats.god = this.checked; } }), el('span', { text: 'God mode' })]),

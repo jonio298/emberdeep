@@ -5,6 +5,13 @@ Every build gets a number `YYYYMMDD.N` (N counts builds made that day). The newe
 
 | Build | Version | Notes |
 |---|---|---|
+| 20261126.21 | 0.3.0 | The Rocky Pass gets its own song (Mountain Pass). Two night songs (Crickets After Dark, Midnight Pixel Path) play back and forth under the night sky. |
+| 20261126.20 | 0.3.0 | Phone back button steps back through menus (title pages, character window, pause menu, then 'Really save and exit?') instead of leaving the page; test mode gets Night/Day, freeze time and night-stalker spawning; the game loads at 92% zoom; a modest lit circle at night. |
+| 20261126.19 | 0.3.0 | Night light reworked as ambient light, like a torch in a dark room: the dark is cut away around the hero in a soft falloff with a wide, even wash of class-coloured light (no ring, no bright blob on the sprite). |
+| 20261126.18 | 0.3.0 | The hero's night light is now a class-coloured circle lying on the ground under every sprite; nothing glows over the player any more. |
+| 20261126.17 | 0.3.0 | A creepy 'Night Falls. Evil walks.' title fades in (shivering blood-red letters) when night begins, then fades away. |
+| 20261126.16 | 0.3.0 | Night: 40% fewer fireflies; a half-visible fog of war beyond your light (lighter, colder dark that slowly breathes) with pale eyes that open and close out in the gloom. |
+| 20261126.16 | 0.3.0 | Night: 40% fewer fireflies; a half-visible fog of war beyond your light (lighter, colder dark that slowly breathes) with pale eyes that open and close out in the gloom. |
 | 20261126.15 | 0.3.0 | Night Stalkers drawn at ordinary-monster scale (about 50-76 px, reaches and dashes scaled to match) and their sprite sheets halved in size (4.5 MB to 2.1 MB). |
 | 20261126.14 | 0.3.0 | The nine Night Stalkers (Grinning Mask, Puppet Butcher, Scythe Weaver, Veiled Widow, Wailing Chorus, Skull Bloom, Cinderhound, Gloom Crawler, Gravemaw) hunt you out of the dark at night with telegraphed choreographed attacks, strong stats and boss-grade loot; class-coloured night light around each hero (swordsman blue/white, necromancer green/white, thief red/white, wizard deep blue/white). Sprite sheets in assets/night, originals in art_source/night_monsters. |
 | 20261126.13 | 0.3.0 | Endless modes (Survival, Catacombs, Town Defense) play Warfront Ascension and Struggle for the Throne back and forth on a loop. |
