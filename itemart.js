@@ -241,6 +241,7 @@
     return cv;
   }
   function sprite(it, slot, ghost) {
+    if (it && !ghost && it.legendary && CC.LegendArt) { var lg = CC.LegendArt.sprite(it.name); if (lg) return lg; } // the 70 legendary weapons have their own pictures
     var type = typeFor(it, slot), name = it ? it.name : '', rc = it ? (it.color || '#cccccc') : '#6a6070';
     var key;
     // variant words matter, so key on the whole name's matched keywords

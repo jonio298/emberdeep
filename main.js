@@ -794,16 +794,17 @@
   var btns = {};                      // layout, recomputed on resize
 
   function layout() {
-    var m = 18;
-    btns.attack = { x: W - m - 44, y: H - m - 74, r: 40, label: 'ATK' };
-    btns.spell1 = { x: W - m - 118, y: H - m - 40, r: 29, label: 'S1' };
-    btns.spell2 = { x: W - m - 100, y: H - m - 120, r: 29, label: 'S2' };
-    btns.spell3 = { x: W - m - 188, y: H - m - 100, r: 27, label: 'S3' };
-    btns.spell4 = { x: W - m - 168, y: H - m - 172, r: 27, label: 'S4' };
-    btns.dash = { x: W - m - 28, y: H - m - 154, r: 24, label: 'DASH' };
+    // 15% smaller than the original, packed into the corner around the attack button (ax, ay)
+    var m = 10, ax = W - m - 34, ay = H - m - 34;
+    btns.attack = { x: ax, y: ay, r: 34, label: 'ATK' };
+    btns.spell1 = { x: ax - 80, y: ay + 8, r: 25, label: 'S1' };
+    btns.spell2 = { x: ax - 62, y: ay - 56, r: 25, label: 'S2' };
+    btns.spell3 = { x: ax - 140, y: ay - 22, r: 23, label: 'S3' };
+    btns.spell4 = { x: ax - 126, y: ay - 88, r: 23, label: 'S4' };
+    btns.dash = { x: ax + 2, y: ay - 76, r: 20, label: 'DASH' };
     // health and mana potions side by side, directly above DASH
-    btns.potion = { x: btns.dash.x - 22, y: btns.dash.y - 48, r: 19, label: 'POTION' };
-    btns.mpotion = { x: btns.dash.x + 22, y: btns.dash.y - 48, r: 19, label: 'MANA' };
+    btns.potion = { x: btns.dash.x - 19, y: btns.dash.y - 46, r: 16, label: 'POTION' };
+    btns.mpotion = { x: btns.dash.x + 19, y: btns.dash.y - 46, r: 16, label: 'MANA' };
   }
 
   function resetInputHeld() {

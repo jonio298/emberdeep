@@ -21,7 +21,7 @@
     good: '#8fd46a', bad: '#e0584a', gold: '#e8c04a' };
   var FONT = 'Georgia, "Palatino Linotype", "Book Antiqua", serif';
   var mouse = { cx: 0, cy: 0, on: false, x: -1, y: -1, bound: false }, hoverInfo = null, canvasEl = null;
-  var TABS = [{ id: 'inv', key: 'KeyI', name: 'Inventory' }, { id: 'skills', key: 'KeyK', name: 'Skills' }, { id: 'quests', key: 'KeyJ', name: 'Quests' }, { id: 'map', key: 'KeyM', name: 'Map' }, { id: 'stats', key: 'KeyC', name: 'Stats' }];
+  var TABS = [{ id: 'inv', key: 'KeyI', name: 'Inventory' }, { id: 'index', key: 'KeyL', name: 'Legends' }, { id: 'skills', key: 'KeyK', name: 'Skills' }, { id: 'quests', key: 'KeyJ', name: 'Quests' }, { id: 'map', key: 'KeyM', name: 'Map' }, { id: 'stats', key: 'KeyC', name: 'Stats' }];
   var PARTY_TAB = { id: 'party', name: 'Party' }; // only while in a co-op session
   var SETTINGS_TAB = { id: 'settings', name: 'Settings' };
   function tabs() { var t = TABS.concat([SETTINGS_TAB]); return CC.Multiplayer && CC.Multiplayer.active ? t.concat([PARTY_TAB]) : t; }
@@ -466,7 +466,6 @@
       if(labelEgg)tx(c,labelEgg,x+w*.51,yy+7,10,'#eed39c','center');
     }
     button(c, addHit, x + w - 104, yy - 1, 100, 17, 'Sort by value', bag.length > 1, sortBag, '#4a3a22');
-    if (CC.Loot && CC.Loot.LEGEND_WEAPONS) button(c, addHit, x + w - 190, yy - 1, 80, 17, 'Codex', true, function () { codexPage = 0; open('codex'); }, '#5a3a62');
     yy += 18;
     satchel(c, gx - 5, yy - 4, cs * COLS + gap * (COLS - 1) + 10, Math.ceil(BAG_MAX / COLS) * (cs + gap) + 4, bag.length);
     for (i = 0; i < BAG_MAX; i++) {
@@ -682,29 +681,62 @@
   CC.UISettingsWheel = function (dy) { if (!(target && cur === 'settings')) return false; settingsScroll = Math.max(0, Math.min(settingsMax, settingsScroll + dy * 0.6)); return true; };
 
   // PARTY tab: session options. The host decides whether the guest can be hurt.
-  /* ---------- the Legendary Codex: every legendary weapon, found or still to find ---------- */
-  var codexPage = 0, CLS_NAME = { swordsman: 'Swordsman', wizard: 'Wizard', necromancer: 'Necromancer', thief: 'Thief' };
+  /* ---------- the Legendary Index: every legendary weapon by level, found or still a shadow ---------- */
+  var idxPage = 0, idxFilter = 'all', idxSel = null;
+  var CLS_NAME = { swordsman: 'Swordsman', wizard: 'Wizard', necromancer: 'Necromancer', thief: 'Thief' };
+  var CLS_COL = { swordsman: '#e0a04a', wizard: '#6aa0ff', necromancer: '#9aff8a', thief: '#c08aff' };
   var BOUND_NAME = { grinmask: 'Grinning Mask', patchwork: 'Patchwork Horror', merehorror: 'Mere Horror', hearthkeeper: 'Hearthkeeper', emberheart: 'Emberheart', marionette: 'Puppet Butcher', scytheweaver: 'Scythe Weaver', veiledwidow: 'Veiled Widow', wailchorus: 'Wailing Chorus', skullbloom: 'Skull Bloom', cinderhound: 'Cinderhound', gloomcrawler: 'Gloom Crawler', gravemaw: 'Gravemaw' };
-  function drawCodex(c, hit, x, y, w, h) {
-    var list = (CC.Loot && CC.Loot.LEGEND_WEAPONS || []).slice(), found = (CC.state && CC.state.codex) || {}, per = Math.max(4, Math.floor((h - 70) / 50)), pages = Math.max(1, Math.ceil(list.length / per)), i, p = hero();
-    list.sort(function (a, b) { var ca = a.cls || 'zz', cb = b.cls || 'zz'; return ca < cb ? -1 : ca > cb ? 1 : a.qlvl - b.qlvl; });
-    codexPage = Math.max(0, Math.min(pages - 1, codexPage));
-    var n = 0; list.forEach(function (l) { if (found[l.name]) n++; });
-    tx(c, 'Found ' + n + ' / ' + list.length + '   (page ' + (codexPage + 1) + '/' + pages + ')', x + w / 2, y + 8, 12, COL.accent, 'center');
-    button(c, hit, x + 4, y + h - 26, 80, 22, 'Back', true, function () { open('inv'); }, '#4a3a22');
-    button(c, hit, x + w / 2 - 92, y + h - 26, 80, 22, 'Prev', codexPage > 0, function () { codexPage--; }, '#4a3a22');
-    button(c, hit, x + w / 2 + 12, y + h - 26, 80, 22, 'Next', codexPage < pages - 1, function () { codexPage++; }, '#4a3a22');
-    var yy = y + 24;
-    for (i = codexPage * per; i < Math.min(list.length, (codexPage + 1) * per); i++) {
-      var l = list[i], got = !!found[l.name], who = l.cls ? CLS_NAME[l.cls] : 'Any class', mine = p && l.cls && l.cls === p.classId;
-      rr(c, x + 4, yy, w - 8, 46, 6); c.fillStyle = got ? 'rgba(255,162,31,0.12)' : 'rgba(255,255,255,0.04)'; c.fill(); c.lineWidth = 1.2; c.strokeStyle = got ? '#ffa21f' : COL.line; c.stroke();
-      tx(c, got ? l.name : '???  (undiscovered)', x + 12, yy + 12, 13, got ? '#ffa21f' : COL.dim, 'left');
-      tx(c, who + '  -  ' + (l.baseName || l.weaponType) + '  -  needs level ' + l.qlvl, x + 12, yy + 26, 10, mine ? COL.good : COL.dim, 'left');
-      var line = got ? l.effect.desc : (l.boundTo ? 'Dropped only by the ' + (BOUND_NAME[l.boundTo] || l.boundTo) + (l.boundKind === 'stalker' ? ' (night stalker)' : '') : 'Drops from monsters of level ' + l.qlvl + '+');
-      wrapText(c, line, x + 12, yy + 36, w - 28, 12, 9, got ? COL.text : COL.dim);
-      yy += 50;
-    }
+  var IDX_FILTERS = [['all', 'All'], ['swordsman', 'Sword'], ['wizard', 'Wizard'], ['necromancer', 'Necro'], ['thief', 'Thief'], ['bound', 'Bound']];
+  function idxList() {
+    var list = (CC.Loot && CC.Loot.LEGEND_WEAPONS || []).filter(function (l) { return idxFilter === 'all' || (idxFilter === 'bound' ? !!l.boundTo : l.cls === idxFilter); });
+    return list.sort(function (a, b) { return a.qlvl - b.qlvl || (a.name < b.name ? -1 : 1); });
   }
+  function idxHint(l) { return l.boundTo ? 'Dropped only by the ' + (BOUND_NAME[l.boundTo] || l.boundTo) + (l.boundKind === 'stalker' ? ' (night stalker).' : '.') : 'Drops from monsters of level ' + l.qlvl + ' and up.'; }
+  function drawIndex(c, hit, x, y, w, h) {
+    var all = (CC.Loot && CC.Loot.LEGEND_WEAPONS) || [], found = (CC.state && CC.state.codex) || {}, p = hero(), n = 0, i, list = idxList();
+    all.forEach(function (l) { if (found[l.name]) n++; });
+    tx(c, 'Discovered ' + n + ' / ' + all.length, x + w / 2, y + 6, 12, COL.accent, 'center');
+    // filter chips
+    var chipW = (w - 8 - (IDX_FILTERS.length - 1) * 4) / IDX_FILTERS.length;
+    IDX_FILTERS.forEach(function (f, k) {
+      var bx = x + 4 + k * (chipW + 4), on = idxFilter === f[0];
+      rr(c, bx, y + 18, chipW, 20, 5); c.fillStyle = on ? 'rgba(232,200,120,0.28)' : 'rgba(255,255,255,0.06)'; c.fill(); c.lineWidth = on ? 1.8 : 1; c.strokeStyle = on ? COL.accent : COL.line; c.stroke();
+      tx(c, f[1], bx + chipW / 2, y + 28.5, 10, on ? COL.accent : COL.dim, 'center'); hit(bx, y + 18, chipW, 20, function () { idxFilter = f[0]; idxPage = 0; });
+    });
+    // the grid
+    var detailH = 74, navH = 26, gy = y + 44, gh = h - 44 - detailH - navH - 6, cols = w >= 380 ? 4 : 3, gap = 5, cw = (w - 8 - gap * (cols - 1)) / cols, ch = 84;
+    var rows = Math.max(1, Math.floor((gh + gap) / (ch + gap))), per = rows * cols, pages = Math.max(1, Math.ceil(list.length / per));
+    idxPage = Math.max(0, Math.min(pages - 1, idxPage));
+    for (i = 0; i < per; i++) {
+      var l = list[idxPage * per + i]; if (!l) break;
+      var cx = x + 4 + (i % cols) * (cw + gap), cy = gy + Math.floor(i / cols) * (ch + gap), got = !!found[l.name], sel = idxSel === l.name;
+      var hov = mouse.x >= cx && mouse.x < cx + cw && mouse.y >= cy && mouse.y < cy + ch; if (hov) hovering = true;
+      rr(c, cx, cy, cw, ch, 6); c.fillStyle = got ? (hov ? 'rgba(255,162,31,0.26)' : 'rgba(255,162,31,0.14)') : (hov ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.28)'); c.fill();
+      c.lineWidth = sel ? 2.6 : 1.4; c.strokeStyle = sel ? '#fff6dc' : got ? '#ffa21f' : '#4a3a2c'; c.stroke();
+      var ps = Math.min(cw - 14, 54), art = got ? CC.LegendArt && CC.LegendArt.sprite(l.name) : CC.LegendArt && CC.LegendArt.shadow(l.name);
+      if (art) { c.save(); c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high'; c.drawImage(art, cx + (cw - ps) / 2, cy + 3, ps, ps); c.restore(); }
+      tx(c, got ? l.name : '? ? ? ?', cx + cw / 2, cy + 3 + ps + 7, got && l.name.length > 16 ? 8.5 : 10, got ? '#ffa21f' : COL.dim, 'center');
+      tx(c, 'Lv ' + l.qlvl, cx + cw / 2, cy + ch - 7, 9, p && (p.level || 1) >= l.qlvl ? COL.good : COL.dim, 'center');
+      if (l.cls) { c.fillStyle = CLS_COL[l.cls] || '#aaa'; c.beginPath(); c.arc(cx + 8, cy + 8, 3.2, 0, 6.3); c.fill(); }
+      else if (l.boundTo) { c.fillStyle = '#e0584a'; poly4(c, cx + 8, cy + 8, 4); }
+      hit(cx, cy, cw, ch, function () { idxSel = l.name; });
+    }
+    if (!list.length) tx(c, 'Nothing here yet.', x + w / 2, gy + 30, 12, COL.dim, 'center');
+    // navigation
+    var ny = gy + gh + 2;
+    button(c, hit, x + 4, ny, 70, navH - 4, 'Prev', idxPage > 0, function () { idxPage--; }, '#4a3a22');
+    tx(c, 'Page ' + (idxPage + 1) + ' / ' + pages, x + w / 2, ny + (navH - 4) / 2, 11, COL.dim, 'center');
+    button(c, hit, x + w - 74, ny, 70, navH - 4, 'Next', idxPage < pages - 1, function () { idxPage++; }, '#4a3a22');
+    // the selected weapon
+    var dy = y + h - detailH, sl = null; for (i = 0; i < all.length; i++) if (all[i].name === idxSel) sl = all[i];
+    rr(c, x + 4, dy, w - 8, detailH, 7); c.fillStyle = 'rgba(0,0,0,0.35)'; c.fill(); c.lineWidth = 1.2; c.strokeStyle = COL.line; c.stroke();
+    if (!sl) { tx(c, 'Tap a weapon to read about it.', x + w / 2, dy + detailH / 2, 11, COL.dim, 'center'); return; }
+    var gotSel = !!found[sl.name], who = sl.cls ? CLS_NAME[sl.cls] : 'Any class';
+    tx(c, gotSel ? sl.name : '? ? ? ? ? ?', x + 12, dy + 12, 14, gotSel ? '#ffa21f' : COL.dim, 'left');
+    tx(c, who + '  -  ' + (sl.baseName || sl.weaponType) + '  -  needs level ' + sl.qlvl, x + 12, dy + 28, 10, sl.cls && p && sl.cls === p.classId ? COL.good : COL.dim, 'left');
+    wrapText(c, gotSel ? sl.effect.desc : idxHint(sl), x + 12, dy + 44, w - 28, 12, 10, gotSel ? COL.text : COL.dim);
+  }
+  function poly4(c, x, y, r) { c.beginPath(); c.moveTo(x, y - r); c.lineTo(x + r, y); c.lineTo(x, y + r); c.lineTo(x - r, y); c.closePath(); c.fill(); }
 
   function drawParty(c, hit, x, y, w, h) {
     var MP = CC.Multiplayer, host = MP && MP.isHost && MP.isHost(), on = !!(MP && MP.options && MP.options.guestInvuln), yy = y + 14;
@@ -760,7 +792,7 @@
       if (target) addHit(cx0, py + 10, 24, 28, function () { close(); });
       var ax = px + 10, ay = py + 48, aw = pw - 20, ah = ph - 58, noop = function () {};
       if (leather) { // the page's title on a ribbon, as in the design: the content sits below it
-        var title = cur === 'skills' ? (CC.SkillScreen && CC.SkillScreen.title ? CC.SkillScreen.title() : 'SKILLS') : ({ inv: 'INVENTORY', quests: 'QUESTS', map: 'MAP', stats: 'STATS', settings: 'SETTINGS', party: 'PARTY', codex: 'LEGENDARY CODEX' }[cur] || String(cur).toUpperCase());
+        var title = cur === 'skills' ? (CC.SkillScreen && CC.SkillScreen.title ? CC.SkillScreen.title() : 'SKILLS') : ({ inv: 'INVENTORY', quests: 'QUESTS', map: 'MAP', stats: 'STATS', settings: 'SETTINGS', party: 'PARTY', index: 'LEGENDARY INDEX' }[cur] || String(cur).toUpperCase());
         CC.LeatherUI.ribbon(c, px + pw / 2, ay, Math.min(pw - 60, 250), title); ay += 38; ah -= 38;
       }
       var hit = target ? addHit : noop;
@@ -771,7 +803,7 @@
       else if (cur === 'stats') drawStats(c, ax, ay, aw, ah, p, hit);
       else if (cur === 'party') drawParty(c, hit, ax, ay, aw, ah);
       else if (cur === 'settings') drawSettings(c, hit, ax, ay, aw, ah);
-      else if (cur === 'codex') drawCodex(c, hit, ax, ay, aw, ah);
+      else if (cur === 'index') drawIndex(c, hit, ax, ay, aw, ah);
       c.restore();
       if (target && e > 0.9 && cur === 'inv') drawTip(c, W, H, p);
     }

@@ -118,3 +118,17 @@ test('power cap: every weapon has comparable stats, and no damage multiplier is 
   }
   assert.ok(rows.filter(r => r[1] > 2.01).length <= 3, 'only a few weapons can exceed x2: ' + rows.filter(r => r[1] > 2.01).map(r => r[0]).join(', '));
 });
+
+test('every legendary weapon has its own art, using a known shape and motif', () => {
+  const { CC } = boot(), sb = vm.createContext({ console }); sb.window = sb; sb.CC = {};
+  vm.runInContext(read('legendart.js'), sb, { filename: 'legendart.js' });
+  const LA = sb.CC.LegendArt, src = read('legendart.js');
+  const shapes = new Set([...src.matchAll(/^\s{4}(\w+): function \(c, B, A, X\)/gm)].map(m => m[1])), motifs = new Set([...src.matchAll(/^\s{4}(\w+): function \(c, a, A\)/gm)].map(m => m[1]).concat('none'));
+  assert.equal(Object.keys(LA.SPECS).length, 70);
+  for (const w of CC.Loot.LEGEND_WEAPONS) {
+    assert.ok(LA.has(w.name), 'no art for ' + w.name);
+    const s = LA.SPECS[w.name];
+    assert.ok(shapes.has(s[0]), w.name + ' shape ' + s[0]); assert.ok(motifs.has(s[3]), w.name + ' motif ' + s[3]);
+  }
+  assert.ok(new Set(Object.values(LA.SPECS).map(s => s.slice(0, 4).join('|'))).size >= 68, 'the weapons should look different from each other');
+});
