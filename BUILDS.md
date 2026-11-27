@@ -5,6 +5,7 @@ Every build gets a number `YYYYMMDD.N` (N counts builds made that day). The newe
 
 | Build | Version | Notes |
 |---|---|---|
+| 20261126.27 | 0.3.0 | Night stalkers are far stronger and scale harder with your level; no pointer arrow to them; the night light is 30% smaller; a spawn sound; the night songs skip their long cricket build-up. |
 | 20261126.26 | 0.3.0 | Three feral growl sounds for the night stalkers (as each one appears and as each attack begins). |
 | 20261126.25 | 0.3.0 | The single Icicle Cannon shard auto-aims: a boss in reach first, otherwise the closest monster. |
 | 20261126.24 | 0.3.0 | Night stalkers are 30% larger; as they are hurt, limbs, heads and horns tear off (flying away) and the sprite shows the ragged bleeding gap while they keep attacking. |

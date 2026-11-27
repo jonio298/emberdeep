@@ -47,7 +47,7 @@
     var a = map._dnAmb, k = D.outdoors() ? n : 0, NI = [10, 14, 34, 0.66]; // the night is deep but not black: beyond your light the world lies half-seen
     var c0 = Math.round(a[0] + (NI[0] - a[0]) * k), c1 = Math.round(a[1] + (NI[1] - a[1]) * k), c2 = Math.round(a[2] + (NI[2] - a[2]) * k), al = a[3] + (Math.max(a[3], NI[3]) - a[3]) * k + 0.035 * k * Math.sin(Date.now() / 1400); // the dark slowly breathes
     map.ambient = c0 + ',' + c1 + ',' + c2 + ',' + al.toFixed(3);
-    map.playerLight = map._dnLight * (1 - 0.4 * k); // at night you see only a modest circle around you
+    map.playerLight = map._dnLight * (1 - 0.58 * k); // at night you see only a modest circle around you
   }
 
   /* ---------- your own light: at night every hero lights the ground around them in their class colour ---------- */
@@ -59,8 +59,8 @@
     if (!map._dnPl) { map._dnPl = [{ x: 0, y: 0, r: 0, color: '255,255,255', inten: 0, flicker: 0.035, flat: 1, glow: 0.18 }, { x: 0, y: 0, r: 0, color: '255,255,255', inten: 0, flicker: 0.05, flat: 1, glow: 0.14 }]; map.lights.push(map._dnPl[0], map._dnPl[1]); }
     var k = D.outdoors() ? n : 0, wide = map._dnPl[0], near = map._dnPl[1], col = LIGHT[p.classId] || '255,235,200';
     wide.x = near.x = p.x; wide.y = near.y = p.y - 2; wide.color = near.color = col;
-    wide.r = 215 * k; wide.inten = 0.5 * k;   // the faint outer spill of light (a modest circle, not a huge one)
-    near.r = 130 * k; near.inten = 0.9 * k;    // the brighter pool around you
+    wide.r = 150 * k; wide.inten = 0.5 * k;   // the faint outer spill of light (a modest circle, not a huge one)
+    near.r = 91 * k; near.inten = 0.9 * k;    // the brighter pool around you
   }
 
   /* ---------- the monsters at night ---------- */

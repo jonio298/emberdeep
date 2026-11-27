@@ -119,8 +119,8 @@ test('night light: ambient class-coloured light around the hero, like a torch in
   const lights = CC.state.map.lights;
   assert.equal(lights.length, 2, 'a wide soft spill and a nearer pool, both tinted');
   assert.ok(lights.every(l => l.color === '255,115,100' && l.flat && l.inten >= 0.5), 'the thief light is red-tinted with an even falloff');
-  assert.ok(lights[0].r > lights[1].r && lights[1].r > 100 && lights[0].r < 260, 'a modest spill around a pool, not a huge radius');
-  assert.ok(CC.state.map.playerLight < 200 && CC.state.map.playerLight > 90, 'the lit circle at night is modest');
+  assert.ok(lights[0].r > lights[1].r && lights[1].r > 70 && lights[0].r < 260, 'a modest spill around a pool, not a huge radius');
+  assert.ok(CC.state.map.playerLight < 200 && CC.state.map.playerLight > 60, 'the lit circle at night is modest');
   assert.equal(lights[0].x, 5);
   D.restore({ t: 1200 });
   for (let t = 0; t < 40; t++) CC.Enemies.update(1);

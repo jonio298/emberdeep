@@ -254,7 +254,7 @@
     var prevThink = E._think;
     E._think = function (e, dt, p, d, ang, f) { if (e.type && D[e.type]) { think(e, dt, p, d, ang, f); return; } return prevThink.apply(this, arguments); };
     var prevSpawn = E.spawn;
-    E.spawn = function (type) { var e = prevSpawn.apply(this, arguments); if (e && D[type]) { var def = D[type]; e.miniBoss = true; e.noKnock = true; e.maxHp = e.hp = def.hp * (0.7 + (e.lvl || 3) * 0.1); e.dmg = def.dmg * (0.8 + (e.lvl || 3) * 0.05); e.r = def.r; e.ghost = !!def.fly; e.spd = def.spd; e.nightStalker = true; } return e; };
+    E.spawn = function (type) { var e = prevSpawn.apply(this, arguments); if (e && D[type]) { var def = D[type]; e.miniBoss = true; e.noKnock = true; var lv = e.lvl || 3; e.maxHp = e.hp = def.hp * (1.6 + lv * 0.45); e.dmg = def.dmg * (1.2 + lv * 0.14); /* nightmares: they grow much faster than you do, so every level is a hard fight */ e.r = def.r; e.ghost = !!def.fly; e.spd = def.spd; e.nightStalker = true; } return e; };
     var prevKill = E._kill;
     E._kill = function (e) { var was = !!(e && e.dead), r = prevKill.apply(this, arguments); if (e && e.dead && !was && e.nightStalker && !e.leaving) { try { slain(e); } catch (x) { if (root.console) console.error(x); } } return r; };
   }
@@ -355,7 +355,7 @@
       if (!e) return null; e.asleep = false; e.nightStalker = true; e.ns = { frame: D[type].idle[0], alpha: 0 };
       if (CC.fx && CC.fx.burst) CC.fx.burst(x, y, '#2a1a3a', 18, 70);
       if (CC.Audio && CC.Audio.fx) CC.Audio.fx('ghost_moan', { x: x, y: y, vol: 0.5, gap: 200 });
-      if (CC.Audio && CC.Audio.play) CC.Audio.play('stalker_growl' + (1 + Math.floor(R() * 3)), { x: x, y: y, vol: 0.6, gap: 400, delay: 0.4 });
+      if (CC.Audio && CC.Audio.play) CC.Audio.play('stalker_spawn', { x: x, y: y, vol: 0.9, gap: 400, vary: 0 });
       return e;
     }
     return null;

@@ -40,7 +40,7 @@ test('night darkens the forest map and the monsters get +15% health and +20% dam
   step(40);
   assert.ok(Math.abs(wolf.maxHp - 46) < 1e-9 && Math.abs(wolf.hp - 46) < 1e-9 && Math.abs(wolf.dmg - 12) < 1e-9);
   assert.ok(Math.abs(+CC.state.map.ambient.split(',')[3] - 0.66) < 0.04, 'night is deep but the world beyond your light stays faintly visible');
-  assert.ok(CC.state.map.playerLight < 200 && CC.state.map.playerLight > 90, 'a modest lit circle at night');
+  assert.ok(CC.state.map.playerLight < 200 && CC.state.map.playerLight > 60, 'a modest lit circle at night');
   D.restore({ t: 1200 });
   step(40);
   assert.ok(Math.abs(wolf.maxHp - 40) < 1e-9 && Math.abs(wolf.dmg - 10) < 1e-9);

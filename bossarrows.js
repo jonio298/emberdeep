@@ -3,7 +3,7 @@
 (function (root) {
   'use strict';
   var CC = root.CC = root.CC || {}, TAU = Math.PI * 2, SPECIAL = { grinmask: 1, weaselDemon: 1 };
-  function special(e) { return e && !e.dead && e.hp > 0 && !e.asleep && !e.hidden && (e.boss || e.miniBoss || e.stitched || SPECIAL[e.type]); }
+  function special(e) { return e && !e.dead && e.hp > 0 && !e.asleep && !e.hidden && !e.nightStalker && (e.boss || e.miniBoss || e.stitched || SPECIAL[e.type]); }
   function arrow(c, x, y, a, len, pulse) {
     c.save(); c.translate(x, y); c.rotate(a);
     var g = c.createLinearGradient(-len * 0.5, 0, len * 0.6, 0); g.addColorStop(0, '#4a1f8a'); g.addColorStop(0.55, '#9a55f0'); g.addColorStop(1, '#d9b0ff');
