@@ -621,7 +621,7 @@
     return hits;
   }
 
-  function radial(p, cx, cy, rad, mult, type, slowT, slowMul) {
+  function radial(p, cx, cy, rad, mult, type, slowT, slowMul, freezeOdds) {
     var hits = 0, l = foes();
     for (var i = 0; i < l.length; i++) {
       var e = l[i]; if (!alive(e)) continue;
@@ -629,6 +629,7 @@
       if (dx * dx + dy * dy > (rad + (e.r || 8)) * (rad + (e.r || 8))) continue;
       hitEnemy(e, p.stats.dmg * mult, type);
       if (slowT) status(e, 'slow', slowT, slowMul);
+      if (type === 'frost' && CC.Frost) { CC.Frost.coldProc(e); if (freezeOdds) CC.Frost.freezeRoll(e, freezeOdds); } // cold: 1 in 4 to chill; the nova and blizzard also 1 in 10 to freeze
       hits++;
     }
     return hits;
@@ -829,8 +830,8 @@
       if (CC.Vfx) CC.Vfx.spawn('whirl', p.x, p.y, 28, { own: p, life: 0.7 });
     } else if (cls === 'wizard') { // frost nova
       if (!spend(p, 'spell2')) return;
-      var rad = 72 * (1 + p.mods.aoePct) * (CC.Skills ? CC.Skills.radMul(p, 'spell2') : 1);
-      radial(p, p.x, p.y, rad, 1.0 * sm(p, 2), 'frost', 2.5 + 1.5 * (p.flags.frostbite || 0), 0.45);
+      var rad = 92 * (1 + p.mods.aoePct) * (CC.Skills ? CC.Skills.radMul(p, 'spell2') : 1); // a bigger, much harder-hitting nova (was radius 72, damage x1.0)
+      radial(p, p.x, p.y, rad, 1.8 * sm(p, 2), 'frost', 2.5 + 1.5 * (p.flags.frostbite || 0), 0.45, 0.1);
       if (CC.Vfx) CC.Vfx.spawn('frostNova', p.x, p.y, rad, {});
       else { addFx({ kind: 'ring', x: p.x, y: p.y, r: rad, t: 0.45, max: 0.45, col: '#9fe3ff' }); fxBurst(p.x, p.y, '#9fe3ff', 20, 120); }
       fxShake(3); p.castFlash = 0.3;

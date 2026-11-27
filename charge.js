@@ -111,7 +111,7 @@
         p.iframes = Math.max(p.iframes || 0, 0.5);
         for (i = 0; i < steps; i++) {
           move(p, a.x * len / steps, a.y * len / steps);
-          within(p, 14).forEach(function (f) { if (hitList.indexOf(f) < 0) { hitList.push(f); hit(f, dmg * 3.4 * scale, 'slash'); burst(f.x, f.y, '#ffd36b', 10, 120); } });
+          within(p, 14).forEach(function (f) { if (hitList.indexOf(f) < 0) { hitList.push(f); hit(f, dmg * 4.5 * scale, 'slash'); burst(f.x, f.y, '#ffd36b', 10, 120); } });
         }
         if (CC.Vfx) CC.Vfx.spawn('rush', sx, sy, 0, { x2: p.x, y2: p.y }); else beam(sx, sy, p.x, p.y, '#ffffff', 0.4);
         shake(6);
@@ -131,21 +131,36 @@
         var fl = fx(); if (fl && fl.flash) fl.flash('#ffe27a', 0.1); // the flash of light on release
         burst(p.x + a.x * 10, p.y - 4 + a.y * 10, '#ffe27a', 10, 130); shake(4);
         var sp0 = { x: p.x + a.x * 10, y: p.y - 4 + a.y * 10 };
-        if (hitE) effects.push({ kind: 'lspear', x: hitE.x, y: hitE.y, a: Math.atan2(a.y, a.x), len: SL, ref: hitE, t: 4, max: 4, pulse: 0, dmg: dmg * 1.1 * scale, flash: 1, seed: Math.random() * 100, sx: sp0.x, sy: sp0.y, fly: 0.13, flyMax: 0.13, born: 0 });
+        if (hitE) effects.push({ kind: 'lspear', x: hitE.x, y: hitE.y, a: Math.atan2(a.y, a.x), len: SL, ref: hitE, t: 4, max: 4, pulse: 0, dmg: dmg * 1.8 * scale, flash: 1, seed: Math.random() * 100, sx: sp0.x, sy: sp0.y, fly: 0.13, flyMax: 0.13, born: 0 });
         else effects.push({ kind: 'lspear', miss: true, x: p.x + a.x * RANGE, y: p.y - 4 + a.y * RANGE, a: Math.atan2(a.y, a.x), len: SL, ref: null, t: 0.3, max: 0.3, pulse: 9, dmg: 0, flash: 0, seed: Math.random() * 100, sx: sp0.x, sy: sp0.y, fly: 0.13, flyMax: 0.13 });
-      } else if (idx === 2) { // Blizzard
-        var rad = 96 + 20 * pow; if (CC.Vfx) CC.Vfx.spawn('blizzard', p.x, p.y, rad, { life: 0.9 }); else ring(p.x, p.y, rad, '#9fe3ff', 0.7);
-        for (i = 0; i < 4; i++) (function (k) {
-          later(0.18 * k, function () { within(p, rad).forEach(function (f) { hit(f, dmg * 1.3 * scale, 'frost'); status(f, 'slow', 3, 0.4); }); burst(p.x, p.y, '#cfefff', 18, 150); });
+      } else if (idx === 2) { // Blizzard: cast OUT and away (aim it like the other ranged charge spells); a storm that rages for about 3.6 s
+        var bp = blizzPoint(p), bx = bp.x, by = bp.y, brad = BLIZ_R + 20 * pow, rolled = [];
+        if (CC.Vfx) CC.Vfx.spawn('blizzard', bx, by, brad, { life: 3.8 }); else ring(bx, by, brad, '#9fe3ff', 0.7);
+        var inStorm = function () { return foes().filter(function (f) { return alive(f) && Math.hypot(f.x - bx, f.y - by) <= brad + (f.r || 8); }); };
+        for (i = 0; i < 8; i++) (function (k) { // eight freezing pulses
+          later(0.45 * k, function () {
+            inStorm().forEach(function (f) {
+              hit(f, dmg * 0.45 * scale, 'frost'); status(f, 'slow', 3, 0.4);
+              if (CC.Frost && rolled.indexOf(f) < 0) { rolled.push(f); CC.Frost.freezeRoll(f, 0.1); } // one 1-in-10 chance per target to freeze (never bosses)
+            });
+            burst(bx, by, '#cfefff', 14, 150);
+          });
         })(i);
-        shake(4);
+        for (i = 0; i < 5; i++) (function (k) { // and glacial spikes crash onto foes in the storm
+          later(0.5 + 0.7 * k, function () {
+            var pool = inStorm(); pool.sort(function () { return Math.random() - 0.5; });
+            pool.slice(0, 3).forEach(function (f) { hit(f, dmg * 0.8 * scale, 'frost'); burst(f.x, f.y, '#e8fbff', 10, 140); if (CC.Frost) CC.Frost.coldProc(f); });
+            shake(2);
+          });
+        })(i);
+        shake(5);
       } else { // Meteor Storm
         var tg = foes().filter(function (f) { return alive(f) && Math.hypot(f.x - p.x, f.y - p.y) <= 200; });
         for (i = 0; i < 5; i++) (function (k) {
           later(0.22 * k, function () {
             var f = tg.length ? tg[k % tg.length] : null, live = f && alive(f);
             var tx = live ? f.x : p.x + a.x * (50 + k * 20) + rnd(-30, 30), ty = live ? f.y : p.y + a.y * (50 + k * 20) + rnd(-30, 30);
-            effects.push({ kind: 'meteor', x: tx, y: ty, t: 0.6, max: 0.6, rad: 52, dmg: dmg * 3.6 * scale });
+            effects.push({ kind: 'meteor', x: tx, y: ty, t: 0.6, max: 0.6, rad: 52, dmg: dmg * 3 * scale });
           });
         })(i);
       }
@@ -157,7 +172,7 @@
           if (!alive(f)) return;
           var px = f.x - p.x, py = f.y - p.y, along = px * a.x + py * a.y, off = Math.abs(px * -a.y + py * a.x);
           if (along > 0 && along < reach && off < 18 + (f.r || 8)) {
-            hit(f, dmg * 2.65 * scale, 'drain');
+            hit(f, dmg * 4.5 * scale, 'drain');
             if (healed < 5) { healed++; if (CC.Classes.heal) CC.Classes.heal(p, p.maxHp * 0.025); }
             burst(f.x, f.y, '#7dff9a', 8, 100);
           }
@@ -165,7 +180,7 @@
         shake(4);
       } else if (idx === 2) { // Plague Nova
         var pr = 120 + 30 * pow; if (CC.Vfx) CC.Vfx.spawn('plagueNova', p.x, p.y, pr, {}); else ring(p.x, p.y, pr, '#9acd32', 0.7);
-        within(p, pr).forEach(function (f) { hit(f, dmg * 2.15 * scale, 'poison'); status(f, 'slow', 3.5, 0.55); burst(f.x, f.y, '#9acd32', 8, 90); });
+        within(p, pr).forEach(function (f) { hit(f, dmg * 4 * scale, 'poison'); status(f, 'slow', 3.5, 0.55); burst(f.x, f.y, '#9acd32', 8, 90); });
         shake(5);
       } else { // Army of the Dead
         var mm = CC.Classes.minions, cap = 9;
@@ -181,7 +196,7 @@
     } else { // thief
       if (idx === 1) { // Venom Burst
         if (CC.Vfx) CC.Vfx.spawn('venom', p.x, p.y, 80, {}); else ring(p.x, p.y, 80, '#7dff5a', 0.6);
-        within(p, 80).forEach(function (f) { hit(f, dmg * 2.4 * scale, 'poison'); status(f, 'slow', 3, 0.5); burst(f.x, f.y, '#7dff5a', 8, 90); });
+        within(p, 80).forEach(function (f) { hit(f, dmg * 4 * scale, 'poison'); status(f, 'slow', 3, 0.5); burst(f.x, f.y, '#7dff5a', 8, 90); });
         shake(3);
       } else if (idx === 2) { // Phantom Blades: up to five foes, two strikes each
         l = foes().filter(function (f) { return alive(f) && Math.hypot(f.x - p.x, f.y - p.y) <= 160; })
@@ -192,7 +207,7 @@
             if (!alive(f)) return;
             var fx0 = p.x, fy0 = p.y, ddx = f.x - p.x, ddy = f.y - p.y, d = Math.sqrt(ddx * ddx + ddy * ddy) || 1;
             move(p, ddx / d * Math.max(0, d - 12), ddy / d * Math.max(0, d - 12)); if (CC.Vfx) CC.Vfx.spawn('slash', fx0, fy0, 0, { x2: p.x, y2: p.y }); else beam(fx0, fy0, p.x, p.y, '#d8ccff', 0.3);
-            hit(f, dmg * 1.5 * scale, 'shadow'); if (alive(f)) hit(f, dmg * 1.5 * scale, 'shadow');
+            hit(f, dmg * 2 * scale, 'shadow'); if (alive(f)) hit(f, dmg * 2 * scale, 'shadow');
             burst(f.x, f.y, '#b9a6ff', 10, 110);
           });
         });
@@ -274,6 +289,13 @@
     return { x: dx / l, y: dy / l };
   }
   function isSpear(p) { return ccls(p) === 'wizard' && skillIndex(p) === 1; }
+  function isBlizzard(p) { return ccls(p) === 'wizard' && skillIndex(p) === 2; }
+  var BLIZ_R = 118, BLIZ_RANGE = 200;
+  function blizzPoint(p) { // where the storm lands: out along your aim, pulled back in if a wall is in the way
+    var a = spearAim(p), D = CC.Dungeon, d = BLIZ_RANGE, x = p.x + a.x * d, y = p.y + a.y * d;
+    for (var k = 0; k < 8 && D && typeof D.isSolid === 'function' && D.isSolid(x, y); k++) { d -= 22; x = p.x + a.x * d; y = p.y + a.y * d; }
+    return { x: x, y: y };
+  }
   function ready(p) {
     if (ccls(p) !== 'thief') return true;
     return skillIndex(p) === 0 ? flurryTargets(p).length > 0 : within(p, 150).length > 0;
@@ -487,6 +509,14 @@
       ctx.globalAlpha = 0.95; ctx.fillStyle = BL; ctx.strokeStyle = BH; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(hx3 + ca2 * 22 * hs, hy3 + sa2 * 22 * hs); ctx.lineTo(hx3 + nx2 * 9 * hs, hy3 + ny2 * 9 * hs); ctx.lineTo(hx3 - ca2 * 5, hy3 - sa2 * 5); ctx.lineTo(hx3 - nx2 * 9 * hs, hy3 - ny2 * 9 * hs); ctx.closePath(); ctx.fill(); ctx.stroke(); // the spearhead
       ctx.globalAlpha = 0.9; ctx.strokeStyle = BD; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(hx3 + ca2 * 12, hy3 + sa2 * 12); ctx.lineTo(hx3 - ca2 * 2, hy3 - sa2 * 2); ctx.stroke(); rune(hx3 + ca2 * 3, hy3 + sa2 * 3, 3.2, 3, 0.95); // a sigil cut into it
       var gl = ctx.createRadialGradient(hx3, hy3, 0, hx3, hy3, 20); gl.addColorStop(0, 'rgba(120,200,255,' + (0.4 + 0.25 * pulse) + ')'); gl.addColorStop(1, 'rgba(60,140,255,0)'); ctx.globalAlpha = 1; ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(hx3, hy3, 20, 0, 6.3); ctx.fill();
+      ctx.restore();
+    } else if (p.classId === 'wizard' && isBlizzard(p)) { // Blizzard: the same stylised rune circle as the other ranged charge spells, where the storm will land
+      var bq = blizzPoint(p), bsx = bq.x - cam.x, bsy = bq.y - cam.y, bR = (BLIZ_R + 20 * f) * (0.57 + 0.43 * Math.min(1, f)), bcol = '#83cbff', SCm = CC.SpellCharge;
+      ctx.save(); ctx.globalAlpha = 0.23 + 0.69 * Math.min(1, f);
+      ctx.fillStyle = 'rgba(45,112,183,.18)'; ctx.beginPath(); ctx.arc(bsx, bsy, bR, 0, 6.2832); ctx.fill();
+      if (SCm && SCm.sigil) SCm.sigil(ctx, 'wizard', bsx, bsy, bR, bcol, Date.now() / 1000);
+      ctx.strokeStyle = bcol; ctx.lineWidth = 2.2; ctx.beginPath(); ctx.arc(bsx, bsy, bR + 4, -1.5708, -1.5708 + 6.2832 * Math.max(0.012, Math.min(1, f))); ctx.stroke(); // the charge ring fills as you hold
+      if (full) { ctx.lineWidth = 1.1; ctx.beginPath(); ctx.arc(bsx, bsy, bR + 7 + Math.sin(T * 6) * 1.3, 0, 6.2832); ctx.stroke(); }
       ctx.restore();
     } else if (p.classId === 'wizard') { // rune orbs orbit faster and tighter as the spell builds
       for (i = 0; i < 3; i++) {

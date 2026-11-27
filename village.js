@@ -141,9 +141,26 @@
     chests.forEach(function (ch) { if (!seen[at(ch.tx, ch.ty)]) ok = false; });
     ghostSpots.forEach(function (g) { if (!seen[at(Math.floor(g.x / T), Math.floor(g.y / T))]) ok = false; });
     if (!ok) return null;
+    // the ground is split open: cracks of glowing lava run through the town (some feed columns of fire up into the sky) and a few trees burn
+    var crack = {}, cracks = [], burning = [], ci, tt;
+    function floorOk(px, py) { var qx = Math.floor(px / T), qy = Math.floor(py / T); return qx > 1 && qy > 1 && qx < W - 2 && qy < H - 2 && !tiles[at(qx, qy)] && kind[at(qx, qy)] !== 1; }
+    function addSeg(ax, ay, bx, by) { var n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / 8)), q; for (q = 0; q < n; q++) { var x0 = ax + (bx - ax) * q / n, y0 = ay + (by - ay) * q / n, x1 = ax + (bx - ax) * (q + 1) / n, y1 = ay + (by - ay) * (q + 1) / n, qx = Math.floor((x0 + x1) / 2 / T), qy = Math.floor((y0 + y1) / 2 / T), kk = qy * W + qx; (crack[kk] = crack[kk] || []).push([x0 - qx * T, y0 - qy * T, x1 - qx * T, y1 - qy * T]); } }
+    function walk(x0, y0, ang, goal) { var pts = [[x0, y0]], len = 0; while (len < goal) { ang += (rng() - 0.5) * 1.3; var nx = x0 + Math.cos(ang) * (14 + rng() * 8), ny = y0 + Math.sin(ang) * (14 + rng() * 8); if (!floorOk(nx, ny)) break; len += Math.hypot(nx - x0, ny - y0); x0 = nx; y0 = ny; pts.push([x0, y0]); } return pts; }
+    for (ci = 0; ci < 160 && cracks.length < 30; ci++) {
+      var cx0 = (3 + rng() * (W - 6)) * T, cy0 = (3 + rng() * (H - 6)) * T;
+      if (!floorOk(cx0, cy0) || Math.hypot(cx0 - spawn.x, cy0 - spawn.y) < 7 * T) continue;
+      var pts = walk(cx0, cy0, rng() * TAU, 110 + rng() * 140); if (pts.length < 4) continue;
+      var br = walk(pts[pts.length >> 1][0], pts[pts.length >> 1][1], rng() * TAU, 50 + rng() * 40);
+      for (tt = 1; tt < pts.length; tt++) addSeg(pts[tt - 1][0], pts[tt - 1][1], pts[tt][0], pts[tt][1]);
+      for (tt = 1; tt < br.length; tt++) addSeg(br[tt - 1][0], br[tt - 1][1], br[tt][0], br[tt][1]);
+      var mid = pts[pts.length >> 1];
+      cracks.push({ pts: pts, br: br, sky: cracks.length % 4 === 1, fx: mid[0], fy: mid[1], seed: rng() * 100 });
+      if (cracks.length <= 24) lights.push({ x: mid[0], y: mid[1], r: 90 + Math.min(60, pts.length * 6), color: '255,96,28', inten: 0.75, flicker: 0.28 });
+    }
+    for (ci = 0; ci < 60 && burning.length < 16 && trees.length; ci++) { var bt = trees[Math.floor(rng() * trees.length)]; if (burning.some(function (b) { return b.tx === bt[0] && b.ty === bt[1]; })) continue; burning.push({ tx: bt[0], ty: bt[1], x: bt[0] * T + 16, y: bt[1] * T + 30, seed: rng() * 100, h: 58 + rng() * 34 }); if (burning.length <= 10) lights.push({ x: bt[0] * T + 16, y: bt[1] * T - 10, r: 105, color: '255,130,40', inten: 0.7, flicker: 0.3 }); }
     var map = CC.Realm.create({ name: 'The Abandoned Village', w: W, h: H, kind: kind, tiles: tiles, spawn: spawn, stairs: { x: -999, y: -999, tx: -1, ty: -1 }, chests: chests, enemySpawns: spawns, props: props, lights: lights,
       ambient: '70,84,110,0.10', playerLight: 230, viewR: 330, fog: 0.04, fogColor: '150,160,160', ground: ground, detail: detail, drawSolid: solid, afterLight: after, reveal: false, viewBoost: 1.2 });
-    map.art = art; map.vil = { sy0: sy0, plazaX: plazaX, plazaY: plazaY, trees: trees, ghosts: ghostSpots.map(function (g, gi) { return { x: g.x, y: g.y, idx: gi, seed: gi * 2.7 + 1, a: g.ringQuest ? 0.7 : 0, ringQuest: !!g.ringQuest }; }), tombs: tombs, houses: HOUSES, u: 0, flash: 0, bolt: null, nextFlash: 6, thunder: 0, wisps: [], spawn: spawn };
+    map.art = art; map.vil = { sy0: sy0, plazaX: plazaX, plazaY: plazaY, trees: trees, ghosts: ghostSpots.map(function (g, gi) { return { x: g.x, y: g.y, idx: gi, seed: gi * 2.7 + 1, a: g.ringQuest ? 0.7 : 0, ringQuest: !!g.ringQuest }; }), tombs: tombs, houses: HOUSES, crack: crack, cracks: cracks, burning: burning, u: 0, flash: 0, bolt: null, nextFlash: 6, thunder: 0, wisps: [], spawn: spawn };
     map.forestTrail = forestTrail;
     map.ringQuestGiver = map.vil.ghosts[map.vil.ghosts.length - 1];
     map.backPos = { x: spawn.x - 24, y: spawn.y };
@@ -178,8 +195,22 @@
     if (kind === 4) { var gc = mix([84, 112, 62], [38, 42, 36], u); return css([gc[0] + hv * 8, gc[1] + hv * 8, gc[2] + hv * 6]); }          // graveyard soil
     var g = mix([86, 138, 60], [32, 40, 32], sm(u * 1.15)); return css([g[0] + hv * 12 - 6, g[1] + hv * 14 - 6, g[2] + hv * 8 - 4]);       // grass, going dead
   }
+  function crackTile(c, segs, sx, sy, t, tx, ty) { // a glowing seam of lava in the ground
+    var pu = 0.5 + 0.5 * Math.sin(t * 2.2 + tx * 1.7 + ty * 0.9), i, g;
+    function path() { c.beginPath(); for (i = 0; i < segs.length; i++) { g = segs[i]; c.moveTo(sx + g[0], sy + g[1]); c.lineTo(sx + g[2], sy + g[3]); } c.stroke(); }
+    c.save(); c.lineCap = 'round'; c.lineJoin = 'round';
+    c.strokeStyle = 'rgba(14,5,3,.9)'; c.lineWidth = 6; path(); // the dark broken edge
+    c.strokeStyle = 'rgb(' + (200 + 55 * pu | 0) + ',' + (50 + 50 * pu | 0) + ',14)'; c.lineWidth = 3.2; path(); // molten rock
+    c.strokeStyle = 'rgba(255,225,130,' + (0.45 + 0.4 * pu) + ')'; c.lineWidth = 1.2; path(); // the white-hot core
+    c.restore();
+  }
   function detail(c, kind, sx, sy, hv, t, tx, ty) {
-    var m = V.map, u = m && m.vil ? m.vil.u : 0, i;
+    var m = V.map, u = m && m.vil ? m.vil.u : 0, cs = m && m.vil && m.vil.crack && m.vil.crack[ty * m.w + tx];
+    detailBase(c, kind, sx, sy, hv, t, tx, ty, u);
+    if (cs) crackTile(c, cs, sx, sy, t, tx, ty);
+  }
+  function detailBase(c, kind, sx, sy, hv, t, tx, ty, u) {
+    var i;
     if (kind === 1) { // floorboards: gaps, nails, stains, a few missing planks
       c.strokeStyle = 'rgba(20,14,10,.5)'; c.lineWidth = 1; c.beginPath(); for (i = 0; i < 4; i++) { c.moveTo(sx, sy + i * 8); c.lineTo(sx + 32, sy + i * 8); } c.stroke();
       c.strokeStyle = 'rgba(20,14,10,.4)'; c.beginPath(); c.moveTo(sx + hv * 28, sy); c.lineTo(sx + hv * 28 + 1, sy + 8); c.moveTo(sx + (1 - hv) * 28, sy + 16); c.lineTo(sx + (1 - hv) * 28 + 1, sy + 24); c.stroke();
@@ -297,8 +328,39 @@
     c.globalAlpha = Math.min(1, a * 1.8); c.shadowColor = eyeCol; c.shadowBlur = 12; c.fillStyle = eyeCol === '#5ac8ff' ? '#b8f0ff' : '#e8ffd8'; c.fillRect(-3.6, -31.6, 2.8, 2.3); c.fillRect(0.8, -31.6, 2.8, 2.3);
     c.restore();
   }
+  function flame(c, x, y, w, h, t, seed, a) { // one tongue of fire: a swaying additive teardrop, red at the foot, yellow-white at the heart
+    var sw = Math.sin(t * 5 + seed) * w * 0.35, g = c.createLinearGradient(x, y, x, y - h);
+    g.addColorStop(0, 'rgba(255,120,20,' + a + ')'); g.addColorStop(0.45, 'rgba(255,70,10,' + a * 0.8 + ')'); g.addColorStop(1, 'rgba(120,20,0,0)');
+    c.fillStyle = g; c.beginPath(); c.moveTo(x - w, y); c.quadraticCurveTo(x - w * 0.9 + sw * 0.6, y - h * 0.5, x + sw, y - h); c.quadraticCurveTo(x + w * 0.9 + sw * 0.6, y - h * 0.5, x + w, y); c.closePath(); c.fill();
+    var g2 = c.createLinearGradient(x, y, x, y - h * 0.55); g2.addColorStop(0, 'rgba(255,230,140,' + a * 0.9 + ')'); g2.addColorStop(1, 'rgba(255,160,40,0)');
+    c.fillStyle = g2; c.beginPath(); c.moveTo(x - w * 0.45, y); c.quadraticCurveTo(x - w * 0.4 + sw * 0.4, y - h * 0.3, x + sw * 0.5, y - h * 0.55); c.quadraticCurveTo(x + w * 0.4 + sw * 0.4, y - h * 0.3, x + w * 0.45, y); c.closePath(); c.fill();
+  }
+  function drawFire(c, cam, m, t) { // lava vents (some pour a column of fire into the sky) and burning trees
+    var v = m.vil, i, k, cr, b, x, y, sx, sy;
+    c.save(); c.globalCompositeOperation = 'lighter';
+    for (i = 0; i < v.cracks.length; i++) {
+      cr = v.cracks[i]; sx = cr.fx - cam.x; sy = cr.fy - cam.y;
+      if (sx < -80 || sx > cam.w + 80) continue;
+      if (cr.sky) { // a column that runs all the way up out of the screen
+        if (sy < -40 || sy > cam.h + 520) continue;
+        var wob = Math.sin(t * 1.3 + cr.seed) * 5, top = -30, steps = 9;
+        for (k = 0; k < steps; k++) { var yy = sy - (sy - top) * k / steps, ww = 15 - 7 * (k / steps) + 2 * Math.sin(t * 6 + k + cr.seed); flame(c, sx + wob * (k / steps) + Math.sin(t * 2 + k * 0.9 + cr.seed) * 4, yy, ww, (sy - top) / steps * 1.9, t + k * 0.4, cr.seed + k, 0.5 * (1 - 0.6 * k / steps)); }
+        var gl = c.createRadialGradient(sx, sy, 2, sx, sy, 60); gl.addColorStop(0, 'rgba(255,150,50,0.55)'); gl.addColorStop(1, 'rgba(255,60,0,0)'); c.fillStyle = gl; c.fillRect(sx - 60, sy - 60, 120, 120);
+      } else if (sy > -60 && sy < cam.h + 60) { // a few licks of flame along the crack
+        for (k = 0; k < cr.pts.length; k += 3) { x = cr.pts[k][0] - cam.x; y = cr.pts[k][1] - cam.y; var fh = 14 + 20 * (0.5 + 0.5 * Math.sin(t * 3.1 + k + cr.seed)); flame(c, x, y, 5, fh, t, cr.seed + k, 0.55); }
+      }
+    }
+    for (i = 0; i < v.burning.length; i++) { // trees alight: flames along the trunk and in the crown, drifting sparks
+      b = v.burning[i]; sx = b.x - cam.x; sy = b.y - cam.y; if (sx < -60 || sx > cam.w + 60 || sy < -40 || sy > cam.h + b.h + 80) continue;
+      for (k = 0; k < 4; k++) flame(c, sx + (k - 1.5) * 6 + Math.sin(t * 2 + k + b.seed) * 2, sy - k * b.h * 0.2, 9 - k, 26 + 12 * Math.sin(t * 4 + k * 2 + b.seed), t + k, b.seed + k, 0.6);
+      flame(c, sx, sy - b.h * 0.8, 12, 40 + 14 * Math.sin(t * 3.5 + b.seed), t, b.seed, 0.65);
+      for (k = 0; k < 3; k++) { var ph = (t * 0.7 + b.seed + k * 0.33) % 1; c.fillStyle = 'rgba(255,' + (150 + 80 * (1 - ph) | 0) + ',60,' + (1 - ph) * 0.8 + ')'; c.fillRect(sx + Math.sin(ph * 9 + k) * 14, sy - b.h * 0.6 - ph * 70, 2, 2); }
+    }
+    c.restore();
+  }
   function after(c, cam) {
     var m = village(); if (!m) return; var v = m.vil, u = v.u, t = Date.now() / 1000, p = hero(), i;
+    try { drawFire(c, cam, m, t); } catch (err) { if (root.console) console.error(err); }
     if (u > 0.005) {
       c.save();
       // the sky goes from clear day to a bruised yellow-grey, then to near night

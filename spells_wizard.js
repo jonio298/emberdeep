@@ -209,15 +209,20 @@
 
   function cannon(cast) {
     if (!cast.charged) {
-      // the single icicle homes in on a target: a boss in reach first, otherwise the closest monster (no target: it flies where you aimed)
-      if (!cast.visual) {
-        const foes = nearby(cast.x, cast.y, 320);
-        const pool = foes.some(boss) ? foes.filter(boss) : foes;
-        let best = null, bd = Infinity;
-        for (const e of pool) { const d = Math.hypot(e.x - cast.x, e.y - cast.y); if (d < bd) { bd = d; best = e; } }
-        if (best) { cast.angle = Math.atan2(best.y - cast.y, best.x - cast.x); cast.dx = Math.cos(cast.angle); cast.dy = Math.sin(cast.angle); }
+      // a tap fires THREE icicles that home in on nearby foes: bosses first, then the closest ones (a lone foe takes all three, a little spread;
+      // nobody in reach: a small fan the way you aimed)
+      const foes = cast.visual ? [] : nearby(cast.x, cast.y, 320);
+      const ordered = foes.slice().sort((p, q) => (boss(q) - boss(p)) || (Math.hypot(p.x - cast.x, p.y - cast.y) - Math.hypot(q.x - cast.x, q.y - cast.y)));
+      for (let i = 0; i < 3; i++) {
+        const t = ordered[i % Math.max(1, ordered.length)];
+        let off = (i - 1) * 7; // the fan, in degrees
+        if (t) {
+          const a = Math.atan2(t.y - cast.y, t.x - cast.x);
+          off = (a - cast.angle) * 180 / Math.PI + (ordered.length === 1 ? (i - 1) * 4 : 0);
+          off = ((off + 540) % 360) - 180;
+        }
+        launch(cast, off, null, i);
       }
-      launch(cast, 0, null, 0);
       return;
     }
     // ICICLE BLAST: one shotgun burst. Every shard leaves at once across the cone and pierces two foes.
@@ -257,7 +262,10 @@
 
   function nova(cast) {
     const radius = (cast.charged ? 93 + cast.power * 19 : 72) * cast.reach;
+    const novaRolled = new Set();
+    let sparkled = false;
     const pulse = (size, power, spikes) => {
+      if (cast.charged && !cast.visual && !sparkled) { sparkled = true; CC.Vfx?.spawn?.('frostNova', cast.x, cast.y, size, {}); }
       ring(cast.x, cast.y, size, ICE, cast.charged ? 0.46 : 0.35, spikes);
       fragments(cast.x, cast.y, 10, spikes ? 16 : 9);
       iceSound(cast.x, cast.y, spikes ? 0.75 : 0.5);
@@ -266,6 +274,7 @@
         if (cast.charged || cast.effectRank) freeze(e, cast.charged ? 0.42 : 0.28);
         castHit(cast, e, cast.base * power, 'frost');
         frost(e, cast.charged ? 2.7 : 1.8, 0.54);
+        if (CC.Frost) { CC.Frost.coldProc(e); if (cast.charged && !novaRolled.has(e)) { novaRolled.add(e); CC.Frost.freezeRoll(e, 0.1); } } // 1 in 10 to freeze (never bosses)
       }
     };
     pulse(radius, cast.charged ? 1.08 + cast.power * 0.32 : 1, cast.charged);

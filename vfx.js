@@ -9,7 +9,7 @@
   'use strict';
   var CC = root.CC = root.CC || {}, V = CC.Vfx = {}, TAU = Math.PI * 2;
   var fxs = [], parts = [], T = 0, sky = { t: 0, max: 1, col: '#ffe14a', a: 0.4 }, bolts = [], dark = { lvl: 0, at: 0 };
-  var MAXP = 300, MAXF = 26;
+  var MAXP = 460, MAXF = 26;
 
   /* ---------- small helpers ---------- */
   function rnd(a, b) { return a + Math.random() * (b - a); }
@@ -272,46 +272,94 @@
 
   /* ============ FROST ============ */
   SP.frostNova = function (x, y, r, o) {
-    push({ type: 'frostNova', x: x, y: y, r: r, life: 1.05 });
+    push({ type: 'frostNova', x: x, y: y, r: r, life: 1.8 });
     var i;
-    for (i = 0; i < 22; i++) { var a = rnd(0, TAU), v = rnd(60, 180); emit({ kind: 'shard', x: x, y: y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 60, ay: 240, life: rnd(0.55, 1.0), size: rnd(1.8, 3.3), col: '#8fd8ff', col2: '#ffffff', vr: rnd(-9, 9), rot: rnd(0, 6) }); }
-    for (i = 0; i < 11; i++) { var b = rnd(0, TAU), w = rnd(20, 70); emit({ kind: 'smoke', x: x, y: y, vx: Math.cos(b) * w, vy: Math.sin(b) * w * 0.6, drag: 1.5, life: rnd(0.7, 1.3), size: r * rnd(0.18, 0.3), grow: r * 0.2, col: '#d8f3ff', alpha: 0.7, delay: rnd(0, 0.15) }); }
-    for (i = 0; i < 16; i++) { var c2 = rnd(0, TAU), d = rnd(0.2, 1) * r; emit({ kind: 'star', add: true, x: x + Math.cos(c2) * d, y: y + Math.sin(c2) * d, vy: -8, life: rnd(0.5, 1.1), size: rnd(1, 2.2), col: '#eaffff', vr: 3, rot: rnd(0, 3), delay: rnd(0.1, 0.5) }); }
-    shake(3);
+    for (i = 0; i < 34; i++) { var a = rnd(0, TAU), v = rnd(80, 260); emit({ kind: 'shard', x: x, y: y, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.7 - 70, ay: 260, life: rnd(0.5, 1.1), size: rnd(1.8, 3.6), col: '#8fd8ff', col2: '#ffffff' }); }
+    for (i = 0; i < 13; i++) { var b = rnd(0, TAU), w = rnd(24, 90); emit({ kind: 'smoke', x: x, y: y, vx: Math.cos(b) * w, vy: Math.sin(b) * w * 0.6, drag: 1.4, life: rnd(0.8, 1.5), size: r * rnd(0.16, 0.3), grow: r * 0.22, col: '#cfeeff' }); }
+    for (i = 0; i < 46; i++) { var c2 = rnd(0, TAU), d = Math.sqrt(Math.random()) * r * 1.05; emit({ kind: 'star', add: true, delay: rnd(0, 0.45), x: x + Math.cos(c2) * d, y: y + Math.sin(c2) * d * 0.85, vy: rnd(-26, -6), life: rnd(0.7, 1.5), size: rnd(1.2, 3), col: i % 3 ? '#eaffff' : '#9fe8ff', vr: rnd(-4, 4), rot: rnd(0, 3) }); }
+    for (i = 0; i < 22; i++) { var d2 = rnd(0.1, 1.1) * r, a2 = rnd(0, TAU); emit({ kind: 'snow', add: true, delay: rnd(0, 0.5), x: x + Math.cos(a2) * d2, y: y + Math.sin(a2) * d2 * 0.8 - 70, vx: rnd(-18, 18), vy: rnd(40, 90), life: rnd(0.8, 1.4), size: rnd(1.2, 2.6), col: '#ffffff' }); }
+    shake(5);
   };
   D.frostNova = function (c, e, x, y, u, tt) {
-    var r = e.r, g = out(u * 1.8), i, k;
-    c.save(); add(c, false);
-    soft(c, x, y, r * g * 1.05, '#aee8ff', 0.5 * (1 - u * 0.7));
-    if (u < 0.88) { // the snowflake etched in the ground
-      c.translate(x, y); c.rotate(tt * 0.25); c.globalAlpha = 0.85 * (1 - u); c.strokeStyle = '#f0fcff'; c.lineWidth = 1.5; c.lineCap = 'round';
+    var r = e.r, g = out(Math.min(1, u * 3.2)), fade = u > 0.6 ? 1 - (u - 0.6) / 0.4 : 1, i, k;
+    c.save();
+    if (u < 0.16) { add(c, true); soft(c, x, y, r * (0.5 + g), '#ffffff', (1 - u / 0.16) * 0.85); add(c, false); } // the flash of white
+    // the frost that settles on the ground and lingers
+    c.globalAlpha = 0.62 * fade; var fg = c.createRadialGradient(x, y, r * 0.1, x, y, r * g * 1.02);
+    fg.addColorStop(0, 'rgba(235,252,255,0.75)'); fg.addColorStop(0.7, 'rgba(170,222,250,0.6)'); fg.addColorStop(1, 'rgba(120,190,240,0)');
+    c.fillStyle = fg; c.beginPath(); c.ellipse(x, y, r * g * 1.02, r * g * 0.88, 0, 0, TAU); c.fill();
+    c.globalAlpha = 1;
+    // frost ferns: jagged crystal veins running out from the centre
+    c.strokeStyle = 'rgba(245,253,255,' + (0.8 * fade).toFixed(3) + ')'; c.lineWidth = 1.3; c.lineCap = 'round';
+    for (k = 0; k < 14; k++) { var va = k * TAU / 14 + e.seed, pts = jag(x, y, x + Math.cos(va) * r * 0.94 * g, y + Math.sin(va) * r * 0.82 * g, e.seed + k, 6, 7); c.beginPath(); c.moveTo(pts[0], pts[1]); for (i = 2; i < pts.length; i += 2) c.lineTo(pts[i], pts[i + 1]); c.stroke(); }
+    // the snowflake etched in the ground
+    if (u < 0.9) {
+      c.save(); c.translate(x, y); c.rotate(tt * 0.22); c.globalAlpha = 0.9 * fade; c.strokeStyle = '#ffffff'; c.lineWidth = 1.8;
       for (k = 0; k < 6; k++) {
-        c.save(); c.rotate(k * Math.PI / 3); c.beginPath(); c.moveTo(0, 0); c.lineTo(r * 0.82 * g, 0); c.stroke();
-        [0.38, 0.62, 0.84].forEach(function (f, n) { var bx = r * f * g, bl = r * (0.2 - n * 0.04) * g; c.beginPath(); c.moveTo(bx, 0); c.lineTo(bx + bl * 0.7, bl * 0.6); c.moveTo(bx, 0); c.lineTo(bx + bl * 0.7, -bl * 0.6); c.stroke(); });
+        c.save(); c.rotate(k * Math.PI / 3); c.beginPath(); c.moveTo(0, 0); c.lineTo(r * 0.86 * g, 0); c.stroke();
+        [0.3, 0.52, 0.72, 0.9].forEach(function (f, n) { var bx = r * f * g, bl = r * (0.2 - n * 0.03) * g; c.beginPath(); c.moveTo(bx, 0); c.lineTo(bx + bl * 0.7, bl * 0.6); c.moveTo(bx, 0); c.lineTo(bx + bl * 0.7, -bl * 0.6); c.stroke(); });
         c.restore();
       }
-      c.rotate(-tt * 0.25); c.globalAlpha = 0.5 * (1 - u); c.beginPath(); c.arc(0, 0, r * 0.35 * g, 0, TAU); c.stroke();
-      c.restore(); c.save();
+      c.restore();
     }
-    c.globalAlpha = 1;
-    ringS(c, x, y, r * out(Math.min(1, u * 2.2)), '#dff8ff', 4 * (1 - u) + 1.2, 1 - u);
-    ringS(c, x, y, r * out(Math.min(1, u * 1.7)) * 0.9, '#6fc8f5', 2.5, (1 - u) * 0.7);
-    var grow = back(u * 3.2) * (u > 0.7 ? 1 - (u - 0.7) / 0.3 : 1), rr = r * out(Math.min(1, u * 2.2)) * 0.98;
-    for (i = 0; i < 18; i++) { var a = i * TAU / 18 + e.seed, L = r * 0.22 * grow * (0.7 + 0.6 * hash(i, e.seed)); crystal(c, x + Math.cos(a) * rr, y + Math.sin(a) * rr, a, L, 2.6 + hash(i, 3) * 2, '#7fd0f5', '#e2f8ff'); }
-    for (i = 0; i < 10; i++) { var b = i * TAU / 10 + 0.3; crystal(c, x + Math.cos(b) * rr * 0.55, y + Math.sin(b) * rr * 0.55, b, r * 0.13 * grow, 2, '#9adcf8', '#f2fcff'); }
-    c.restore(); c.globalAlpha = 1;
+    // the shockwave: white, then cyan, then a ghost ring behind it
+    ringS(c, x, y, r * out(Math.min(1, u * 2.6)), '#ffffff', 5 * (1 - u) + 1.5, Math.min(1, (1 - u) * 1.6));
+    ringS(c, x, y, r * out(Math.min(1, u * 2.1)) * 0.92, '#7fd8ff', 3, (1 - u) * 0.8);
+    ringS(c, x, y, r * out(Math.min(1, u * 1.7)) * 0.8, '#cfefff', 1.6, (1 - u) * 0.6);
+    // jagged ice erupting along the wave, then standing as a crown until it melts
+    var rr = r * out(Math.min(1, u * 2.6)) * 0.98;
+    for (i = 0; i < 28; i++) { var an = i * TAU / 28 + e.seed, gr = cl((u - 0.03 * (i % 4)) * 4, 0, 1), L = r * 0.3 * back(gr) * fade * (0.65 + 0.7 * hash(i, e.seed)); if (L < 1) continue; crystal(c, x + Math.cos(an) * rr, y + Math.sin(an) * rr * 0.88, an + (Math.sin(an) < 0 ? -0.0 : 0), L, 3 + hash(i, 3) * 3, '#69c4f2', '#e8fbff'); }
+    for (i = 0; i < 14; i++) { var b = i * TAU / 14 + 0.3, gb = cl((u - 0.05) * 3.5, 0, 1); crystal(c, x + Math.cos(b) * rr * 0.58, y + Math.sin(b) * rr * 0.5, b, r * 0.19 * back(gb) * fade, 2.4, '#8fd4f8', '#f4fdff'); }
+    // sparkling glints everywhere
+    add(c, true);
+    for (i = 0; i < 34; i++) {
+      var ga = hash(i, e.seed) * TAU, gd = Math.sqrt(hash(i, 9 + e.seed)) * r * g, tw = 0.5 + 0.5 * Math.sin(tt * 8 + i * 1.7); if (tw < 0.35 || u < 0.08) continue;
+      var gx = x + Math.cos(ga) * gd, gy = y + Math.sin(ga) * gd * 0.85, gs = (2 + 4 * tw) * fade;
+      c.globalAlpha = tw * fade; c.fillStyle = '#ffffff'; c.fillRect(gx - 0.7, gy - gs, 1.4, gs * 2); c.fillRect(gx - gs, gy - 0.7, gs * 2, 1.4);
+      soft(c, gx, gy, gs * 2.2, '#bfefff', 0.5 * tw * fade);
+    }
+    add(c, false); c.restore(); c.globalAlpha = 1;
   };
-  SP.blizzard = function (x, y, r, o) { push({ type: 'blizzard', x: x, y: y, r: r, life: o.life || 1.4 }); shake(3); };
+  SP.iceShatter = function (x, y, r, o) {
+    push({ type: 'iceShatter', x: x, y: y, r: r, life: 0.5 });
+    for (var i = 0; i < 18; i++) { var a = rnd(0, TAU), v = rnd(60, 190); emit({ kind: 'shard', x: x, y: y - 6, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 80, ay: 300, life: rnd(0.4, 0.8), size: rnd(1.6, 3.4), col: '#bfeaff', col2: '#ffffff' }); }
+  };
+  D.iceShatter = function (c, e, x, y, u, tt) {
+    c.save(); add(c, true); soft(c, x, y - 6, e.r * (0.8 + u), '#dff8ff', (1 - u) * 0.7); add(c, false); ringS(c, x, y - 6, e.r * (0.5 + 1.3 * out(u)), '#ffffff', 2.5 * (1 - u) + 0.5, 1 - u); c.restore(); c.globalAlpha = 1;
+  };
+  // BLIZZARD: a storm that lasts several seconds: heavy snow, glacial spikes crashing down and standing in the ground, the whole area coated in frost
+  SP.blizzard = function (x, y, r, o) { push({ type: 'blizzard', x: x, y: y, r: r, life: o.life || 3.8, spikes: [], nextSp: 0.12 }); shake(5); };
   D.blizzard = function (c, e, x, y, u, tt) {
-    var r = e.r, k, a = u < 0.15 ? u / 0.15 : u > 0.8 ? (1 - u) / 0.2 : 1;
-    soft(c, x, y, r * 1.1, '#bfeaff', 0.3 * a);
-    runes(c, x, y, r * 0.92, '#cfefff', tt, 10, 0.5 * a);
-    c.lineCap = 'round';
-    for (k = 0; k < 5; k++) { // swirling wind
-      var ra = r * (0.35 + k * 0.14), a0 = tt * (2.2 - k * 0.2) + k * 1.3;
-      c.globalAlpha = 0.55 * a; c.strokeStyle = k % 2 ? '#eaffff' : '#8fd8ff'; c.lineWidth = 2 + (k % 2); c.beginPath(); c.arc(x, y, ra, a0, a0 + 1.3); c.stroke();
+    var r = e.r, k, i, a = u < 0.08 ? u / 0.08 : u > 0.82 ? (1 - u) / 0.18 : 1, g = out(Math.min(1, u * 5));
+    c.save();
+    // the sky darkens and goes blue-grey over the area, the ground goes white
+    var dg = c.createRadialGradient(x, y, r * 0.2, x, y, r * 1.25 * g); dg.addColorStop(0, 'rgba(40,70,110,' + (0.28 * a).toFixed(3) + ')'); dg.addColorStop(1, 'rgba(40,70,110,0)');
+    c.fillStyle = dg; c.beginPath(); c.arc(x, y, r * 1.25 * g, 0, TAU); c.fill();
+    var fg = c.createRadialGradient(x, y, r * 0.05, x, y, r * g * 1.02); fg.addColorStop(0, 'rgba(235,250,255,' + (0.5 * a).toFixed(3) + ')'); fg.addColorStop(0.75, 'rgba(185,225,250,' + (0.4 * a).toFixed(3) + ')'); fg.addColorStop(1, 'rgba(150,205,245,0)');
+    c.fillStyle = fg; c.beginPath(); c.ellipse(x, y, r * g * 1.02, r * g * 0.9, 0, 0, TAU); c.fill();
+    // drifts of snow and ice sheets lying on the ground
+    for (i = 0; i < 40; i++) {
+      var ra = hash(i, e.seed) * TAU, rd = Math.sqrt(hash(i, 4 + e.seed)) * r * 0.96 * g, rx = r * (0.05 + 0.06 * hash(i, 7)), gx = x + Math.cos(ra) * rd, gy = y + Math.sin(ra) * rd * 0.88;
+      c.globalAlpha = (0.28 + 0.2 * hash(i, 2)) * a; c.fillStyle = i % 4 ? '#f4fcff' : '#d4eefc'; c.beginPath(); c.ellipse(gx, gy, rx, rx * 0.45, hash(i, 5) * 3, 0, TAU); c.fill();
+    }
+    c.globalAlpha = 0.7 * a; c.strokeStyle = '#ffffff'; c.lineWidth = 1.2; c.lineCap = 'round';
+    for (k = 0; k < 16; k++) { var va = k * TAU / 16 + e.seed, pts = jag(x, y, x + Math.cos(va) * r * 0.97 * g, y + Math.sin(va) * r * 0.85 * g, e.seed + k, 7, 8); c.beginPath(); c.moveTo(pts[0], pts[1]); for (i = 2; i < pts.length; i += 2) c.lineTo(pts[i], pts[i + 1]); c.stroke(); } // frost veins
+    c.globalAlpha = 1;
+    runes(c, x, y, r * 0.95, '#e4f8ff', tt, 12, 0.45 * a);
+    // glacial spikes: they fall from the storm, stab the ground and stand there
+    var sp = e.spikes || [];
+    for (i = 0; i < sp.length; i++) {
+      var q = sp[i], age = e.t - q.t0, L = q.h * (q.big ? 1.5 : 1);
+      if (age < 0.24) { var fy = q.y - 230 * Math.pow(1 - age / 0.24, 1.6); c.globalAlpha = 0.95; crystal(c, q.x, fy - L, Math.PI / 2, L, q.w, '#2f8fd0', '#d8f4ff'); c.globalAlpha = 0.25; c.fillStyle = '#ffffff'; c.fillRect(q.x - 1, fy - L - 40, 2, 40); }
+      else { var gr = back(cl((age - 0.24) / 0.18, 0, 1)), shr = a < 1 ? a : 1; c.globalAlpha = shr; crystal(c, q.x, q.y + 3, -Math.PI / 2, L * (0.55 + 0.45 * gr) * shr, q.w, '#2a86c8', '#cfeffd'); c.fillStyle = 'rgba(255,255,255,0.6)'; c.beginPath(); c.ellipse(q.x, q.y + 3, q.w * 1.4, q.w * 0.55, 0, 0, TAU); c.fill(); }
     }
     c.globalAlpha = 1;
+    c.lineCap = 'round';
+    for (k = 0; k < 6; k++) { // swirling wind
+      var ra2 = r * (0.3 + k * 0.13), a0 = tt * (2.6 - k * 0.25) + k * 1.3;
+      c.globalAlpha = 0.5 * a; c.strokeStyle = k % 2 ? '#ffffff' : '#a8e0ff'; c.lineWidth = 2 + (k % 2); c.beginPath(); c.ellipse(x, y, ra2, ra2 * 0.8, 0, a0, a0 + 1.4); c.stroke();
+    }
+    c.globalAlpha = 1; c.restore();
   };
 
   /* ============ SMOKE / SHADOW ============ */
@@ -562,12 +610,21 @@
     for (i = fxs.length - 1; i >= 0; i--) {
       var e = fxs[i]; e.t += dt;
       if (e.t >= e.life) { fxs.splice(i, 1); continue; }
-      if (e.type === 'blizzard') { // snow and falling ice shards inside the storm
-        for (var k = 0; k < 2; k++) {
-          var a = rnd(0, TAU), d = Math.sqrt(Math.random()) * e.r;
-          emit({ kind: 'snow', add: true, x: e.x + Math.cos(a) * d + 30, y: e.y + Math.sin(a) * d - 80, vx: -40, vy: rnd(110, 190), life: 0.55, size: rnd(1, 2), col: '#ffffff' });
+      if (e.type === 'blizzard') { // heavy snow, and glacial spikes that fall every fraction of a second
+        for (var k = 0; k < 9; k++) {
+          var a = rnd(0, TAU), d = Math.sqrt(Math.random()) * e.r * 1.1;
+          emit({ kind: 'snow', add: k % 3 !== 0, x: e.x + Math.cos(a) * d + 60, y: e.y + Math.sin(a) * d * 0.9 - 150 - rnd(0, 60), vx: -rnd(60, 130), vy: rnd(190, 330), life: 0.62, size: rnd(1.2, 3.2), col: '#ffffff' });
         }
-        if (Math.random() < 0.5) { var b = rnd(0, TAU), bd = Math.sqrt(Math.random()) * e.r; emit({ kind: 'shard', x: e.x + Math.cos(b) * bd, y: e.y + Math.sin(b) * bd - 90, vx: 0, vy: 260, life: 0.34, size: rnd(2, 3.4), col: '#8fd8ff', col2: '#ffffff', rot: rnd(-0.4, 0.4) }); }
+        if (Math.random() < 0.35) { var b2 = rnd(0, TAU), bd = Math.sqrt(Math.random()) * e.r; emit({ kind: 'shard', x: e.x + Math.cos(b2) * bd, y: e.y + Math.sin(b2) * bd * 0.9 - 110, vx: -20, vy: 300, life: 0.34, size: 2.2, col: '#bfeaff', col2: '#ffffff' }); }
+        e.nextSp -= dt;
+        if (e.nextSp <= 0 && e.t < e.life - 1.0 && e.spikes.length < 46) {
+          var sa = rnd(0, TAU), sd = Math.sqrt(Math.random()) * e.r * 0.92, big = Math.random() < 0.22;
+          e.spikes.push({ x: e.x + Math.cos(sa) * sd, y: e.y + Math.sin(sa) * sd * 0.88, t0: e.t, h: rnd(50, 96), w: rnd(5.5, 9), big: big, hit: false }); e.nextSp = rnd(0.07, 0.17);
+        }
+        for (var si = 0; si < e.spikes.length; si++) {
+          var q = e.spikes[si];
+          if (!q.hit && e.t - q.t0 >= 0.24) { q.hit = true; for (var m = 0; m < (q.big ? 10 : 6); m++) { var ma = rnd(0, TAU), mv = rnd(40, 150); emit({ kind: 'shard', x: q.x, y: q.y, vx: Math.cos(ma) * mv, vy: Math.sin(ma) * mv * 0.6 - 70, ay: 260, life: rnd(0.3, 0.6), size: rnd(1.2, 2.6), col: '#cfefff', col2: '#ffffff' }); } if (q.big) shake(2); }
+        }
       } else if (e.type === 'whirl') {
         var wa = rnd(0, TAU), ox = e.own ? e.own.x : e.x, oy = e.own ? e.own.y : e.y;
         emit({ kind: 'smoke', x: ox + Math.cos(wa) * e.r, y: oy + 8 + Math.sin(wa) * e.r * 0.4, vx: Math.cos(wa + 1.5) * 50, vy: Math.sin(wa + 1.5) * 20 - 10, life: 0.4, size: 5, grow: 8, col: '#9a8a68', alpha: 0.6 });

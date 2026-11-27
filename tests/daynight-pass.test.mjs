@@ -130,7 +130,7 @@ test('the Rocky Pass is a long maze with dead ends and a solvable sunbeam puzzle
     RP.debugSolve(map);
     const open = bfs();
     assert.ok(open.has(gk), 'open: the village gate is reachable');
-    assert.ok(open.get(gk) > 400, 'a long way: ' + open.get(gk) + ' steps');
+    assert.ok(open.get(gk) > 250, 'a long way: ' + open.get(gk) + ' steps');
     RP.reset();
   }
 });

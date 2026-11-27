@@ -199,7 +199,7 @@
     for (var i = 0; i < points.length; i++) {
       var pt = points[i], k, e;
       if (pt.type === 'embermoth') { grp++; for (k = 0; k < 3; k++) { e = this.spawn('embermoth', pt.x + (R() - 0.5) * 40, pt.y + (R() - 0.5) * 40, lvl); e.group = grp; } }
-      else { e = this.spawn(pt.type, pt.x, pt.y, lvl); if (e && pt.type !== 'emberheart') { e.maxHp *= 1.5; e.hp *= 1.5; e.dmg *= 1.25; } } // stronger down here
+      else { e = this.spawn(pt.type, pt.x, pt.y, lvl); } // how strong things are down here comes from balance.js (its level band)
     }
     return this.list;
   };

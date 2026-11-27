@@ -237,6 +237,10 @@
     inn.appendChild(el('div', { cls: 'row' }, [
       select('tm-ns', (CC.NightStalkers ? CC.NightStalkers.ids : []).map(function (id) { return [id, CC.NightStalkers.DEFS[id].name]; })),
       btn('Spawn night stalker', function () { var NS = CC.NightStalkers, id = val('tm-ns'), e = NS && NS.spawn(id, true); if (e) { e.testSpawn = true; say('Spawned ' + NS.DEFS[id].name); } else say('Could not spawn it here'); }, 'go')]));
+    inn.appendChild(el('h3', { text: 'REPLAY (stronger monsters)' }));
+    inn.appendChild(el('div', { cls: 'row' }, [
+      select('tm-cycle', [['0', 'First time through'], ['1', 'Replay 1'], ['2', 'Replay 2'], ['3', 'Replay 3']]),
+      btn('Set (new monsters)', function () { if (CC.Balance) { CC.Balance.setCycle(+val('tm-cycle') || 0); say('Replay ' + CC.Balance.cycle() + ': monsters spawned from now on'); } }, 'go')]));
     inn.appendChild(el('h3', { text: 'CHEATS' }));
     inn.appendChild(el('div', { cls: 'row' }, [
       el('span', { cls: 'chk' }, [el('input', { id: 'tm-god', type: 'checkbox', checked: cheats.god, onchange: function () { cheats.god = this.checked; } }), el('span', { text: 'God mode' })]),

@@ -447,7 +447,7 @@
     var s = CC.state;
     s.coop = false;
     try { if (navigator.sendBeacon) navigator.sendBeacon('/api/hit?e=start&c=' + encodeURIComponent(classId)); } catch (e) { /* the traffic counter is optional */ } // counts a new game by hero only
-    clearWorldCache();CC.state.testMode=false;call('SaveGame','newGame');call('EggQuest','reset');call('CinderwakeStory','reset');call('DayNight','reset');
+    clearWorldCache();CC.state.testMode=false;call('SaveGame','newGame');call('EggQuest','reset');call('CinderwakeStory','reset');call('DayNight','reset');CC.state.cycle=0;CC.state.chapter=1;
     s.gold=0;s.inventory=[];s.potions=2;s.manaPotions=1;s.bridgeDown=false;s.treeFloor=1;s.treeBest=1;
     call('Camp', 'clear'); // a fresh hero must not inherit a previous run's fence or checkpoint
     call('Portal','reset');lastWorld=null;
@@ -465,7 +465,7 @@
   function beginRun(classId,scene,character,coop){
     clearWorldCache();
     var s=CC.state;s.testMode=false;
-    call('Camp','clear');call('Portal','reset');call('EggQuest','reset');call('CinderwakeStory','reset');call('DayNight','reset');lastWorld=null;
+    call('Camp','clear');call('Portal','reset');call('EggQuest','reset');call('CinderwakeStory','reset');call('DayNight','reset');CC.state.cycle=0;CC.state.chapter=1;lastWorld=null;
     s.soloDefense=!coop&&!!(scene&&scene.area==='defense');
     s.coop=!!coop;s.inventory=[];s.potions=2;s.manaPotions=1;s.gold=0;s.kills=0;s.runGold=0;s.coopSlot=0;
     s.classId=classId;s.bestFloor=1;s.treeFloor=Math.max(1,scene&&scene.tf||1);
@@ -596,7 +596,7 @@
     if(!data||!data.player||!data.classId)return false;
     clearWorldCache();
     call('Camp','clear');call('Portal','reset');lastWorld=null;CC.state.testMode=false;call('CriticalScene','reset');call('UI','close');
-    call('Waypoints','reset');call('EggQuest','restore',data.quest);call('CinderwakeStory','restore',data.cinderwake);call('DayNight','restore',data.day);
+    call('Waypoints','reset');call('EggQuest','restore',data.quest);call('CinderwakeStory','restore',data.cinderwake);call('DayNight','restore',data.day);CC.state.cycle=data.cycle|0;CC.state.chapter=data.chapter|0||1;
     var s=CC.state,p=call('Classes','create',data.classId);
     if(!p)return false;
     Object.assign(p,data.player);
@@ -645,7 +645,7 @@
   var pending = {};
   var actionKeys = { Space: 'attack', KeyQ: 'spell1', KeyE: 'spell2', KeyR: 'spell3', KeyT: 'spell4',
     ShiftLeft: 'dash', ShiftRight: 'dash', KeyF: 'interact', Enter: 'interact', KeyH: 'potion', KeyN: 'mpotion' };
-  var paused = false, uiWas = false, exitConfirm = false;
+  var paused = false, uiWas = false, exitConfirm = false; var noCampAt = 0;
   function playing() { return CC.state.mode === 'town' || CC.state.mode === 'dungeon'; }
   function pressAction(name) {
     if (playing() && !paused && !uiOpen() && !(CC.state.player && CC.state.player.perkOpen)) { pending[name] = true; call('HoldGuide', 'onAction', name); if (name === 'attack') call('ThiefSpells', 'onAttack'); }
@@ -1808,8 +1808,10 @@
       } else CC.returnToTown();
     });
     var hasCamp = !!(CC.Camp && CC.Camp.hasCamp && CC.Camp.hasCamp());
-    addButton(W / 2 - 110, H * 0.69, 220, 46, hasCamp ? 'Respawn at camp' : 'Respawn at camp (no camp set)', hasCamp ? '#5b6341' : '#3a3a40', function () {
-      if (!hasCamp) return;
+    var ncE = Date.now() - noCampAt;
+    if (ncE >= 0 && ncE < 1800) { var ncA = Math.min(1, ncE / 150, (1800 - ncE) / 500); ctx.save(); ctx.globalAlpha = ncA; label('No Camp Set!', W / 2, H * 0.69 - 22 - ncE * 0.012, 20, '#ff5a4a'); ctx.restore(); }
+    addButton(W / 2 - 110, H * 0.69, 220, 46, 'Respawn at camp', hasCamp ? '#5b6341' : '#3a3a40', function () {
+      if (!hasCamp) { noCampAt = Date.now(); return; } // no camp: a popup says so
       if (call('Camp', 'respawn')) { resetInputHeld(); snapCamera(); }
     });
   }

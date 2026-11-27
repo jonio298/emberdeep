@@ -202,6 +202,11 @@
     var def = D[e.type]; if (!def) return false;
     e.anim = (e.anim || 0) + dt; e.dangerous = false; e.ns = e.ns || { frame: def.idle[0], alpha: 0 };
     var ns = e.ns; e.mcd = e.mcd || {}; for (var kk in e.mcd) if (e.mcd[kk] > 0) e.mcd[kk] -= dt;
+    if (ns.hide > 0 && !e.leaving) { // unseen: nothing shows until about ten seconds after the spawn sound has finished
+      ns.hide -= dt; ns.alpha = 0; ns.tele = null; ns.frame = def.idle[0]; e.face = p && p.x >= e.x ? 1 : -1;
+      if (p && d > 190) mv(e, Math.cos(ang) * e.spd * dt * 0.5, Math.sin(ang) * e.spd * dt * 0.5, def.fly);
+      return true;
+    }
     ns.alpha = Math.min(1, ns.alpha + dt / 1.4); // it steps out of the dark
     if (e.leaving) { ns.alpha = Math.max(0, ns.alpha - dt / 1.2 - 0.0001); e.leaving = 1; return true; }
     if (!p || p.hp <= 0) { ns.tele = null; return true; }
@@ -254,7 +259,7 @@
     var prevThink = E._think;
     E._think = function (e, dt, p, d, ang, f) { if (e.type && D[e.type]) { think(e, dt, p, d, ang, f); return; } return prevThink.apply(this, arguments); };
     var prevSpawn = E.spawn;
-    E.spawn = function (type) { var e = prevSpawn.apply(this, arguments); if (e && D[type]) { var def = D[type]; e.miniBoss = true; e.noKnock = true; var lv = e.lvl || 3; e.maxHp = e.hp = def.hp * (1.6 + lv * 0.45); e.dmg = def.dmg * (1.2 + lv * 0.14); /* nightmares: they grow much faster than you do, so every level is a hard fight */ e.r = def.r; e.ghost = !!def.fly; e.spd = def.spd; e.nightStalker = true; } return e; };
+    E.spawn = function (type) { var e = prevSpawn.apply(this, arguments); if (e && D[type]) { var def = D[type]; e.miniBoss = true; e.noKnock = true; var lv = e.lvl || 3; e.maxHp = e.hp = def.hp * (1.6 + lv * 0.45) * 3; e.dmg = def.dmg * (1.2 + lv * 0.14) * 1.5; /* nightmares: they grow much faster than you do, so every level is a hard fight */ e.r = def.r; e.ghost = !!def.fly; e.spd = def.spd; e.nightStalker = true; } return e; };
     var prevKill = E._kill;
     E._kill = function (e) { var was = !!(e && e.dead), r = prevKill.apply(this, arguments); if (e && e.dead && !was && e.nightStalker && !e.leaving) { try { slain(e); } catch (x) { if (root.console) console.error(x); } } return r; };
   }
@@ -344,6 +349,7 @@
     var w = { grinmask: 3, marionette: 3, scytheweaver: 2, veiledwidow: 3, wailchorus: 2, skullbloom: area === 'plains' ? 3 : 1.5, cinderhound: area === 'plains' ? 3 : 1.5, gloomcrawler: 3, gravemaw: area === 'plains' ? 2.5 : 1 };
     var total = 0, k; for (k in w) total += w[k]; var r = R() * total; for (k in w) { r -= w[k]; if (r <= 0) return k; } return 'grinmask';
   }
+  var HIDE_FOR = 17.2; // the 7.2 s spawn sound, then ten more seconds before it can be seen
   NS.spawn = function (type, near) {
     var p = hero(), m = CC.Dungeon; if (!p || !E) return null;
     for (var tries = 0; tries < 24; tries++) {
@@ -352,7 +358,7 @@
       if (m && m.isSolid && D[type].fly !== true && m.isSolid(x, y)) continue;
       if (m && m.isSolid && D[type].fly === true && m.isSolidTile && m.isSolidTile(Math.floor(x / T), Math.floor(y / T)) && tries < 20) continue;
       var e = E.spawn(type, x, y, Math.max(3, (p.level || 3)), { awake: true });
-      if (!e) return null; e.asleep = false; e.nightStalker = true; e.ns = { frame: D[type].idle[0], alpha: 0 };
+      if (!e) return null; e.asleep = false; e.nightStalker = true; e.ns = { frame: D[type].idle[0], alpha: 0, hide: near ? 0 : HIDE_FOR };
       if (CC.fx && CC.fx.burst) CC.fx.burst(x, y, '#2a1a3a', 18, 70);
       if (CC.Audio && CC.Audio.fx) CC.Audio.fx('ghost_moan', { x: x, y: y, vol: 0.5, gap: 200 });
       if (CC.Audio && CC.Audio.play) CC.Audio.play('stalker_spawn', { x: x, y: y, vol: 0.9, gap: 400, vary: 0 });
@@ -389,7 +395,7 @@
     if (!keep || !p || p.hp <= 0) { dir.nightFor = 0; dir.announced = false; if (!out) dir.t = 40; return; }
     if (dir.nightFor === 0) dir.t = Math.min(dir.t, 12); // the first one comes out of the dark soon after night falls
     dir.nightFor += dt; dir.t -= dt;
-    var cap = dir.nightFor > 150 ? 3 : dir.nightFor > 60 ? 2 : 1;
+    var cap = DN.secondsLeft && DN.secondsLeft() <= 180 ? 3 : dir.nightFor > 60 ? 2 : 1; // three at a time for the last three minutes of the night
     if (dir.t <= 0) {
       dir.t = 28 + R() * 40;
       if (NS.count() < cap) { var ne = NS.spawn(pickType(a)); if (ne && !dir.announced) { dir.announced = true; if (CC.fx) CC.fx.text(p.x, p.y - 40, 'SOMETHING STIRS IN THE DARK...', '#c8a0ff', 12); } }

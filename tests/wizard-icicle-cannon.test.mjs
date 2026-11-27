@@ -29,21 +29,18 @@ function setup() {
   return { player, list, CC, pairs, hits, enemy, step, wizard: CC.WizardSpells };
 }
 
-test('tap pierces three distinct enemies and does not splash its direct targets', () => {
+test('a tap fires three auto-aimed icicles at the nearest foes, bosses first', () => {
   const { player, enemy, hits, pairs, wizard, step } = setup();
-  const first = enemy(42), second = enemy(90), third = enemy(138), fourth = enemy(186);
-  const splash = enemy(42, 15);
-  pairs.get('bolt').tap(player, { dx: 1, dy: 0 });
-  assert.equal(wizard.projectiles.length, 1);
-  step(0.4);
-  for (const e of [first, second, third]) {
-    assert.deepEqual(hits.filter(hit => hit.e === e).map(hit => hit.damage), [36]);
-  }
-  const splashHits = hits.filter(hit => hit.e === splash);
-  assert.equal(splashHits.length, 1);
-  assert.ok(Math.abs(splashHits[0].damage - 7.2) < 1e-8);
-  assert.ok(!hits.some(hit => hit.e === fourth));
-  assert.equal(wizard.projectiles.length, 0);
+  const first = enemy(42), second = enemy(90, 60), third = enemy(138, -60), far = enemy(300, 200);
+  pairs.get('bolt').tap(player, { dx: -1, dy: 0 }); // aimed the wrong way: the icicles still home in
+  assert.equal(wizard.projectiles.length, 3, 'three icicles');
+  const same = (a, b) => Math.abs(Math.sin(a - b)) < 1e-6 && Math.cos(a - b) > 0, angles = wizard.projectiles.map(p => p.angle);
+  assert.ok(same(angles[0], Math.atan2(first.y - player.y, first.x - player.x)), 'the first goes for the nearest foe');
+  assert.ok(same(angles[1], Math.atan2(second.y - player.y, second.x - player.x)), 'the second for the next');
+  assert.ok(same(angles[2], Math.atan2(third.y - player.y, third.x - player.x)), 'the third for the next');
+  step(0.5);
+  for (const e of [first, second, third]) assert.ok(hits.some(h => h.e === e), 'each of the three nearest foes is hit');
+  assert.ok(!hits.some(h => h.e === far));
 });
 
 test('icicles shatter against walls before hitting foes behind them', () => {

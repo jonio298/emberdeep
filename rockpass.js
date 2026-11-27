@@ -434,32 +434,61 @@
     function cy0(ci) { return OFF + WALL + Math.floor(ci / MW) * PITCH; }
     function ctrT(ci) { return { tx: cx0(ci) + (CELL >> 1), ty: cy0(ci) + (CELL >> 1) }; }
     function ctrP(ci) { var c0 = ctrT(ci); return { x: c0.tx * T + T / 2, y: c0.ty * T + T / 2 }; }
-    // the maze: a depth-first carve from the south-east chamber
+    // the pass: ONE main path winds roughly north-west from the south-east corner up to the gate in the north-west corner, and countless side
+    // trails branch off it, fork again, wander and sometimes loop back, so it is hard to tell which way is the right one
     var NC = MW * MH, open = []; for (i = 0; i < NC; i++) open.push([0, 0, 0, 0]); // E S W N
-    var DX = [1, 0, -1, 0], DY = [0, 1, 0, -1], seen = new Uint8Array(NC), start = NC - 1, stack = [start]; seen[start] = 1;
-    while (stack.length) {
-      var cur = stack[stack.length - 1], ci2 = cur % MW, cj2 = Math.floor(cur / MW), opts = [];
-      for (k = 0; k < 4; k++) { var ni2 = ci2 + DX[k], nj2 = cj2 + DY[k]; if (ni2 >= 0 && nj2 >= 0 && ni2 < MW && nj2 < MH && !seen[nj2 * MW + ni2]) opts.push(k); }
-      if (!opts.length) { stack.pop(); continue; }
-      var dk = opts[Math.floor(rng() * opts.length)], nxt = (cj2 + DY[dk]) * MW + ci2 + DX[dk];
-      open[cur][dk] = 1; open[nxt][(dk + 2) % 4] = 1; seen[nxt] = 1; stack.push(nxt);
+    var DX = [1, 0, -1, 0], DY = [0, 1, 0, -1], start = NC - 1, goal = 0, onSpine = new Uint8Array(NC), spineList = [], midPts = [];
+    function nbr(c0, d) { var xx = (c0 % MW) + DX[d], yy = Math.floor(c0 / MW) + DY[d]; return xx >= 0 && yy >= 0 && xx < MW && yy < MH ? yy * MW + xx : -1; }
+    function link(c0, d) { var n0 = nbr(c0, d); open[c0][d] = 1; open[n0][(d + 2) % 4] = 1; }
+    for (var attempt = 0; attempt < 600 && !spineList.length; attempt++) { // a weighted walk that drifts north and west but doubles back often enough to mislead
+      var cur = start, path = [start], vis = new Uint8Array(NC), guard = 0; vis[start] = 1;
+      while (cur !== goal && guard++ < 400) {
+        var opts = [], wts = [], tw = 0;
+        for (k = 0; k < 4; k++) { var n1 = nbr(cur, k); if (n1 < 0 || vis[n1]) continue; var w1 = (k === 2 || k === 3) ? 2.2 : 1; opts.push(k); wts.push(w1); tw += w1; }
+        if (!opts.length) break;
+        var rr = rng() * tw, pick = opts.length - 1; for (j = 0; j < opts.length; j++) { rr -= wts[j]; if (rr <= 0) { pick = j; break; } }
+        cur = nbr(cur, opts[pick]); vis[cur] = 1; path.push(cur);
+      }
+      if (cur === goal && path.length >= 32) spineList = path;
     }
-    // carve the chambers and the three-tile passages
+    if (!spineList.length) return null;
+    for (i = 0; i < spineList.length; i++) { onSpine[spineList[i]] = 1; if (i) for (k = 0; k < 4; k++) if (nbr(spineList[i - 1], k) === spineList[i]) link(spineList[i - 1], k); }
+    var inTree = new Uint8Array(NC), frontier = spineList.filter(function (c0) { return c0 !== goal; }); spineList.forEach(function (c0) { inTree[c0] = 1; });
+    while (frontier.length) { // side trails grow off the main path: many short forks and a few long wanderers (the gate room stays a dead end)
+      var fi = rng() < 0.5 ? frontier.length - 1 : Math.floor(rng() * frontier.length), c1 = frontier[fi], optsB = [];
+      for (k = 0; k < 4; k++) { var n2 = nbr(c1, k); if (n2 >= 0 && !inTree[n2]) optsB.push(k); }
+      if (!optsB.length) { frontier.splice(fi, 1); continue; }
+      var dk = optsB[Math.floor(rng() * optsB.length)], nx2 = nbr(c1, dk); link(c1, dk); inTree[nx2] = 1; frontier.push(nx2);
+    }
+    for (i = 0; i < NC; i++) for (k = 0; k < 2; k++) { var n3 = nbr(i, k); if (n3 >= 0 && !open[i][k] && i !== goal && n3 !== goal && !(onSpine[i] && onSpine[n3]) && rng() < 0.1) link(i, k); } // a few loops that bring you back to where you were
+    // carve: rough cave chambers, and passages that wind left and right (the gate's own passage stays straight and three wide for the thornwall)
     function floor(x0, y0, w, h, kd) { for (var yy = y0; yy < y0 + h; yy++) for (var xx = x0; xx < x0 + w; xx++) { tiles[at(xx, yy)] = 0; kind[at(xx, yy)] = kd || 0; } }
+    function disc(tcx, tcy, r) { for (var yy = Math.floor(tcy - r); yy <= Math.ceil(tcy + r); yy++) for (var xx = Math.floor(tcx - r); xx <= Math.ceil(tcx + r); xx++) if (xx > 0 && yy > 0 && xx < PW - 1 && yy < PH - 1 && (xx - tcx) * (xx - tcx) + (yy - tcy) * (yy - tcy) <= r * r) { tiles[at(xx, yy)] = 0; kind[at(xx, yy)] = 0; } }
     var mid = (CELL - 3) >> 1; // the passage is centred on the chamber's wall
-    for (i = 0; i < NC; i++) {
-      floor(cx0(i), cy0(i), CELL, CELL, 0);
-      if (open[i][0]) floor(cx0(i) + CELL, cy0(i) + mid, WALL, 3, 0);
-      if (open[i][1]) floor(cx0(i) + mid, cy0(i) + CELL, 3, WALL, 0);
+    function winding(c0, c1b, ph) {
+      var p0 = ctrT(c0), p1 = ctrT(c1b), dx = p1.tx - p0.tx, dy = p1.ty - p0.ty, len = Math.hypot(dx, dy) || 1, px0 = -dy / len, py0 = dx / len, amp = 1.7 + rng() * 0.6, n = 22, q;
+      for (q = 0; q <= n; q++) { var u = q / n, off = amp * Math.sin(u * Math.PI * (1.4 + ph)) * Math.sin(u * Math.PI) * 1.4; disc(p0.tx + dx * u + px0 * off + 0.5, p0.ty + dy * u + py0 * off + 0.5, 1.55); }
+      var uo = 0.5, offm = amp * Math.sin(uo * Math.PI * (1.4 + ph)) * Math.sin(uo * Math.PI) * 1.4; midPts.push({ tx: Math.round(p0.tx + dx * uo + px0 * offm), ty: Math.round(p0.ty + dy * uo + py0 * offm) });
     }
+    for (i = 0; i < NC; i++) {
+      var ct = ctrT(i);
+      if (i === goal || i === start) floor(cx0(i), cy0(i), CELL, CELL, 0);
+      else { disc(ct.tx + 0.5, ct.ty + 0.5, 3.0 + rng() * 0.5); for (k = 0; k < 3; k++) disc(ct.tx + 0.5 + (rng() - 0.5) * 4, ct.ty + 0.5 + (rng() - 0.5) * 4, 1.3 + rng() * 1.2); }
+    }
+    for (i = 0; i < NC; i++) {
+      if (open[i][0]) { if (i === goal || nbr(i, 0) === goal) floor(cx0(i) + CELL, cy0(i) + mid, WALL, 3, 0); else winding(i, nbr(i, 0), rng()); }
+      if (open[i][1]) { if (i === goal || nbr(i, 1) === goal) floor(cx0(i) + mid, cy0(i) + CELL, 3, WALL, 0); else winding(i, nbr(i, 1), rng()); }
+    }
+    // the gate chamber is walled in again all round, so nothing winding can breach it: only its own straight passage (plugged by the thornwall) leads in
+    for (y = cy0(goal) - WALL; y < cy0(goal) + CELL + WALL; y++) for (x = cx0(goal) - WALL; x < cx0(goal) + CELL + WALL; x++) { if (x >= cx0(goal) && x < cx0(goal) + CELL && y >= cy0(goal) && y < cy0(goal) + CELL) continue; if (x > 0 && y > 0 && x < PW - 1 && y < PH - 1) tiles[at(x, y)] = 1; }
+    for (k = 0; k < 4; k++) if (open[goal][k]) { if (k === 0) floor(cx0(goal) + CELL, cy0(goal) + mid, WALL, 3, 0); else if (k === 1) floor(cx0(goal) + mid, cy0(goal) + CELL, 3, WALL, 0); }
     // graph distances from a chamber
     function bfs(from) { var d = new Int16Array(NC).fill(-1), q = [from], qi = 0; d[from] = 0; while (qi < q.length) { var c0 = q[qi++]; for (var kk = 0; kk < 4; kk++) if (open[c0][kk]) { var n3 = (Math.floor(c0 / MW) + DY[kk]) * MW + (c0 % MW) + DX[kk]; if (d[n3] < 0) { d[n3] = d[c0] + 1; q.push(n3); } } } return d; }
     function degree(c0) { return open[c0][0] + open[c0][1] + open[c0][2] + open[c0][3]; }
     var fromStart = bfs(start), leaves = [];
-    for (i = 0; i < NC; i++) if (i !== start && degree(i) === 1) leaves.push(i);
+    for (i = 0; i < NC; i++) if (i !== start && i !== goal && degree(i) === 1) leaves.push(i);
     if (leaves.length < 9) return null;
-    leaves.sort(function (a, b) { return fromStart[b] - fromStart[a]; });
-    var goal = leaves[0], taken = {}, chosen = [start, goal]; taken[goal] = 1;
+    var taken = {}, chosen = [start, goal]; taken[goal] = 1;
     var dists = {}; dists[start] = fromStart; dists[goal] = bfs(goal);
     function pickLeaf() { // the leaf farthest (in chambers) from everything chosen so far
       var best = -1, bs = -1;
@@ -497,6 +526,7 @@
     props.push({ x: sg.x, y: sg.y, sortY: 0, draw: function (c, sx, sy, t) { drawSpring(c, sx, sy, t, true); } });
     props.push({ x: el.x, y: el.y, sortY: 8, draw: function (c, sx, sy, t) { drawElder(c, sx, sy, t); } });
     lights.push({ x: sp.x, y: sp.y, r: 90, color: '120,200,255', inten: 0.4, flicker: 0.05 });
+    floor(cx0(roles.hollow), cy0(roles.hollow), CELL, CELL, 0);
     var hollow = makeHollow(rng, cx0(roles.hollow), cy0(roles.hollow));
     if (!hollow) return null;
     puzzle.hollow = hollow;
@@ -526,12 +556,14 @@
     if (!ok) return null;
     // monsters: groups in about half the chambers, ledges of golems where three ways meet
     function inChamber(ci3, spread) { for (var t2 = 0; t2 < 14; t2++) { var p = ctrT(ci3), px = Math.round(p.tx + (rng() - 0.5) * spread), py = Math.round(p.ty + (rng() - 0.5) * spread); if (px > 1 && py > 1 && px < PW - 2 && py < PH - 2 && !tiles[at(px, py)] && reach[at(px, py)]) return { x: px * T + 16, y: py * T + 16 }; } return null; }
-    for (i = 0; i < NC; i++) {
-      if (special[i] || fromStart[i] < 3 || i === goal) continue;
+    var KINDS = ['cragharpy', 'direwolf', 'crow', 'bear', 'screegolem', 'direwolf', 'cragharpy'];
+    for (i = 0; i < NC; i++) { // packs in nearly every chamber, golem ledges at the junctions
+      if (special[i] || fromStart[i] < 2 || i === goal) continue;
       var deg = degree(i), roll = rng();
-      if (deg >= 3 && roll < 0.7) { var a1 = inChamber(i, 4), a2 = inChamber(i, 5), a3 = inChamber(i, 5); if (a1) spawns.push({ x: a1.x, y: a1.y, type: 'screegolem' }); if (a2) spawns.push({ x: a2.x, y: a2.y, type: 'cragharpy', pair: true }); if (a3) spawns.push({ x: a3.x, y: a3.y, type: 'direwolf' }); }
-      else if (roll < 0.42) { var pt2 = inChamber(i, 5); if (!pt2) continue; var r2 = rng(), type = r2 < 0.3 ? 'cragharpy' : r2 < 0.55 ? 'direwolf' : r2 < 0.7 ? 'crow' : r2 < 0.85 ? 'bear' : 'screegolem'; spawns.push({ x: pt2.x, y: pt2.y, type: type }); }
+      if (deg >= 3 && roll < 0.85) { var a1 = inChamber(i, 4), a2 = inChamber(i, 5), a3 = inChamber(i, 5), a4 = inChamber(i, 5); if (a1) spawns.push({ x: a1.x, y: a1.y, type: 'screegolem' }); if (a2) spawns.push({ x: a2.x, y: a2.y, type: 'cragharpy', pair: true }); if (a3) spawns.push({ x: a3.x, y: a3.y, type: 'direwolf' }); if (a4) spawns.push({ x: a4.x, y: a4.y, type: rng() < 0.5 ? 'bear' : 'crow' }); }
+      else if (roll < 0.9) { var nm = 1 + Math.floor(rng() * 3); for (var mi = 0; mi < nm; mi++) { var pt2 = inChamber(i, 6); if (!pt2) continue; spawns.push({ x: pt2.x, y: pt2.y, type: KINDS[Math.floor(rng() * KINDS.length)] }); } }
     }
+    midPts.forEach(function (mp) { if (rng() < 0.45 && reach[at(mp.tx, mp.ty)] && Math.hypot(mp.tx - ctrT(start).tx, mp.ty - ctrT(start).ty) > 12) spawns.push({ x: mp.tx * T + 16, y: mp.ty * T + 16, type: KINDS[Math.floor(rng() * KINDS.length)] }); }); // lone stalkers on the winding trails
     var spawnP = ctrP(start), exitP = ctrP(goal);
     function marker(x, y, label, col) { return { x: x, y: y, sortY: -20, draw: function (c, sx, sy, t) { var gl = 0.5 + 0.5 * Math.sin(t * 2.4); c.save(); c.globalAlpha = 0.35 + 0.25 * gl; var g = c.createRadialGradient(sx, sy, 2, sx, sy, 34); g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = g; c.fillRect(sx - 36, sy - 36, 72, 72); c.restore(); c.fillStyle = '#4a4036'; c.fillRect(sx - 20, sy - 30, 5, 34); c.fillRect(sx + 15, sy - 30, 5, 34); c.fillRect(sx - 22, sy - 34, 44, 6); c.fillStyle = '#d8c8a0'; c.font = 'bold 8px Georgia'; c.textAlign = 'center'; c.fillText(label, sx, sy - 38); } }; }
     props.push(marker(spawnP.x + 2.5 * T, spawnP.y + 1.5 * T, 'THE PLAINS', 'rgba(255,224,150,.6)'));
