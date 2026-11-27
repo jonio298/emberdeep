@@ -241,6 +241,15 @@
     inn.appendChild(el('div', { cls: 'row' }, [
       select('tm-cycle', [['0', 'First time through'], ['1', 'Replay 1'], ['2', 'Replay 2'], ['3', 'Replay 3']]),
       btn('Set (new monsters)', function () { if (CC.Balance) { CC.Balance.setCycle(+val('tm-cycle') || 0); say('Replay ' + CC.Balance.cycle() + ': monsters spawned from now on'); } }, 'go')]));
+    inn.appendChild(el('h3', { text: 'LEGENDARY WEAPONS' }));
+    inn.appendChild(el('div', { cls: 'row' }, [
+      select('tm-leg', (CC.Loot && CC.Loot.LEGEND_WEAPONS ? CC.Loot.LEGEND_WEAPONS : []).map(function (l) { return [l.name, l.name + ' (' + (l.cls || 'any') + ', lv ' + l.qlvl + ')']; })),
+      btn('Give + wear', function () {
+        var l = (CC.Loot.LEGEND_WEAPONS || []).filter(function (q) { return q.name === val('tm-leg'); })[0], p = CC.state.player; if (!l || !p) return;
+        var it = CC.Loot.makeItem(Math.max(l.qlvl, 10), 4, 'weapon', l.cls || p.classId, p.level, l); it.reqLevel = 1; // test mode ignores the level requirement
+        p.equipment = p.equipment || {}; p.equipment.weapon = it; if (CC.Classes && CC.Classes.applyItemStats) CC.Classes.applyItemStats(p);
+        if (CC.DropTables) CC.DropTables.found(it); say('Wielding ' + it.name);
+      }, 'go')]));
     inn.appendChild(el('h3', { text: 'CHEATS' }));
     inn.appendChild(el('div', { cls: 'row' }, [
       el('span', { cls: 'chk' }, [el('input', { id: 'tm-god', type: 'checkbox', checked: cheats.god, onchange: function () { cheats.god = this.checked; } }), el('span', { text: 'God mode' })]),

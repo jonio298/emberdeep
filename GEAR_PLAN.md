@@ -1,6 +1,6 @@
 # Emberdeep gear update: the plan (drops, class loot, 70 legendary weapons)
 
-Status: step 1 (drop tables, quality pipeline, overlevel, strict required levels, class weapon bias, pity timer, drop simulator tests) is built in build 20261126.36 (`droptables.js`, `tests/droptables.test.mjs`). Steps 2-5 (ability system, the 70 weapons, UI, balance) are not built. Decisions: no sockets or runes for now; strict required levels.
+Status (build 20261126.38): steps 1-4 are built: drop tables and quality pipeline (`droptables.js`), the 70 weapons as data (`legendary_weapons.js`), the ability engine (`legendary.js`) with every weapon's ability implemented, boss/stalker-bound drops, the Legendary Codex, test-mode Give legendary, and tests (`tests/droptables.test.mjs`, `tests/legendary.test.mjs`). NOT done: per-weapon art (they use the generic base art), a weapon-power cap simulator (step 5), and live play-testing of every ability. Where an ability in section 4 differs from what was built, the in-game description (`legendary_weapons.js`) is the truth: Dawnbreaker dazes instead of blinding, Mirage Edge stuns instead of leaving a decoy, Sepulcher Staff only raises the minion cap, Worm-Eaten Regalia raises 8 skeletons below half health, The Last Word gives double damage for 3 s after a free cast, Locksmith's Pick opens chests as you walk up. Decisions: no sockets or runes for now; strict required levels.
 
 ## 1. Where we are now (what exists in the code)
 

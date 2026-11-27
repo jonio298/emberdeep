@@ -19,7 +19,7 @@
     if (CC.Classes && CC.Classes.status) CC.Classes.status(e, 'slow', secs || CHILL_FOR, Math.min(e.slowT > 0 && e.slowMul ? e.slowMul : 1, F.immune(e) ? 0.8 : 0.6));
     return true;
   };
-  F.coldProc = function (e) { if (alive(e) && Math.random() < CHILL_ODDS) F.chill(e, CHILL_FOR); };
+  F.coldProc = function (e) { if (alive(e) && Math.random() < CHILL_ODDS) F.chill(e, CC.Legendary && CC.Legendary.chillFor ? CC.Legendary.chillFor() : CHILL_FOR); };
   F.freeze = function (e, secs) {
     if (!alive(e) || F.immune(e) || (e.iceT || 0) > 0 || (e.iceLock || 0) > 0) return false;
     secs = secs || FREEZE_FOR;
@@ -29,7 +29,7 @@
     if (CC.Audio && CC.Audio.fx) CC.Audio.fx('crit', { x: e.x, y: e.y, vol: 0.4, gap: 120 });
     return true;
   };
-  F.freezeRoll = function (e, p) { return Math.random() < (p === undefined ? FREEZE_ODDS : p) ? F.freeze(e) : false; };
+  F.freezeRoll = function (e, p) { var m = CC.Legendary && CC.Legendary.freezeMul ? CC.Legendary.freezeMul() : 1; return Math.random() < (p === undefined ? FREEZE_ODDS : p) * m ? F.freeze(e) : false; };
   F.ODDS = { chill: CHILL_ODDS, freeze: FREEZE_ODDS };
 
   function update(dt) {
@@ -109,8 +109,7 @@
     };
   }
   if (E && E.update) { var prevUpdate = E.update; E.update = function (dt) { var r = prevUpdate.apply(this, arguments); try { update(dt); } catch (err) { if (root.console) console.error(err); } return r; }; }
-  if (CC.Classes && CC.Classes.hitEnemy) { // cold damage from any source: a 1 in 4 chance to chill
-    var prevHit = CC.Classes.hitEnemy;
-    CC.Classes.hitEnemy = function (e, dmg, type) { var dealt = prevHit.apply(this, arguments); if (type === 'frost' && dealt > 0) F.coldProc(e); return dealt; };
+  if (CC.Classes && CC.Classes.wrapHit) { // cold damage from any source: a 1 in 4 chance to chill
+    CC.Classes.wrapHit(function (next, e, dmg, type, opts) { var dealt = next(e, dmg, type, opts); if (type === 'frost' && dealt > 0) F.coldProc(e); return dealt; });
   }
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -202,6 +202,7 @@
 
   function weaponType(it) {
     var n = it.name || '', t, c;
+    if (it.legendType) return it.legendType;
     if (LEGEND_TYPE[n]) return LEGEND_TYPE[n];
     for (t in WEAPON_TYPES) if (WEAPON_TYPES[t].re.test(n)) return t;
     for (t in WEAPON_TYPES) if (WEAPON_TYPES[t].cls && WEAPON_TYPES[t].cls === it.classReq) return t;
@@ -316,7 +317,7 @@
       classReq: null, className: null, set: null, setName: null, glow: rar.color, prefix: null, suffix: null };
     var mult = rar.mult, i, stat, setId = null;
     function ok(c) { return !cls || !c || c === cls; }
-    if (rarity >= 3 && slot) {
+    if (rarity >= 3 && slot && !forceLegend) {
       var cands = SET_IDS.filter(function (id) { return SETS[id].pieces[slot] && ok(SETS[id].cls); });
       if (cands.length && R() < (rarity === 4 ? 0.35 : 0.15)) setId = pick(cands);
     }
@@ -334,8 +335,8 @@
     } else if (rarity === 4) {
       var pool = LEGENDS.filter(function (l) { return (!slot || l.slot === slot) && ok(l.cls); });
       if (!pool.length) pool = LEGENDS.filter(function (l) { return ok(l.cls); });
-      var L = forceLegend || pick(pool);
-      it.qlvl = L.qlvl || null;
+      var L = forceLegend || pick(pool.filter(function (l) { return !l.boundTo; }).length ? pool.filter(function (l) { return !l.boundTo; }) : pool);
+      it.qlvl = L.qlvl || null; it.legendType = L.weaponType || null; it.legendId = L.effect.id;
       it.name = L.name; it.slot = L.slot; it.legendary = true; it.effect = { id: L.effect.id, desc: L.effect.desc };
       if (L.cls) it.classReq = L.cls;
       for (stat in L.stats) it.stats[stat] = statValue(stat, floor, mult * L.stats[stat]);
@@ -484,7 +485,7 @@
       var DTm = CC.DropTables, dtier = DTm ? DTm.tierOf(src) : tier, cyc = (CC.state && CC.state.cycle) || 0, gotLegend = false, forceLeg = false;
       function item(minR, bonusLuck) {
         var it;
-        if (DTm) { it = DTm.makeDrop({ tier: dtier, level: floor, luck: luck, cls: p && p.classId, minR: minR, cycle: cyc, force: forceLeg }); forceLeg = false; if (it.rarity === 4) gotLegend = true; }
+        if (DTm) { it = DTm.makeDrop({ tier: dtier, level: floor, luck: luck, cls: p && p.classId, minR: minR, cycle: cyc, force: forceLeg, source: src && src.type, stalker: !!(src && src.nightStalker) }); forceLeg = false; if (it.rarity === 4) gotLegend = true; }
         else it = rollItem(floor, luck + (bonusLuck || 0), minR, undefined, chest ? 'normal' : tier);
         add(self._spawn('item', x, y, { item: it, rarity: it.rarity, color: it.color }));
       }
@@ -577,6 +578,7 @@
             s.manaPotions = (s.manaPotions || 0) + 1; this._text(d.x, d.y, 'Mana Potion', '#7ec2ff');
           } else if (d.kind === 'item') {
             s.inventory = s.inventory || [];
+            if (CC.DropTables && CC.DropTables.found(d.item)) this._text(d.x, d.y - 14, 'NEW LEGENDARY: Codex', '#ffa21f', 11);
             if (this.autoEquip(player, d.item)) { this._text(d.x, d.y, 'Equipped ' + d.item.name, d.item.color, 11); }
             else {
               var st = this.stash(d.item, player);

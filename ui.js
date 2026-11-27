@@ -466,6 +466,7 @@
       if(labelEgg)tx(c,labelEgg,x+w*.51,yy+7,10,'#eed39c','center');
     }
     button(c, addHit, x + w - 104, yy - 1, 100, 17, 'Sort by value', bag.length > 1, sortBag, '#4a3a22');
+    if (CC.Loot && CC.Loot.LEGEND_WEAPONS) button(c, addHit, x + w - 190, yy - 1, 80, 17, 'Codex', true, function () { codexPage = 0; open('codex'); }, '#5a3a62');
     yy += 18;
     satchel(c, gx - 5, yy - 4, cs * COLS + gap * (COLS - 1) + 10, Math.ceil(BAG_MAX / COLS) * (cs + gap) + 4, bag.length);
     for (i = 0; i < BAG_MAX; i++) {
@@ -681,6 +682,30 @@
   CC.UISettingsWheel = function (dy) { if (!(target && cur === 'settings')) return false; settingsScroll = Math.max(0, Math.min(settingsMax, settingsScroll + dy * 0.6)); return true; };
 
   // PARTY tab: session options. The host decides whether the guest can be hurt.
+  /* ---------- the Legendary Codex: every legendary weapon, found or still to find ---------- */
+  var codexPage = 0, CLS_NAME = { swordsman: 'Swordsman', wizard: 'Wizard', necromancer: 'Necromancer', thief: 'Thief' };
+  var BOUND_NAME = { grinmask: 'Grinning Mask', patchwork: 'Patchwork Horror', merehorror: 'Mere Horror', hearthkeeper: 'Hearthkeeper', emberheart: 'Emberheart', marionette: 'Puppet Butcher', scytheweaver: 'Scythe Weaver', veiledwidow: 'Veiled Widow', wailchorus: 'Wailing Chorus', skullbloom: 'Skull Bloom', cinderhound: 'Cinderhound', gloomcrawler: 'Gloom Crawler', gravemaw: 'Gravemaw' };
+  function drawCodex(c, hit, x, y, w, h) {
+    var list = (CC.Loot && CC.Loot.LEGEND_WEAPONS || []).slice(), found = (CC.state && CC.state.codex) || {}, per = Math.max(4, Math.floor((h - 70) / 50)), pages = Math.max(1, Math.ceil(list.length / per)), i, p = hero();
+    list.sort(function (a, b) { var ca = a.cls || 'zz', cb = b.cls || 'zz'; return ca < cb ? -1 : ca > cb ? 1 : a.qlvl - b.qlvl; });
+    codexPage = Math.max(0, Math.min(pages - 1, codexPage));
+    var n = 0; list.forEach(function (l) { if (found[l.name]) n++; });
+    tx(c, 'Found ' + n + ' / ' + list.length + '   (page ' + (codexPage + 1) + '/' + pages + ')', x + w / 2, y + 8, 12, COL.accent, 'center');
+    button(c, hit, x + 4, y + h - 26, 80, 22, 'Back', true, function () { open('inv'); }, '#4a3a22');
+    button(c, hit, x + w / 2 - 92, y + h - 26, 80, 22, 'Prev', codexPage > 0, function () { codexPage--; }, '#4a3a22');
+    button(c, hit, x + w / 2 + 12, y + h - 26, 80, 22, 'Next', codexPage < pages - 1, function () { codexPage++; }, '#4a3a22');
+    var yy = y + 24;
+    for (i = codexPage * per; i < Math.min(list.length, (codexPage + 1) * per); i++) {
+      var l = list[i], got = !!found[l.name], who = l.cls ? CLS_NAME[l.cls] : 'Any class', mine = p && l.cls && l.cls === p.classId;
+      rr(c, x + 4, yy, w - 8, 46, 6); c.fillStyle = got ? 'rgba(255,162,31,0.12)' : 'rgba(255,255,255,0.04)'; c.fill(); c.lineWidth = 1.2; c.strokeStyle = got ? '#ffa21f' : COL.line; c.stroke();
+      tx(c, got ? l.name : '???  (undiscovered)', x + 12, yy + 12, 13, got ? '#ffa21f' : COL.dim, 'left');
+      tx(c, who + '  -  ' + (l.baseName || l.weaponType) + '  -  needs level ' + l.qlvl, x + 12, yy + 26, 10, mine ? COL.good : COL.dim, 'left');
+      var line = got ? l.effect.desc : (l.boundTo ? 'Dropped only by the ' + (BOUND_NAME[l.boundTo] || l.boundTo) + (l.boundKind === 'stalker' ? ' (night stalker)' : '') : 'Drops from monsters of level ' + l.qlvl + '+');
+      wrapText(c, line, x + 12, yy + 36, w - 28, 12, 9, got ? COL.text : COL.dim);
+      yy += 50;
+    }
+  }
+
   function drawParty(c, hit, x, y, w, h) {
     var MP = CC.Multiplayer, host = MP && MP.isHost && MP.isHost(), on = !!(MP && MP.options && MP.options.guestInvuln), yy = y + 14;
     tx(c, 'PARTY OPTIONS', x + w / 2, yy, 16, COL.accent, 'center'); yy += 34;
@@ -735,7 +760,7 @@
       if (target) addHit(cx0, py + 10, 24, 28, function () { close(); });
       var ax = px + 10, ay = py + 48, aw = pw - 20, ah = ph - 58, noop = function () {};
       if (leather) { // the page's title on a ribbon, as in the design: the content sits below it
-        var title = cur === 'skills' ? (CC.SkillScreen && CC.SkillScreen.title ? CC.SkillScreen.title() : 'SKILLS') : ({ inv: 'INVENTORY', quests: 'QUESTS', map: 'MAP', stats: 'STATS', settings: 'SETTINGS', party: 'PARTY' }[cur] || String(cur).toUpperCase());
+        var title = cur === 'skills' ? (CC.SkillScreen && CC.SkillScreen.title ? CC.SkillScreen.title() : 'SKILLS') : ({ inv: 'INVENTORY', quests: 'QUESTS', map: 'MAP', stats: 'STATS', settings: 'SETTINGS', party: 'PARTY', codex: 'LEGENDARY CODEX' }[cur] || String(cur).toUpperCase());
         CC.LeatherUI.ribbon(c, px + pw / 2, ay, Math.min(pw - 60, 250), title); ay += 38; ah -= 38;
       }
       var hit = target ? addHit : noop;
@@ -746,6 +771,7 @@
       else if (cur === 'stats') drawStats(c, ax, ay, aw, ah, p, hit);
       else if (cur === 'party') drawParty(c, hit, ax, ay, aw, ah);
       else if (cur === 'settings') drawSettings(c, hit, ax, ay, aw, ah);
+      else if (cur === 'codex') drawCodex(c, hit, ax, ay, aw, ah);
       c.restore();
       if (target && e > 0.9 && cur === 'inv') drawTip(c, W, H, p);
     }

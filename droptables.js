@@ -75,14 +75,19 @@
   };
   // the weapon you find is usually one you can use: weapon-slot drops are class bases 55% of the time (loot.js reads CLASS_WEAPON_ODDS)
   DT.CLASS_WEAPON_ODDS = 0.55;
-  DT.pickLegend = function (list, slot, ilvl, cls, rnd) {
+  // src: { id, stalker } the kill that is dropping it. A bound weapon only drops from its own boss or night stalker, and then very often.
+  DT.pickLegend = function (list, slot, ilvl, cls, rnd, src) {
     rnd = rnd || rnd0; var pool = [], w = [], tot = 0, i, l, q;
     for (i = 0; i < list.length; i++) {
       l = list[i]; q = l.qlvl || 1;
       if (slot && l.slot !== slot) continue;
       if (q > ilvl) continue; // not until the monster is high enough level
+      var boundOk = true;
+      if (l.boundTo) boundOk = !!src && src.id === l.boundTo && (l.boundKind === 'stalker' ? !!src.stalker : !src.stalker);
+      if (!boundOk) continue;
       var wt = (!l.cls || !cls || l.cls === cls) ? 1 : DT.OTHER_CLASS_WEIGHT;
       wt *= 1 + Math.min(0.5, 0.04 * (ilvl - q));
+      if (l.boundTo) wt *= 30;
       pool.push(l); w.push(wt); tot += wt;
     }
     if (!pool.length) return null;
@@ -95,6 +100,10 @@
     return Math.max(1, Math.ceil((item.ilvl || 1) * DT.REQ_FACTOR));
   };
   DT.canWear = function (item, level) { return !item || (level || 1) >= (item.reqLevel || DT.requiredLevel(item)); };
+
+  // the Legendary Codex remembers every legendary you have picked up
+  DT.found = function (item) { var s = CC.state; if (!s || !item || !item.legendary) return false; s.codex = s.codex || {}; if (s.codex[item.name]) return false; s.codex[item.name] = 1; return true; };
+  DT.foundCount = function () { var s = CC.state; return s && s.codex ? Object.keys(s.codex).length : 0; };
 
   // bad-luck protection: counts miniboss and boss kills without a legendary
   DT.pity = {
@@ -112,7 +121,8 @@
     q = o.force ? 4 : DT.rollQuality(tier, lv.ilvl, o.luck, rnd, o.minR);
     var slot = o.slot || null, legend = null;
     if (q === 4) {
-      legend = DT.pickLegend(L.LEGENDS, slot, lv.ilvl, o.cls, rnd) || (!slot ? null : DT.pickLegend(L.LEGENDS, null, lv.ilvl, o.cls, rnd));
+      var from = { id: o.source, stalker: !!o.stalker };
+      legend = DT.pickLegend(L.LEGENDS, slot, lv.ilvl, o.cls, rnd, from) || (!slot ? null : DT.pickLegend(L.LEGENDS, null, lv.ilvl, o.cls, rnd, from));
       if (!legend) q = 3; // nothing legendary is eligible yet at this item level: an epic instead
       else slot = legend.slot;
     }

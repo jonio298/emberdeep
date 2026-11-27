@@ -350,7 +350,11 @@
     fxBurst(e.x, e.y, '#ffb050', 8, 100);
   }
   var PERFECT_CHANCE = 0.02; // 1 in 50 basic attacks is a PERFECT HIT: four times the damage, and its own kill cutscene if it kills
-  function hitEnemy(e, dmg, type, opts) {
+  // hits go through wrapHit() layers (frost.js: cold procs, legendary.js: weapon abilities), including those fired from inside this file
+  var hitWrap = null;
+  function wrapHit(fn) { var prev = hitWrap; hitWrap = function (core, e, d, t, o) { return fn(function (e2, d2, t2, o2) { return prev ? prev(core, e2, d2, t2, o2) : core(e2, d2, t2, o2); }, e, d, t, o); }; }
+  function hitEnemy(e, dmg, type, opts) { return hitWrap ? hitWrap(hitEnemyCore, e, dmg, type, opts) : hitEnemyCore(e, dmg, type, opts); }
+  function hitEnemyCore(e, dmg, type, opts) {
     var p = hero();
     if (!alive(e)) return 0;
     opts = opts || {};
@@ -770,7 +774,7 @@
   }
 
   function raise(p, count, free) {
-    var cap = 2 + Math.floor(p.level / 5) + 2 * (p.flags.legion || 0);
+    var cap = 2 + Math.floor(p.level / 5) + 2 * (p.flags.legion || 0) + 2 * (p.flags.legionLeg || 0);
     var n = Math.min(count, cap - minions.length);
     if (n <= 0) return 0;
     for (var i = 0; i < n; i++) {
@@ -807,7 +811,7 @@
       for (var ki = 0; ki < spread.length; ki++) shoot(p, dir.a + spread[ki], 300, 0.6, 0.8 * sm(p, 1), 3, 'shard', 'knife', '#cfd8e6');
       p.atkAnim = 0.15; p.castFlash = 0.1;
     } else { // raise skeletons
-      var cap = 2 + Math.floor(p.level / 5) + 2 * (p.flags.legion || 0);
+      var cap = 2 + Math.floor(p.level / 5) + 2 * (p.flags.legion || 0) + 2 * (p.flags.legionLeg || 0);
       if (minions.length >= cap) { if (noManaT <= 0) { fxText(p.x, p.y - 18, 'Max minions', '#7dff9a', 10); noManaT = 0.6; } return; }
       if (!spend(p, 'spell1')) return;
       raise(p, 2, false);
@@ -1614,7 +1618,7 @@
     create: create, update: update, draw: draw, drawPondCombat: drawPondCombat, drawPlayer: drawPlayer, drawHero: drawHero,
     drawCriticalHero: drawCriticalHero, critRadius: critRadius,
     autoTarget: autoTarget, gainXp: gainXp, drainTick: drainTick, xpToNext: xpToNext, damage: damage, heal: heal, damageMinion: damageMinion,
-    applyItemStats: applyItemStats, choosePerk: choosePerk, hitEnemy: hitEnemy, status: status,
+    applyItemStats: applyItemStats, choosePerk: choosePerk, hitEnemy: hitEnemy, wrapHit: wrapHit, status: status,
     _h: { shoot: shoot, nearest: nearest, aimDir: aimDir, ignite: ignite, addFx: addFx, foes: foes },
     tapAction:tapAction,summonCharged:summonCharged,
     drawPerkOverlay: function (c) { var p = hero(); if (p && p.perkOpen && p.perkChoices) drawPerkPanel(c, p); },

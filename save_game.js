@@ -149,7 +149,7 @@ S.save=function(){
    quest:CC.EggQuest&&CC.EggQuest.serialize?CC.EggQuest.serialize():null,
    cinderwake:CC.CinderwakeStory&&CC.CinderwakeStory.serialize?CC.CinderwakeStory.serialize():null,
    day:CC.DayNight&&CC.DayNight.serialize?CC.DayNight.serialize():null,
-   cycle:s.cycle||0,chapter:s.chapter||1,pity:(s.pity&&s.pity.n)|0, // replay count (0 = first time through) and the story chapter (Part 2 of the full version)
+   cycle:s.cycle||0,chapter:s.chapter||1,pity:(s.pity&&s.pity.n)|0,codex:s.codex&&typeof s.codex==='object'?s.codex:{}, // replay count (0 = first time through) and the story chapter (Part 2 of the full version)
    waypoints:CC.Waypoints&&CC.Waypoints.status?CC.Waypoints.status():null,
    camp:CC.Camp&&CC.Camp.exportState?CC.Camp.exportState():null
   };

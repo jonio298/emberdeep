@@ -131,13 +131,13 @@
         var fl = fx(); if (fl && fl.flash) fl.flash('#ffe27a', 0.1); // the flash of light on release
         burst(p.x + a.x * 10, p.y - 4 + a.y * 10, '#ffe27a', 10, 130); shake(4);
         var sp0 = { x: p.x + a.x * 10, y: p.y - 4 + a.y * 10 };
-        if (hitE) effects.push({ kind: 'lspear', x: hitE.x, y: hitE.y, a: Math.atan2(a.y, a.x), len: SL, ref: hitE, t: 4, max: 4, pulse: 0, dmg: dmg * 1.8 * scale, flash: 1, seed: Math.random() * 100, sx: sp0.x, sy: sp0.y, fly: 0.13, flyMax: 0.13, born: 0 });
+        if (hitE) effects.push({ kind: 'lspear', x: hitE.x, y: hitE.y, a: Math.atan2(a.y, a.x), len: SL, ref: hitE, t: (CC.Legendary && CC.Legendary.has('vael') ? 8 : 4), max: (CC.Legendary && CC.Legendary.has('vael') ? 8 : 4), pulse: 0, dmg: dmg * 1.8 * scale, flash: 1, seed: Math.random() * 100, sx: sp0.x, sy: sp0.y, fly: 0.13, flyMax: 0.13, born: 0 });
         else effects.push({ kind: 'lspear', miss: true, x: p.x + a.x * RANGE, y: p.y - 4 + a.y * RANGE, a: Math.atan2(a.y, a.x), len: SL, ref: null, t: 0.3, max: 0.3, pulse: 9, dmg: 0, flash: 0, seed: Math.random() * 100, sx: sp0.x, sy: sp0.y, fly: 0.13, flyMax: 0.13 });
       } else if (idx === 2) { // Blizzard: cast OUT and away (aim it like the other ranged charge spells); a storm that rages for about 3.6 s
-        var bp = blizzPoint(p), bx = bp.x, by = bp.y, brad = BLIZ_R + 20 * pow, rolled = [];
-        if (CC.Vfx) CC.Vfx.spawn('blizzard', bx, by, brad, { life: 3.8 }); else ring(bx, by, brad, '#9fe3ff', 0.7);
+        var bp = blizzPoint(p), bx = bp.x, by = bp.y, glac = !!(CC.Legendary && CC.Legendary.has('glacier')), brad = (BLIZ_R + 20 * pow) * (glac ? 1.3 : 1), rolled = [];
+        if (CC.Vfx) CC.Vfx.spawn('blizzard', bx, by, brad, { life: glac ? 5.7 : 3.8 }); else ring(bx, by, brad, '#9fe3ff', 0.7);
         var inStorm = function () { return foes().filter(function (f) { return alive(f) && Math.hypot(f.x - bx, f.y - by) <= brad + (f.r || 8); }); };
-        for (i = 0; i < 8; i++) (function (k) { // eight freezing pulses
+        for (i = 0; i < (glac ? 12 : 8); i++) (function (k) { // eight freezing pulses (twelve with Glacier's Heart)
           later(0.45 * k, function () {
             inStorm().forEach(function (f) {
               hit(f, dmg * 0.45 * scale, 'frost'); status(f, 'slow', 3, 0.4);
@@ -146,7 +146,7 @@
             burst(bx, by, '#cfefff', 14, 150);
           });
         })(i);
-        for (i = 0; i < 5; i++) (function (k) { // and glacial spikes crash onto foes in the storm
+        for (i = 0; i < (glac ? 8 : 5); i++) (function (k) { // and glacial spikes crash onto foes in the storm
           later(0.5 + 0.7 * k, function () {
             var pool = inStorm(); pool.sort(function () { return Math.random() - 0.5; });
             pool.slice(0, 3).forEach(function (f) { hit(f, dmg * 0.8 * scale, 'frost'); burst(f.x, f.y, '#e8fbff', 10, 140); if (CC.Frost) CC.Frost.coldProc(f); });

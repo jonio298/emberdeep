@@ -115,7 +115,9 @@
   var clearingForBomb = false;
 
   function playerOf() { return CC.state && CC.state.player; }
+  var hurtHook = null; // legendary weapons that react to being hit (set with CC.Enemies.setHurtHook)
   function hurtPlayer(p, amt, e, kind) {
+    if (hurtHook && p && p.isHero && p.stats && !(p.invuln > 0) && p.hp > 0) { amt = hurtHook(p, amt, e, kind); if (!(amt > 0)) return 1; }
     if (p && p.isDefenseBox) return CC.Defense.damageBox(amt, e, kind); // Town Defense: monsters chew on the supply box
     if (CC.Hordes?.powerupActive?.('shield', p)) return 1;
     if (p && p.pw && p.pw.shield > 0 && !(CC.Multiplayer && CC.Multiplayer.remote === p)) { // shield power-up: the blow is turned aside
@@ -321,6 +323,7 @@
     },
 
     // spawn one enemy of a given type (also used by summons/tests); opts.elite forces an elite
+    setHurtHook: function (fn) { hurtHook = fn; },
     spawn: function (type, x, y, floor, opts) {
       floor = Math.max(1, floor | 0 || 1);
       var e = type === 'boss' ? makeBoss(floor, x, y, opts && opts.bossIdx) : make(type, x, y, floor, opts);
