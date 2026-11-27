@@ -5,6 +5,11 @@ Every build gets a number `YYYYMMDD.N` (N counts builds made that day). The newe
 
 | Build | Version | Notes |
 |---|---|---|
+| 20261126.26 | 0.3.0 | Three feral growl sounds for the night stalkers (as each one appears and as each attack begins). |
+| 20261126.25 | 0.3.0 | The single Icicle Cannon shard auto-aims: a boss in reach first, otherwise the closest monster. |
+| 20261126.24 | 0.3.0 | Night stalkers are 30% larger; as they are hurt, limbs, heads and horns tear off (flying away) and the sprite shows the ragged bleeding gap while they keep attacking. |
+| 20261126.23 | 0.3.0 | No more glowing red eyes painted on ordinary monsters at night; they keep their normal sprites. |
+| 20261126.22 | 0.3.0 | The first night stalker now comes out of the dark about 12 seconds after night falls (was up to 40). |
 | 20261126.21 | 0.3.0 | The Rocky Pass gets its own song (Mountain Pass). Two night songs (Crickets After Dark, Midnight Pixel Path) play back and forth under the night sky. |
 | 20261126.20 | 0.3.0 | Phone back button steps back through menus (title pages, character window, pause menu, then 'Really save and exit?') instead of leaving the page; test mode gets Night/Day, freeze time and night-stalker spawning; the game loads at 92% zoom; a modest lit circle at night. |
 | 20261126.19 | 0.3.0 | Night light reworked as ambient light, like a torch in a dark room: the dark is cut away around the hero in a soft falloff with a wide, even wash of class-coloured light (no ring, no bright blob on the sprite). |

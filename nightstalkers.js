@@ -125,9 +125,9 @@
       quake: { range: [0, 400], w: 1.5, cd: 8, steps: [
         { d: 0.9, f: 'power', tele: { k: 'circle', rad: 165 } }, { d: 0.28, f: 'power', hit: { k: 'circle', rad: 165, dmg: 1.1, slow: 1.6, kb: 55, at: 0.2 }, fx: 'shake' }, { d: 0.7, f: 'slump' }] } } };
   // the sprites are drawn small, to sit with the ordinary monsters, so every reach, telegraph and dash is scaled down with them
-  var K = 0.72;
+  var BIG = 1.3, K = 0.72 * BIG; // the stalkers are drawn 30% larger, with their reach, telegraphs and hit circles
   Object.keys(D).forEach(function (id) {
-    var def = D[id]; if (def.scaled) return; def.scaled = 1;
+    var def = D[id]; if (def.scaled) return; def.scaled = 1; def.size = Math.round(def.size * BIG); def.r = Math.round(def.r * BIG * 10) / 10; if (def.hover) def.hover *= BIG;
     Object.keys(def.moves).forEach(function (mk) {
       var m = def.moves[mk]; m.range = [m.range[0] * K, m.range[1] * K];
       m.steps.forEach(function (st) {
@@ -231,6 +231,7 @@
       if (step.blink === 'behind') { var back = Math.atan2(p.y - e.y, p.x - e.x) + Math.PI, a2 = (p.aimX !== undefined ? Math.atan2(p.aimY || 0, p.aimX) : back) + Math.PI; e.x = p.x + Math.cos(back) * 70; e.y = p.y + Math.sin(back) * 70; if (CC.fx && CC.fx.burst) CC.fx.burst(e.x, e.y, '#9a7aba', 10, 80); }
       if (step.shots) { shoot(e, step.shots, e.aim !== undefined ? e.aim : ang); if (CC.Audio && CC.Audio.fx) CC.Audio.fx('wet', { x: e.x, y: e.y, vol: 0.5, gap: 60 }); }
       if (step.fx) fxs(e, step.fx);
+      if (e.si === 0 && CC.Audio && CC.Audio.play) CC.Audio.play('stalker_growl' + (1 + Math.floor(R() * 3)), { x: e.x, y: e.y, vol: 0.7, gap: 1500, vary: 0.12 }); // a feral growl as each attack begins
     }
     e.st += dt; var u = clamp(e.st / step.d, 0, 1), aim = e.aim !== undefined ? e.aim : ang;
     ns.frame = frameOf(def, step.f); ns.tele = step.tele ? Object.assign({ ang: aim, u: u, ox: step.tele.atTarget ? e.tx : undefined, oy: step.tele.atTarget ? e.ty : undefined }, step.tele) : null;
@@ -263,6 +264,37 @@
     if (CC.Loot && CC.Loot.roll) { var lv = Math.max(3, Math.round(((p && p.level) || 3) * 0.7)); CC.Loot.roll({ x: e.x, y: e.y, boss: true }, lv, 4); CC.Loot.roll({ x: e.x, y: e.y, elite: true }, lv, 6); }
   }
 
+  /* ---------- severed parts: a torn, bleeding gap is cut out of the sprite where the limb was (the part itself flies off via Enemies._detach) ---------- */
+  var HOLES = { // [x0, y0, x1, y1, the side that is torn] in sprite-cell pixels
+    head: [22, -20, 90, 34, 'b'], hornLeft: [-20, -20, 38, 26, 'b'], hornRight: [74, -20, 132, 26, 'b'],
+    armLeft: [-20, 34, 32, 84, 'r'], armRight: [80, 34, 132, 84, 'l'],
+    legLeft: [-20, 86, 56, 132, 't'], legRight: [56, 86, 132, 132, 't']
+  };
+  var cutCv = null;
+  function jagged(h, seed) { // a rectangle that reaches past the cell, with a ragged torn edge on one side
+    var x0 = h[0], y0 = h[1], x1 = h[2], y1 = h[3], side = h[4], pts = [], n = 6, i, j;
+    function w(k) { return Math.sin(seed * 12.9 + k * 7.3) * 4.5; }
+    if (side === 'b') { pts.push([x0, y0], [x1, y0], [x1, y1]); for (i = n; i >= 0; i--) pts.push([x0 + (x1 - x0) * i / n, y1 + (i % 2 ? 5 : -2) + w(i)]); }
+    else if (side === 't') { pts.push([x0, y1], [x1, y1], [x1, y0]); for (i = n; i >= 0; i--) pts.push([x0 + (x1 - x0) * i / n, y0 + (i % 2 ? -5 : 2) + w(i)]); }
+    else if (side === 'r') { pts.push([x0, y0], [x0, y1]); for (j = n; j >= 0; j--) pts.push([x1 + (j % 2 ? 5 : -2) + w(j), y0 + (y1 - y0) * (1 - j / n)]); }
+    else { pts.push([x1, y0], [x1, y1]); for (j = n; j >= 0; j--) pts.push([x0 + (j % 2 ? -5 : 2) + w(j), y0 + (y1 - y0) * (1 - j / n)]); }
+    return pts;
+  }
+  function carve(im, cx, cy, lost, e) {
+    if (!cutCv) { cutCv = document.createElement('canvas'); cutCv.width = cutCv.height = CELL; }
+    var c = cutCv.getContext('2d'); if (!c) return null;
+    c.globalCompositeOperation = 'source-over'; c.clearRect(0, 0, CELL, CELL); c.drawImage(im, cx, cy, CELL, CELL, 0, 0, CELL, CELL);
+    var seed = (e.id || e.x * 0.013 + e.y * 0.007) % 97, blood = D[e.type] && D[e.type].blood || '#7a1818', i, k, pts;
+    c.globalCompositeOperation = 'destination-out'; c.fillStyle = '#000';
+    for (i = 0; i < lost.length; i++) { pts = jagged(HOLES[lost[i]], seed + i); c.beginPath(); for (k = 0; k < pts.length; k++) k ? c.lineTo(pts[k][0], pts[k][1]) : c.moveTo(pts[k][0], pts[k][1]); c.closePath(); c.fill(); }
+    c.globalCompositeOperation = 'source-atop'; c.strokeStyle = blood; c.lineWidth = 6; c.lineJoin = 'round'; // wet raw flesh along the tear
+    for (i = 0; i < lost.length; i++) { pts = jagged(HOLES[lost[i]], seed + i); c.beginPath(); for (k = 0; k < pts.length; k++) k ? c.lineTo(pts[k][0], pts[k][1]) : c.moveTo(pts[k][0], pts[k][1]); c.closePath(); c.stroke(); }
+    c.globalCompositeOperation = 'source-over';
+    return cutCv;
+  }
+  // flying stalkers count as bodies too: the ordinary anatomy code skips ghosts, so it is let through for them
+  if (E && E._dismember) { var prevDis = E._dismember; E._dismember = function (e) { if (e && e.nightStalker && e.ghost) { e.ghost = false; try { return prevDis.apply(this, arguments); } finally { e.ghost = true; } } return prevDis.apply(this, arguments); }; }
+
   /* ---------- drawing ---------- */
   function drawMonster(ctx, e, r, col, dark, t) {
     var def = D[e.type]; if (!def) return false;
@@ -272,8 +304,10 @@
     if (!im) { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(0, -r, r, 0, PI2); ctx.fill(); ctx.restore(); return true; }
     if (def.native === 'left') ctx.scale(-1, 1);
     var cx = (fr % 4) * CELL, cy = Math.floor(fr / 4) * CELL, sc = size / CELL * (def.fly ? 1.0 : 1);
-    ctx.drawImage(im, cx, cy, CELL, CELL, -size / 2, -size + r * 0.9 + bob, size, size);
-    if (e.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha *= 0.35; ctx.drawImage(im, cx, cy, CELL, CELL, -size / 2, -size + r * 0.9 + bob, size, size); }
+    var src = im, sx0 = cx, sy0 = cy, lost = e.missing && !e.dead ? Object.keys(e.missing).filter(function (k) { return e.missing[k] && HOLES[k]; }) : [];
+    if (lost.length && typeof document !== 'undefined') { var cut = carve(im, cx, cy, lost, e); if (cut) { src = cut; sx0 = 0; sy0 = 0; } }
+    ctx.drawImage(src, sx0, sy0, CELL, CELL, -size / 2, -size + r * 0.9 + bob, size, size);
+    if (e.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha *= 0.35; ctx.drawImage(src, sx0, sy0, CELL, CELL, -size / 2, -size + r * 0.9 + bob, size, size); }
     ctx.restore();
     return true;
   }
@@ -321,6 +355,7 @@
       if (!e) return null; e.asleep = false; e.nightStalker = true; e.ns = { frame: D[type].idle[0], alpha: 0 };
       if (CC.fx && CC.fx.burst) CC.fx.burst(x, y, '#2a1a3a', 18, 70);
       if (CC.Audio && CC.Audio.fx) CC.Audio.fx('ghost_moan', { x: x, y: y, vol: 0.5, gap: 200 });
+      if (CC.Audio && CC.Audio.play) CC.Audio.play('stalker_growl' + (1 + Math.floor(R() * 3)), { x: x, y: y, vol: 0.6, gap: 400, delay: 0.4 });
       return e;
     }
     return null;
@@ -334,6 +369,7 @@
     var keep = out && night;
     for (i = E.list.length - 1; i >= 0; i--) { e = E.list[i]; if (!e.nightStalker) continue; if (!keep && !e.leaving && !e.dead && !e.testSpawn) e.leaving = 1; if (e.leaving && e.ns && e.ns.alpha <= 0.02) E.list.splice(i, 1); }
     if (!keep || !p || p.hp <= 0) { dir.nightFor = 0; dir.announced = false; if (!out) dir.t = 40; return; }
+    if (dir.nightFor === 0) dir.t = Math.min(dir.t, 12); // the first one comes out of the dark soon after night falls
     dir.nightFor += dt; dir.t -= dt;
     var cap = dir.nightFor > 150 ? 3 : dir.nightFor > 60 ? 2 : 1;
     if (dir.t <= 0) {

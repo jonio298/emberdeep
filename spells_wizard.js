@@ -209,6 +209,14 @@
 
   function cannon(cast) {
     if (!cast.charged) {
+      // the single icicle homes in on a target: a boss in reach first, otherwise the closest monster (no target: it flies where you aimed)
+      if (!cast.visual) {
+        const foes = nearby(cast.x, cast.y, 320);
+        const pool = foes.some(boss) ? foes.filter(boss) : foes;
+        let best = null, bd = Infinity;
+        for (const e of pool) { const d = Math.hypot(e.x - cast.x, e.y - cast.y); if (d < bd) { bd = d; best = e; } }
+        if (best) { cast.angle = Math.atan2(best.y - cast.y, best.x - cast.x); cast.dx = Math.cos(cast.angle); cast.dy = Math.sin(cast.angle); }
+      }
       launch(cast, 0, null, 0);
       return;
     }

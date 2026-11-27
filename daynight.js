@@ -117,10 +117,7 @@
     }
     ctx.restore();
   }
-  if (E && E.draw) {
-    var prevDraw = E.draw;
-    E.draw = function (ctx, cam) { var r = prevDraw.apply(this, arguments); if (cam) try { drawEyes(ctx, cam); } catch (err) { if (root.console) console.error(err); } return r; };
-  }
+  // (the glowing-eye overlay on ordinary monsters is switched off: monsters keep their normal sprites at night; drawEyes is kept but not hooked in)
 
   /* ---------- werewolves: a Dire Wolf at night is drawn as a hunched, long-armed werewolf ---------- */
   function werewolf(ctx, e, r, col, dark, t) {
