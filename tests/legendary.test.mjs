@@ -103,3 +103,18 @@ test('legendary weapons appear in drops, show their level requirement, and stric
   assert.equal(w.reqLevel, 32); p.level = 20; assert.equal(Loot.canWear(w, p.level), false); assert.equal(Loot.canWear(w, 32), true);
   assert.equal(w.weaponType, 'staff');
 });
+
+test('power cap: every weapon has comparable stats, and no damage multiplier is out of line with the curve', () => {
+  const { CC, p, mk, LG } = boot('swordsman'), list = CC.Loot.LEGEND_WEAPONS;
+  const totals = list.map(l => Object.values(l.stats).reduce((a, b) => a + b, 0)), mean = totals.reduce((a, b) => a + b, 0) / totals.length;
+  totals.forEach((t, i) => assert.ok(t > mean * 0.55 && t < mean * 1.6, list[i].name + ' stat total ' + t.toFixed(2) + ' vs mean ' + mean.toFixed(2)));
+  // the damage multiplier a weapon gives in its best ordinary situation (never above 3x; most 2x or less)
+  const e = mk(), elite = mk(); elite.elite = true; p.ambushT = 0; p._lg = { cs: 30, lw: 3, mm: 4, coin: true };
+  const rows = [];
+  for (const l of list) {
+    const H = LG.HANDLERS[l.effect.id]; if (!H.dmgMul) continue;
+    let best = 0; for (const target of [e, elite]) for (const crit of [false, true]) { target._mark = 5; target._wet = 1e9; best = Math.max(best, H.dmgMul(LG.X, p, target, 10, 'fire', { crit, melee: true, basic: true })); }
+    rows.push([l.name, best]); assert.ok(best <= 3.01, l.name + ' multiplies damage by ' + best);
+  }
+  assert.ok(rows.filter(r => r[1] > 2.01).length <= 3, 'only a few weapons can exceed x2: ' + rows.filter(r => r[1] > 2.01).map(r => r[0]).join(', '));
+});
